@@ -108,15 +108,15 @@ public final class MainActivity extends Activity {
             Toast.makeText(this,"已应用苹果风格玻璃参数；原有功能开关保持不变",Toast.LENGTH_LONG).show();
             recreate();
         });
-        TextView appleHint=text("推荐：模糊 8dp · 折射 45% · 底色 14% · 柔和表面反射。真实折射与清晰折射开关保持原状态；需要看到折射时请手动开启。",12,false);
+        TextView appleHint=text("推荐：模糊 8dp · 折射 45% · 底色 14% · 柔和表面反射。二维玻璃折射与玻璃细节增强开关保持原状态；需要看到折射时请手动开启。",12,false);
         current.addView(appleHint);
         toggle("桌面应用图标统一表面光学（首轮适配）","icon_optics_204",false);
         toggle("自适应液态玻璃 Dock（预览）","dock_glass_204",false);
         TextView dockInfo=text("Dock 保持既有 92% 宽度及胶囊形状，与桌面文件夹共用壁纸采样、折射、模糊和表面光学参数；图标轮廓保留 V1.9.205.11。",12,false);current.addView(dockInfo);
 
         slider("玻璃底色不透明度 (%)","glass_tint_opacity",18,0,100);
-        slider("自定义壁纸模糊半径 (dp)","custom_blur_dp",14,0,40);
-        slider("折射强度 (%)","refraction_percent",35,0,100);
+        slider("玻璃背景模糊半径 (dp)","custom_blur_dp",14,0,40);
+        slider("二维折射强度 (%)","refraction_percent",35,0,100);
         TextView modeLabel=text("背景模糊模式",13,false);current.addView(modeLabel);
         Spinner blurMode=new Spinner(this);
         String[] blurModes={"关闭模糊 · 纯折射","自定义壁纸模糊 · 推荐","ColorOS 原生兼容"};
@@ -126,14 +126,14 @@ public final class MainActivity extends Activity {
             public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){prefs.edit().putInt("custom_blur_mode",pos).commit();}
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
         });
-        toggle("真实壁纸折射","real_refraction",false);
-        toggle("清晰折射（开启保留更多壁纸细节；0dp 不额外模糊）","clear_refraction",false);
+        toggle("二维玻璃折射（文件夹与 Dock 共用四边弧形透镜）","real_refraction",false);
+        toggle("玻璃细节增强（模糊时恢复少量壁纸纹理）","clear_refraction",false);
         // Legacy native_alpha_probe is deliberately disabled: blur and material opacity are separate.
         prefs.edit().putBoolean("native_alpha_probe",false).apply();
         TextView blurInfo=text("自定义模糊使用壁纸采样，不模糊应用图标。系统模糊开关不再强制开启；ColorOS 自身仍可能启用原生模糊。",12,false);current.addView(blurInfo);
         // V1.9.199: legacy soft-highlight controls removed from UI. Existing
         // preferences remain for compatibility; the unified surface owns reflection.
-        section("统一表面光学 · V1.9.199","新版圆角反射独立于背景模糊；设置保存后会同步给 Launcher。");
+        section("统一玻璃表面光学","新版圆角反射独立于背景模糊；设置保存后会同步给 Launcher。");
         TextView surfaceLabel=text("表面反射模式",13,false);current.addView(surfaceLabel);
         Spinner surfaceSpinner=new Spinner(this);
         String[] surfaceModes={"0 · 关闭表面反射","1 · 静态圆角反射","2 · 动态圆角反射","3 · 动态反射 + 柔和暗边"};

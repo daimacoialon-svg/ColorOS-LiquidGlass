@@ -2742,13 +2742,19 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // displacement is used for the glass refraction sample.
         " float short20515=max(1.0,min(bounds.z,bounds.w));\n"+
         " float relativeRadius20515=radius20513/short20515;\n"+
-        " float rimWidth20515=short20515*mix(0.115,0.205,smoothstep(0.06,0.48,relativeRadius20515));\n"+
-        " float inside20515=max(0.0,-signed20513);\n"+
-        " float rim20515=1.0-smoothstep(0.0,rimWidth20515,inside20515);\n"+
+        // V205.16: one geometry-relative, non-linear lens for every glass surface.
+        // A smooth raised profile has zero shift at the silhouette and the
+        // inner end of the lens, avoiding hard CLAMP streaks and straight pulls.
+        " float rimWidth20516=short20515*mix(0.18,0.30,smoothstep(0.06,0.48,relativeRadius20515));\n"+
+        " float inside20516=max(0.0,-signed20513);\n"+
+        " float t20516=clamp(inside20516/max(rimWidth20516,1.0),0.0,1.0);\n"+
+        " float rise20516=smoothstep(0.0,0.22,t20516);\n"+
+        " float fall20516=1.0-smoothstep(0.28,1.0,t20516);\n"+
+        " float lens20516=rise20516*fall20516;\n"+
         " float displacement173=(motionIsolation173>1.5?0.0:strength);\n"+
-        " float sizeGain20515=pow(short20515/182.0,0.42);\n"+
-        " float lensShift20515=displacement173*0.70*sizeGain20515*rim20515;\n"+
-        " float2 samplingPoint=p-normal20513*lensShift20515;\n"+
+        " float sizeGain20516=pow(short20515/182.0,0.42);\n"+
+        " float lensShift20516=displacement173*0.92*sizeGain20516*lens20516;\n"+
+        " float2 samplingPoint=p-normal20513*lensShift20516;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
         // folder may be partly offscreen while swiping; never sample a CLAMP
@@ -2826,7 +2832,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float bright=smoothstep(0.48,0.96,luminance);\n"+
         // A persistent low-opacity refracted sample across the entire glass,
         // plus a stronger but bounded optical edge. Never depend on motion.
-        " float edgeWeight=envelope*envelope;\n"+
+        " float edgeWeight=lens20516*lens20516;\n"+
         " float midOpacity=0.115*(1.0-0.55*bright);\n"+
         " float edgeOpacity=0.115*edgeWeight*(1.0-0.75*bright);\n"+
         " float neutralOpacity=0.055*bright;\n"+
