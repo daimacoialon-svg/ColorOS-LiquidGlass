@@ -2735,10 +2735,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float signed20513=length(outside20513)+min(max(q20513.x,q20513.y),0.0)-radius20513;\n"+
         " float2 axis20513=sign(p-center);\n"+
         " float2 normal20513=length(outside20513)>0.001?normalize(outside20513)*axis20513:(q20513.x>q20513.y?float2(axis20513.x,0.0):float2(0.0,axis20513.y));\n"+
-        " float rimWidth20513=min(45.0,max(9.0,0.18*min(bounds.z,bounds.w)));\n"+
-        " float rim20513=1.0-smoothstep(0.0,rimWidth20513,max(0.0,-signed20513));\n"+
+        // V205.15: the lens band and displacement scale with the actual short
+        // side and corner radius.  The signed-distance normal gives top/bottom
+        // a genuine Y displacement, side edges an X displacement and corners
+        // a continuous diagonal displacement.  No fixed pixel band or X-only
+        // displacement is used for the glass refraction sample.
+        " float short20515=max(1.0,min(bounds.z,bounds.w));\n"+
+        " float relativeRadius20515=radius20513/short20515;\n"+
+        " float rimWidth20515=short20515*mix(0.115,0.205,smoothstep(0.06,0.48,relativeRadius20515));\n"+
+        " float inside20515=max(0.0,-signed20513);\n"+
+        " float rim20515=1.0-smoothstep(0.0,rimWidth20515,inside20515);\n"+
         " float displacement173=(motionIsolation173>1.5?0.0:strength);\n"+
-        " float2 samplingPoint=p-normal20513*rim20513*displacement173*0.70;\n"+
+        " float sizeGain20515=pow(short20515/182.0,0.42);\n"+
+        " float lensShift20515=displacement173*0.70*sizeGain20515*rim20515;\n"+
+        " float2 samplingPoint=p-normal20513*lensShift20515;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
         // folder may be partly offscreen while swiping; never sample a CLAMP
@@ -3374,7 +3384,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if(state.cachedBlurBitmap!=blurred || state.cachedBlurShader==null){
                         state.cachedBlurBitmap=blurred;
                         state.cachedBlurShader=new android.graphics.BitmapShader(blurred,android.graphics.Shader.TileMode.CLAMP,android.graphics.Shader.TileMode.CLAMP);
+                        // V1.9.205.14: blurred wallpaper is quarter-resolution.
+                        // Explicit bilinear filtering prevents texel-step bands after 2D refraction.
+                        state.cachedBlurShader.setFilterMode(android.graphics.BitmapShader.FILTER_MODE_LINEAR);
                         state.cachedBlurPaint.setShader(state.cachedBlurShader);
+                        state.cachedBlurPaint.setFilterBitmap(true);
                     }
                     // V1.9.168: audit isolation: preserve the historical alpha by default.
                     // Setting mode=1 keeps the same blur opacity when refraction is toggled,
@@ -3442,7 +3456,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                 state.cachedBlurBitmap=b195;
                                 state.cachedBlurShader=new android.graphics.BitmapShader(b195,
                                     android.graphics.Shader.TileMode.CLAMP,android.graphics.Shader.TileMode.CLAMP);
+                                state.cachedBlurShader.setFilterMode(android.graphics.BitmapShader.FILTER_MODE_LINEAR);
                                 state.cachedBlurPaint.setShader(state.cachedBlurShader);
+                        state.cachedBlurPaint.setFilterBitmap(true);
                             }
                             state.cachedBlurMatrix.reset();
                             state.cachedBlurMatrix.setScale((float)sw/b195.getWidth(),(float)sh/b195.getHeight());
@@ -3673,7 +3689,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if(state.cachedBlurBitmap!=blurred || state.cachedBlurShader==null){
                         state.cachedBlurBitmap=blurred;
                         state.cachedBlurShader=new android.graphics.BitmapShader(blurred,android.graphics.Shader.TileMode.CLAMP,android.graphics.Shader.TileMode.CLAMP);
+                        // V1.9.205.14: blurred wallpaper is quarter-resolution.
+                        // Explicit bilinear filtering prevents texel-step bands after 2D refraction.
+                        state.cachedBlurShader.setFilterMode(android.graphics.BitmapShader.FILTER_MODE_LINEAR);
                         state.cachedBlurPaint.setShader(state.cachedBlurShader);
+                        state.cachedBlurPaint.setFilterBitmap(true);
                     }
                     // V1.9.168: audit isolation: preserve the historical alpha by default.
                     // Setting mode=1 keeps the same blur opacity when refraction is toggled,
