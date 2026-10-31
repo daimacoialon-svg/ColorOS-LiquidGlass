@@ -2734,7 +2734,16 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float2 outside20513=max(q20513,0.0);\n"+
         " float signed20513=length(outside20513)+min(max(q20513.x,q20513.y),0.0)-radius20513;\n"+
         " float2 axis20513=sign(p-center);\n"+
-        " float2 normal20513=length(outside20513)>0.001?normalize(outside20513)*axis20513:(q20513.x>q20513.y?float2(axis20513.x,0.0):float2(0.0,axis20513.y));\n"+
+        // V205.19: soften the interior SDF axis transition.  The former
+        // ternary switched normals abruptly at q.x == q.y and produced a
+        // diagonal sampling seam at every rounded corner during wallpaper motion.
+        " float normalBlendSpan20519=max(2.0,radius20513*0.18);\n"+
+        " float blendX20519=smoothstep(-normalBlendSpan20519,normalBlendSpan20519,q20513.x-q20513.y);\n"+
+        " float2 innerNormal20519=float2(axis20513.x*blendX20519,axis20513.y*(1.0-blendX20519));\n"+
+        " innerNormal20519=innerNormal20519/max(length(innerNormal20519),0.001);\n"+
+        " float outerWeight20519=smoothstep(0.001,max(2.0,radius20513*0.12),length(outside20513));\n"+
+        " float2 outerNormal20519=normalize(outside20513+float2(0.0001))*axis20513;\n"+
+        " float2 normal20513=normalize(mix(innerNormal20519,outerNormal20519,outerWeight20519));\n"+
         // V205.15: the lens band and displacement scale with the actual short
         // side and corner radius.  The signed-distance normal gives top/bottom
         // a genuine Y displacement, side edges an X displacement and corners
@@ -2759,7 +2768,16 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float anisotropy20517=mix(0.12,0.045,elongation20517);\n"+
         " float rimWidth20517=baseRim20517*(1.0+anisotropy20517*orientation20517);\n"+
         " float inside20516=max(0.0,-signed20513);\n"+
-        " float t20517=clamp(inside20516/max(rimWidth20517,1.0),0.0,1.0);\n"+
+        // V205.19: an elliptical inner falloff gently rounds the rectangular
+        // inner lens contour, but does not alter the silhouette/outer band.
+        " float2 halfSize20519=max(float2(1.0),0.5*bounds.zw);\n"+
+        " float2 normalized20519=(p-center)/halfSize20519;\n"+
+        " float radial20519=length(normalized20519);\n"+
+        " float ellipseInside20519=max(0.0,(1.0-radial20519)*0.5*short20515);\n"+
+        " float rawT20519=inside20516/max(rimWidth20517,1.0);\n"+
+        " float roundedT20519=ellipseInside20519/max(rimWidth20517,1.0);\n"+
+        " float centerBlend20519=0.30*(1.0-elongation20517)*smoothstep(0.22,0.72,rawT20519);\n"+
+        " float t20517=clamp(mix(rawT20519,roundedT20519,centerBlend20519),0.0,1.0);\n"+
         " float rise20517=smoothstep(0.0,0.20,t20517);\n"+
         " float fall20517=1.0-smoothstep(0.26,0.94,t20517);\n"+
         // A weak long-tail blends the inner edge into the undistorted center,
