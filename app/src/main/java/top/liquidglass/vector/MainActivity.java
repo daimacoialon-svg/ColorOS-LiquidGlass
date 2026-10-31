@@ -34,6 +34,46 @@ public final class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();rootStatusVisible=true;rootStatusHandler.removeCallbacks(rootStatusPoll);rootStatusHandler.post(rootStatusPoll);}
     @Override protected void onStop(){rootStatusVisible=false;rootStatusHandler.removeCallbacks(rootStatusPoll);super.onStop();}
 
+    private static final String[] DIAG22_KEYS={"real_refraction","custom_blur_mode","custom_blur_dp","surface_mode_195","glass_tint_opacity","clear_refraction"};
+    private void saveCornerDiagnostic22(){
+        if(prefs.getBoolean("diag22_saved",false))return;
+        SharedPreferences.Editor e=prefs.edit();
+        for(String k:DIAG22_KEYS){
+            boolean bool=k.equals("real_refraction")||k.equals("clear_refraction");
+            if(bool)e.putBoolean("diag22_backup_"+k,prefs.getBoolean(k,false));
+            else e.putInt("diag22_backup_"+k,prefs.getInt(k,k.equals("custom_blur_dp")?14:k.equals("custom_blur_mode")?1:k.equals("surface_mode_195")?3:18));
+        }
+        e.putBoolean("diag22_saved",true).commit();
+    }
+    private void applyCornerDiagnostic22(int mode){
+        saveCornerDiagnostic22();
+        SharedPreferences.Editor e=prefs.edit();
+        e.putBoolean("real_refraction",mode!=1)
+         .putBoolean("clear_refraction",false)
+         .putInt("custom_blur_mode",mode>=3?1:0)
+         .putInt("custom_blur_dp",mode>=3?14:0)
+         .putInt("surface_mode_195",mode==4?3:0)
+         .putInt("glass_tint_opacity",0)
+         .putInt("diag22_active",mode).commit();
+        getContentResolver().notifyChange(GlassConfigProvider.URI,null);
+        Toast.makeText(this,"诊断场景 "+mode+" 已设置；请观察同一文件夹",Toast.LENGTH_LONG).show();
+        recreate();
+    }
+    private void restoreCornerDiagnostic22(){
+        if(!prefs.getBoolean("diag22_saved",false)){
+            Toast.makeText(this,"没有待恢复的诊断设置",Toast.LENGTH_SHORT).show();return;
+        }
+        SharedPreferences.Editor e=prefs.edit();
+        for(String k:DIAG22_KEYS){
+            boolean bool=k.equals("real_refraction")||k.equals("clear_refraction");
+            if(bool)e.putBoolean(k,prefs.getBoolean("diag22_backup_"+k,false));
+            else e.putInt(k,prefs.getInt("diag22_backup_"+k,0));
+            e.remove("diag22_backup_"+k);
+        }
+        e.remove("diag22_saved").remove("diag22_active").commit();
+        getContentResolver().notifyChange(GlassConfigProvider.URI,null);
+        Toast.makeText(this,"已恢复诊断前参数",Toast.LENGTH_SHORT).show();recreate();
+    }
     private LinearLayout body;
     private final int ink=0xFF172635, muted=0xFF657587, blue=0xFF2979E5;
     private GradientDrawable bg(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
@@ -128,6 +168,13 @@ public final class MainActivity extends Activity {
         });
         toggle("二维玻璃折射（文件夹与 Dock 共用四边弧形透镜）","real_refraction",false);
         toggle("玻璃细节增强（模糊时恢复少量壁纸纹理）","clear_refraction",false);
+        section("V1.9.205.22 · 折痕分层诊断", "每次只切换一个诊断场景；对同一个文件夹拍照。首次点击会保存当前玻璃参数，完成后请点击恢复。此诊断会暂时改变文件夹和 Dock 的全局玻璃设置。");
+        action("① 仅原始壁纸（无模糊、折射、描边）",()->applyCornerDiagnostic22(1));
+        action("② 仅折射（关闭模糊和表面反射）",()->applyCornerDiagnostic22(2));
+        action("③ 折射 + 模糊（关闭表面反射）",()->applyCornerDiagnostic22(3));
+        action("④ 折射 + 模糊 + 表面反射",()->applyCornerDiagnostic22(4));
+        action("恢复诊断前玻璃参数",()->restoreCornerDiagnostic22());
+        TextView diagnosticHint22=text("注意：①使用原有壁纸/底色绘制链路，不保证关闭 ColorOS 系统原生描边；②与③的差异用于定位模糊叠层；③与④的差异用于定位表面反射。请等待 Launcher 接收设置后再截图。",12,false);current.addView(diagnosticHint22);
         // Legacy native_alpha_probe is deliberately disabled: blur and material opacity are separate.
         prefs.edit().putBoolean("native_alpha_probe",false).apply();
         TextView blurInfo=text("自定义模糊使用壁纸采样，不模糊应用图标。系统模糊开关不再强制开启；ColorOS 自身仍可能启用原生模糊。",12,false);current.addView(blurInfo);
