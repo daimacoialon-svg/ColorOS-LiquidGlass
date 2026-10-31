@@ -2848,7 +2848,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float bright=smoothstep(0.48,0.96,luminance);\n"+
         // A persistent low-opacity refracted sample across the entire glass,
         // plus a stronger but bounded optical edge. Never depend on motion.
-        " float edgeWeight=lens20516*lens20516;\n"+
+        " float edgeWeight=lens20517*lens20517;\n"+
         " float midOpacity=0.115*(1.0-0.55*bright);\n"+
         " float edgeOpacity=0.115*edgeWeight*(1.0-0.75*bright);\n"+
         " float neutralOpacity=0.055*bright;\n"+
