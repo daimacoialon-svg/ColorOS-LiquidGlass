@@ -2720,6 +2720,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float compositeProbe157;\n"+
         "uniform float4 screenClip;\n"+
         "uniform float glassCornerRadius20513;\n"+
+        "uniform float continuousLens20521;\n"+
         "uniform float probe143Composite;\n"+
         "half4 main(float2 p) {\n"+
         " float u=clamp((p.x-bounds.x)/max(bounds.z,1.0),0.0,1.0);\n"+
@@ -2770,7 +2771,30 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float sizeGain20516=pow(short20515/182.0,0.42);\n"+
         " float curvature20517=1.0+0.055*(1.0-elongation20517)*orientation20517;\n"+
         " float lensShift20517=displacement173*0.92*sizeGain20516*curvature20517*lens20517;\n"+
-        " float2 samplingPoint=p-normal20513*lensShift20517;\n"+
+        // Experimental folder-only lens. Keep dock on the verified V205.20 path.
+        // Smooth normal near the axial/corner junction by evaluating the rounded
+        // rectangle SDF at a small symmetric offset. The same SDF is used for
+        // clipping geometry and the refraction surface.
+        " float2 lensNormal20521=normal20513;\n"+
+        " float lensShift20521=lensShift20517;\n"+
+        " if(continuousLens20521>0.5){\n"+
+        "  float e20521=max(0.75,min(2.5,short20515*0.008));\n"+
+        "  float2 ax20521=abs(p+float2(e20521,0.0)-center)-(0.5*bounds.zw-float2(radius20513));\n"+
+        "  float2 bx20521=abs(p-float2(e20521,0.0)-center)-(0.5*bounds.zw-float2(radius20513));\n"+
+        "  float2 ay20521=abs(p+float2(0.0,e20521)-center)-(0.5*bounds.zw-float2(radius20513));\n"+
+        "  float2 by20521=abs(p-float2(0.0,e20521)-center)-(0.5*bounds.zw-float2(radius20513));\n"+
+        "  float dx20521=(length(max(ax20521,0.0))+min(max(ax20521.x,ax20521.y),0.0))-(length(max(bx20521,0.0))+min(max(bx20521.x,bx20521.y),0.0));\n"+
+        "  float dy20521=(length(max(ay20521,0.0))+min(max(ay20521.x,ay20521.y),0.0))-(length(max(by20521,0.0))+min(max(by20521.x,by20521.y),0.0));\n"+
+        "  float2 grad20521=float2(dx20521,dy20521);\n"+
+        "  lensNormal20521=length(grad20521)>0.0001?normalize(grad20521):normal20513;\n"+
+        "  float width20521=max(1.0,short20515*mix(0.20,0.29,smoothstep(0.08,0.44,relativeRadius20515)));\n"+
+        "  float t20521=clamp(inside20516/width20521,0.0,1.0);\n"+
+        "  float rise20521=smoothstep(0.0,0.16,t20521);\n"+
+        "  float fall20521=1.0-smoothstep(0.22,0.96,t20521);\n"+
+        "  float curved20521=pow(max(0.0,rise20521*fall20521),1.30);\n"+
+        "  lensShift20521=displacement173*0.84*sizeGain20516*curved20521;\n"+
+        " }\n"+
+        " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
         // folder may be partly offscreen while swiping; never sample a CLAMP
@@ -3512,7 +3536,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         " composite="+compositeMode170+" clear="+clearRefraction+
                         " detailMix202="+detailMix202+" view="+System.identityHashCode(view));
                     state.continuousShader.setFloatUniform("bounds",rect.left,rect.top,rect.width(),rect.height());
-                    state.continuousShader.setFloatUniform("glassCornerRadius20513",Math.max(0f,Math.min(radius,Math.min(rect.width(),rect.height())*0.5f)));
+                    // One radius for both clipping and the optical signed-distance field.
+                    state.continuousShader.setFloatUniform("glassCornerRadius20513",contourRadius);
+                    // Preserve the existing Dock appearance; enable the new
+                    // continuous profile on square-ish folder surfaces only.
+                    state.continuousShader.setFloatUniform("continuousLens20521",rect.width()/Math.max(1f,rect.height())<2.0f && rect.height()/Math.max(1f,rect.width())<2.0f ? 1f : 0f);
                     int visibilityTest=currentRefractionVisibilityTest();
                     // V1.9.93: mode 0 uses the exact proven mode-2 optical profile.
                     // Keep the requested mode 1/3 diagnostics available.
