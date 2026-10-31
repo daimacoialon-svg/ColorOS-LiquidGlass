@@ -2734,17 +2734,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float2 outside20513=max(q20513,0.0);\n"+
         " float signed20513=length(outside20513)+min(max(q20513.x,q20513.y),0.0)-radius20513;\n"+
         " float2 axis20513=sign(p-center);\n"+
-        // V205.20: continuously differentiable interior normal from a smooth
-        // maximum of the two rectangle distances. Avoid hard X/Y ownership
-        // changes at corner bisectors during wallpaper movement.
-        " float normalSpan20520=max(3.0,radius20513*0.28);\n"+
-        " float diff20520=q20513.x-q20513.y;\n"+
-        " float smoothDiff20520=sqrt(diff20520*diff20520+normalSpan20520*normalSpan20520);\n"+
-        " float xWeight20520=0.5+0.5*diff20520/max(smoothDiff20520,0.001);\n"+
-        " float2 innerNormal20520=normalize(float2(axis20513.x*xWeight20520,axis20513.y*(1.0-xWeight20520))+float2(0.00001));\n"+
-        " float outerWeight20520=smoothstep(0.0,max(3.0,radius20513*0.24),length(outside20513));\n"+
-        " float2 outerNormal20520=normalize(outside20513+float2(0.0001))*axis20513;\n"+
-        " float2 normal20513=normalize(mix(innerNormal20520,outerNormal20520,outerWeight20520));\n"+
+        " float2 normal20513=length(outside20513)>0.001?normalize(outside20513)*axis20513:(q20513.x>q20513.y?float2(axis20513.x,0.0):float2(0.0,axis20513.y));\n"+
         // V205.15: the lens band and displacement scale with the actual short
         // side and corner radius.  The signed-distance normal gives top/bottom
         // a genuine Y displacement, side edges an X displacement and corners
@@ -2769,28 +2759,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float anisotropy20517=mix(0.12,0.045,elongation20517);\n"+
         " float rimWidth20517=baseRim20517*(1.0+anisotropy20517*orientation20517);\n"+
         " float inside20516=max(0.0,-signed20513);\n"+
-        // V205.20: use a smooth superellipse depth to round the inner
-        // rectangular transition without introducing a second abrupt contour.
-        // This is the SAME geometry function for folders and dock.
-        " float2 halfSize20520=max(float2(1.0),0.5*bounds.zw);\n"+
-        " float2 uv20520=abs((p-center)/halfSize20520);\n"+
-        " float super20520=pow(pow(uv20520.x,3.0)+pow(uv20520.y,3.0),1.0/3.0);\n"+
-        " float curvedDepth20520=max(0.0,(1.0-super20520)*0.5*short20515);\n"+
-        " float rawT20520=inside20516/max(rimWidth20517,1.0);\n"+
-        " float curvedT20520=curvedDepth20520/max(rimWidth20517,1.0);\n"+
-        " float centerMix20520=0.25*(1.0-elongation20517)*smoothstep(0.12,0.70,rawT20520);\n"+
-        " float t20517=clamp(mix(rawT20520,curvedT20520,centerMix20520),0.0,1.0);\n"+
-        " float rise20517=smoothstep(0.0,0.23,t20517);\n"+
-        " float fall20517=1.0-smoothstep(0.24,0.98,t20517);\n"+
-        " float lens20517=rise20517*fall20517;\n"+
+        " float t20517=clamp(inside20516/max(rimWidth20517,1.0),0.0,1.0);\n"+
+        " float rise20517=smoothstep(0.0,0.20,t20517);\n"+
+        " float fall20517=1.0-smoothstep(0.26,0.94,t20517);\n"+
+        // A weak long-tail blends the inner edge into the undistorted center,
+        // reducing the visible square frame without bending the whole glass.
+        " float tail20517=0.11*(1.0-smoothstep(0.35,1.0,t20517))*smoothstep(0.05,0.30,t20517);\n"+
+        " float lens20517=rise20517*fall20517+tail20517;\n"+
         " float displacement173=(motionIsolation173>1.5?0.0:strength);\n"+
-        " float sizeGain20516=clamp(pow(short20515/182.0,0.24),0.82,1.08);\n"+
+        " float sizeGain20516=pow(short20515/182.0,0.42);\n"+
         " float curvature20517=1.0+0.055*(1.0-elongation20517)*orientation20517;\n"+
-        // Cap absolute displacement relative to the actual local lens band.
-        // A single global strength remains user controlled; geometry provides
-        // a safe automatic response for every glass container.
-        " float shiftCap20520=min(rimWidth20517*0.17,max(4.0,radius20513*0.42));\n"+
-        " float lensShift20517=clamp(displacement173*0.92*sizeGain20516*curvature20517,-shiftCap20520,shiftCap20520)*lens20517;\n"+
+        " float lensShift20517=displacement173*0.92*sizeGain20516*curvature20517*lens20517;\n"+
         " float2 samplingPoint=p-normal20513*lensShift20517;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
@@ -2817,7 +2796,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // Mode 2 retains the exact wallpaper sample, with a separately animated
         // additive sheen. No smoothing or interpolation of sample coordinates.
         " if(diagnosticMode>1.5){\n"+
-        "  float edgeSheen=pow(clamp(abs(2.0*u-1.0),0.0,1.0),3.0);\n"+
+        "  float edgeSheen=pow(1.0-smoothstep(0.0,max(1.0,rimWidth20517),inside20516),3.0);\n"+
         // V1.9.129: ambient light follows the *current sampled wallpaper*
         // even at rest. Motion adds only a small bounded enhancement.
         "  float lum=dot(float3(color.rgb),float3(0.2126,0.7152,0.0722));\n"+
@@ -2838,7 +2817,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  if(shaderAlpha178>0.5){color.a=half(shaderAlpha178<1.5?0.50:(shaderAlpha178<2.5?0.85:1.0));}\n"+
         // Stable RGB-only optical highlight; no translucent shader output or motion switch.
         "  if(stableSheen179>-0.5){\n"+
-        "   float rim=pow(clamp(abs(2.0*u-1.0),0.0,1.0),3.0);\n"+
+        "   float rim=pow(1.0-smoothstep(0.0,max(1.0,rimWidth20517),inside20516),3.0);\n"+
         "   float sheenWeight=(stableSheen179<0.5?0.0:(stableSheen179<1.5?0.035:(stableSheen179<2.5?0.065:0.0)));\n"+
         "   float sheen=clamp(sheenWeight*(0.30+0.70*rim),0.0,0.09);\n"+
         "   color.rgb=mix(color.rgb,half3(0.97,0.98,1.0),half(sheen));\n"+
@@ -3479,6 +3458,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     }
                     float shaderLeft=sampleMode160==1?state.sample160AnchorX:(probe141==6?state.probe143LockedLeft:left);
                     float shaderTop=sampleMode160==1?state.sample160AnchorY:(probe141==6?state.probe143LockedTop:top);
+                    // V205.19: normal rendering uses the same live matrix-derived origin
+                    // for all four sides and corners. Locked origins remain diagnostics only.
+                    if(sampleMode160==0 && probe141!=6){shaderLeft=left;shaderTop=top;}
                     if(SAMPLE_TRACE_COUNTS_160[sampleMode160]<120){
                         SAMPLE_TRACE_COUNTS_160[sampleMode160]++;
                         log("SAMPLE_TRACE_160 mode="+sampleMode160+" view="+System.identityHashCode(view)+
