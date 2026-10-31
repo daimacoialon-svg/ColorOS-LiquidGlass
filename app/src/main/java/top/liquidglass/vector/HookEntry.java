@@ -2796,7 +2796,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // Mode 2 retains the exact wallpaper sample, with a separately animated
         // additive sheen. No smoothing or interpolation of sample coordinates.
         " if(diagnosticMode>1.5){\n"+
-        "  float edgeSheen=pow(1.0-smoothstep(0.0,max(1.0,rimWidth20517),inside20516),3.0);\n"+
+        "  float edgeSheen=pow(clamp(abs(2.0*u-1.0),0.0,1.0),3.0);\n"+
         // V1.9.129: ambient light follows the *current sampled wallpaper*
         // even at rest. Motion adds only a small bounded enhancement.
         "  float lum=dot(float3(color.rgb),float3(0.2126,0.7152,0.0722));\n"+
@@ -2817,7 +2817,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  if(shaderAlpha178>0.5){color.a=half(shaderAlpha178<1.5?0.50:(shaderAlpha178<2.5?0.85:1.0));}\n"+
         // Stable RGB-only optical highlight; no translucent shader output or motion switch.
         "  if(stableSheen179>-0.5){\n"+
-        "   float rim=pow(1.0-smoothstep(0.0,max(1.0,rimWidth20517),inside20516),3.0);\n"+
+        "   float rim=pow(clamp(abs(2.0*u-1.0),0.0,1.0),3.0);\n"+
         "   float sheenWeight=(stableSheen179<0.5?0.0:(stableSheen179<1.5?0.035:(stableSheen179<2.5?0.065:0.0)));\n"+
         "   float sheen=clamp(sheenWeight*(0.30+0.70*rim),0.0,0.09);\n"+
         "   color.rgb=mix(color.rgb,half3(0.97,0.98,1.0),half(sheen));\n"+
@@ -3458,7 +3458,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     }
                     float shaderLeft=sampleMode160==1?state.sample160AnchorX:(probe141==6?state.probe143LockedLeft:left);
                     float shaderTop=sampleMode160==1?state.sample160AnchorY:(probe141==6?state.probe143LockedTop:top);
-                    // V205.19: normal rendering uses the same live matrix-derived origin
+                    // V205.20: retain the existing live matrix-derived origin
                     // for all four sides and corners. Locked origins remain diagnostics only.
                     if(sampleMode160==0 && probe141!=6){shaderLeft=left;shaderTop=top;}
                     if(SAMPLE_TRACE_COUNTS_160[sampleMode160]<120){
