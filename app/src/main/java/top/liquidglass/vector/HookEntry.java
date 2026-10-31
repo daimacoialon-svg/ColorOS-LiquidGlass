@@ -2745,16 +2745,32 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // V205.16: one geometry-relative, non-linear lens for every glass surface.
         // A smooth raised profile has zero shift at the silhouette and the
         // inner end of the lens, avoiding hard CLAMP streaks and straight pulls.
-        " float rimWidth20516=short20515*mix(0.18,0.30,smoothstep(0.06,0.48,relativeRadius20515));\n"+
+        // V205.17: one shared glass shader, with continuously varying lens
+        // thickness by aspect ratio and local boundary orientation.  The
+        // rounded-corner transition is smooth; no per-side hard switches.
+        " float long20517=max(bounds.z,bounds.w);\n"+
+        " float aspect20517=long20517/short20515;\n"+
+        " float elongation20517=smoothstep(1.05,2.8,aspect20517);\n"+
+        " float baseRim20517=short20515*mix(0.18,0.30,smoothstep(0.06,0.48,relativeRadius20515));\n"+
+        // For a near-square folder, the top/bottom and left/right bands are
+        // subtly different; for a long dock the orientation modulation is
+        // gentler. Blend through corner normals rather than making seams.
+        " float orientation20517=normal20513.x*normal20513.x-normal20513.y*normal20513.y;\n"+
+        " float anisotropy20517=mix(0.12,0.045,elongation20517);\n"+
+        " float rimWidth20517=baseRim20517*(1.0+anisotropy20517*orientation20517);\n"+
         " float inside20516=max(0.0,-signed20513);\n"+
-        " float t20516=clamp(inside20516/max(rimWidth20516,1.0),0.0,1.0);\n"+
-        " float rise20516=smoothstep(0.0,0.22,t20516);\n"+
-        " float fall20516=1.0-smoothstep(0.28,1.0,t20516);\n"+
-        " float lens20516=rise20516*fall20516;\n"+
+        " float t20517=clamp(inside20516/max(rimWidth20517,1.0),0.0,1.0);\n"+
+        " float rise20517=smoothstep(0.0,0.20,t20517);\n"+
+        " float fall20517=1.0-smoothstep(0.26,0.94,t20517);\n"+
+        // A weak long-tail blends the inner edge into the undistorted center,
+        // reducing the visible square frame without bending the whole glass.
+        " float tail20517=0.11*(1.0-smoothstep(0.35,1.0,t20517))*smoothstep(0.05,0.30,t20517);\n"+
+        " float lens20517=rise20517*fall20517+tail20517;\n"+
         " float displacement173=(motionIsolation173>1.5?0.0:strength);\n"+
         " float sizeGain20516=pow(short20515/182.0,0.42);\n"+
-        " float lensShift20516=displacement173*0.92*sizeGain20516*lens20516;\n"+
-        " float2 samplingPoint=p-normal20513*lensShift20516;\n"+
+        " float curvature20517=1.0+0.055*(1.0-elongation20517)*orientation20517;\n"+
+        " float lensShift20517=displacement173*0.92*sizeGain20516*curvature20517*lens20517;\n"+
+        " float2 samplingPoint=p-normal20513*lensShift20517;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
         // folder may be partly offscreen while swiping; never sample a CLAMP
