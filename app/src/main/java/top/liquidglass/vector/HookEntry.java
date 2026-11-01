@@ -3026,9 +3026,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // beyond the corner radius into the rounded-rectangle medial axis,
         // where the nearest-edge normal is not unique (diagonal seams).
         // Constrain the optical band to the rounded corner's curvature scale.
-        // Keep the Dock (elongated containers) and screen clipping untouched.
-        " if(aspect20517<2.25 && radius20513>2.0 && sampleIsolation<0.5){\n"+
-        "  float rim48=max(2.0,min(short20515*0.16,radius20513*0.42));\n"+
+        // V205.53: folder-only uniform is the authoritative container classification.
+        // Apply the same optical profile to square, vertical and horizontal folders.
+        // The aspect ratio only adjusts rim width continuously; it must not
+        // disable the profile. DockBackground204 remains on its validated path.
+        // Keep Dock and screen clipping untouched.
+        " if(folderContourMode20534>0.5 && radius20513>2.0 && sampleIsolation<0.5){\n"+
+        "  float rim48=max(2.0,min(short20515*mix(0.16,0.145,smoothstep(1.8,3.6,aspect20517)),radius20513*mix(0.42,0.39,smoothstep(1.8,3.6,aspect20517))));\n"+
         "  float depth48=clamp(inside20516/rim48,0.0,1.0);\n"+
         "  float main50=smoothstep(0.0,0.17,depth48)*(1.0-smoothstep(0.35,1.0,depth48));\n"+
         // A modest optical shoulder bridges the clear interior without widening
