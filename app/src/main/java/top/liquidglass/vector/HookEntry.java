@@ -2041,7 +2041,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(33,mode));
+                    mode=Math.max(0,Math.min(34,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
@@ -3054,6 +3054,19 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 edge48=length(corner48)>0.0001?normalize(corner48)*axis20513:smoothAxis48;\n"+
         "  lensNormal20521=edge48;\n"+
         "  lensShift20521=sign(displacement173)*bounded56*profile48;\n"+
+        " }\n"+
+        // V205.61: opt-in folder-only interior lens experiment (sample mode 34).
+        // No change to default mode 0 or the proven Dock optical path.
+        // Uses the same rounded-rectangle distance and normal as the stable rim,
+        // with a bounded C1 interior wave that fades at both ends.
+        " if(folderContourMode20534>0.5 && sampleIsolation>33.5 && sampleIsolation<34.5 && radius20513>2.0){\n"+
+        "  float interiorSpan61=max(2.0,min(short20515*0.46,radius20513*1.25));\n"+
+        "  float depth61=clamp(inside20516/interiorSpan61,0.0,1.0);\n"+
+        "  float wave61=sin(3.14159265*depth61);\n"+
+        "  float inner61=wave61*wave61;\n"+
+        "  float safe61=interiorSpan61*0.055*clamp(abs(displacement173)/22.0,0.0,1.0);\n"+
+        "  float edgeFade61=smoothstep(0.0,0.18,depth61);\n"+
+        "  lensShift20521+=sign(displacement173)*safe61*inner61*edgeFade61;\n"+
         " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
@@ -5774,9 +5787,14 @@ public final class HookEntry implements IXposedHookLoadPackage {
             // Use Hotseat's native bounds; clamp horizontal edge inset to keep all corners on screen.
             // V1.9.205.4: approximately 92% screen width, centered.
             // The measured Hotseat icon DRAWABLES (not their 284px cells) remain inside.
-            final float inset=Math.max(12*density,b.width()*.04f);
-            final float top=Math.max(0,2*density),bottom=Math.max(top,b.height()-2*density);
-            final float r=(bottom-top)*.495f;
+            // V1.9.205.62: geometry-only safe adjustment. Do not alter the
+            // shared glass shader or the actual Hotseat layout/icon positions.
+            // Reduce horizontal inset and reclaim the previous 2dp top/bottom
+            // padding to make the glass visually taller within native bounds.
+            // Radius is now a rounded rectangle (not a half-height capsule).
+            final float inset=Math.max(10*density,b.width()*.035f);
+            final float top=0f,bottom=Math.max(0f,b.height());
+            final float r=Math.min(bottom-top,b.width()-2f*inset)*.30f;
             RectF rect=new RectF(b.left+inset,b.top+top,b.right-inset,b.top+bottom);
             // V1.9.205.6: reuse the folder's wallpaper sampling, blur, tint,
             // clear-refraction and surface optics renderer for Hotseat material.
