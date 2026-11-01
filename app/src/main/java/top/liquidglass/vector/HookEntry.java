@@ -2041,11 +2041,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(18,mode));
+                    mode=Math.max(0,Math.min(21,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
-                            " legend=0-original,1-neutral,2-screen-clamp,3-luma,4-boundary-overlay,5-compress-luma,6-folder-zero-shift,7-folder-sdf-gradient,8-folder-raw-boundary,9-folder-isotropic-rim,10-folder-fixed-rim,11-all-folder-zero-shift,12-corner-risk,13-local-cap,14-contour,15-contour-capped,16-sample-grid,17-sample-displacement,18-reference-grid");
+                            " legend=0-original,1-neutral,2-screen-clamp,3-luma,4-boundary-overlay,5-compress-luma,6-folder-zero-shift,7-folder-sdf-gradient,8-folder-raw-boundary,9-folder-isotropic-rim,10-folder-fixed-rim,11-all-folder-zero-shift,12-corner-risk,13-local-cap,14-contour,15-contour-capped,16-sample-grid,17-sample-displacement,18-reference-grid,19-gradient-guard-soft,20-gradient-guard-strong,21-gradient-risk-heatmap");
                     }
                 }
             }catch(Throwable t){log("REFRACTION_SAMPLE_ISOLATION_READ_FAILED "+t.getClass().getSimpleName());}
@@ -2881,6 +2881,33 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float requested34=displacement173*0.92*sizeGain20516*profile34;\n"+
         "  lensShift20521=min(max(requested34,0.0),cap34);\n"+
         "  lensNormal20521=normal20513;\n"+
+        " }\n"+
+        // V205.37: folder-only experimental gradient guard. Estimate the radial
+        // derivative of the actual V205.17 lens profile at neighboring depths.
+        // This is a conservative local-gradient proxy, not a full Jacobian.
+        // Modes 19/20 preserve the original mode-0 optical path everywhere else.
+        " if(folderContourMode20534>0.5 && sampleIsolation>18.5 && sampleIsolation<21.5){\n"+
+        "  float band37=max(rimWidth20517,1.0);\n"+
+        "  float e37=1.0/band37;\n"+
+        "  float tm37=clamp(t20517-e37,0.0,1.0);\n"+
+        "  float tp37=clamp(t20517+e37,0.0,1.0);\n"+
+        "  float rm37=smoothstep(0.0,0.20,tm37);\n"+
+        "  float rp37=smoothstep(0.0,0.20,tp37);\n"+
+        "  float fm37=1.0-smoothstep(0.26,0.94,tm37);\n"+
+        "  float fp37=1.0-smoothstep(0.26,0.94,tp37);\n"+
+        "  float tailm37=0.11*(1.0-smoothstep(0.35,1.0,tm37))*smoothstep(0.05,0.30,tm37);\n"+
+        "  float tailp37=0.11*(1.0-smoothstep(0.35,1.0,tp37))*smoothstep(0.05,0.30,tp37);\n"+
+        "  float deriv37=abs((rp37*fp37+tailp37)-(rm37*fm37+tailm37))*0.5*band37;\n"+
+        "  float amplitude37=abs(displacement173*0.92*sizeGain20516*curvature20517);\n"+
+        "  float gradient37=deriv37*amplitude37/band37;\n"+
+        // Tangential distortion from the normal turning around a rounded corner.
+        "  float2 cornerq37=max(q20513,0.0);\n"+
+        "  float curve37=length(cornerq37)>0.001?1.0/max(length(cornerq37),2.0):0.0;\n"+
+        "  float risk37=max(gradient37,abs(lensShift20521)*curve37);\n"+
+        "  if(sampleIsolation>20.5){float heat37=smoothstep(0.35,1.15,risk37);return half4(half3(heat37,1.0-heat37,0.08),0.93); }\n"+
+        "  float threshold37=sampleIsolation>19.5?0.55:0.80;\n"+
+        "  float guard37=1.0-0.72*smoothstep(threshold37,threshold37+0.65,risk37);\n"+
+        "  lensShift20521*=guard37;\n"+
         " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
