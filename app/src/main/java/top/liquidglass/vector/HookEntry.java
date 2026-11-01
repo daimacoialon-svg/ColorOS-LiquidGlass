@@ -3306,6 +3306,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         }catch(Throwable e){if(dragLayerLog166++<180)log("DRAG_LAYER_166 error="+e.getClass().getSimpleName()+" "+e.getMessage());}
     }
 
+    private static final java.util.concurrent.atomic.AtomicInteger SAFE_GEOMETRY_LOGS_20524 = new java.util.concurrent.atomic.AtomicInteger();
     private static void drawReferenceRefraction(View view,Canvas canvas,RectF rect,float radius) {
         long[] drawCtx1761=DRAW_CONTEXT_1761.get();
         if(drawCtx1761!=null)drawCtx1761[1]++;
@@ -3538,6 +3539,18 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     state.continuousShader.setFloatUniform("bounds",rect.left,rect.top,rect.width(),rect.height());
                     // One radius for both clipping and the optical signed-distance field.
                     state.continuousShader.setFloatUniform("glassCornerRadius20513",contourRadius);
+                    // V1.9.205.24: READ-ONLY bounded geometry audit. Never changes
+                    // shader inputs, saved settings, draw order, or global effects.
+                    if (diagnostics && SAFE_GEOMETRY_LOGS_20524.getAndIncrement() < 80) {
+                        log("GLASS_GEOMETRY_20524 view="+view.getClass().getName()+
+                            " size="+rect.width()+"x"+rect.height()+
+                            " requestedRadius="+radius+" contourRadius="+contourRadius+
+                            " screenOrigin="+left+","+top+
+                            " frame="+frame.getWidth()+"x"+frame.getHeight()+
+                            " refraction="+refractionPercent+
+                            " blurDp="+customBlurDp);
+                    }
+
                     // Preserve the existing Dock appearance; enable the new
                     // continuous profile on square-ish folder surfaces only.
                     state.continuousShader.setFloatUniform("continuousLens20521",rect.width()/Math.max(1f,rect.height())<2.0f && rect.height()/Math.max(1f,rect.width())<2.0f ? 1f : 0f);
