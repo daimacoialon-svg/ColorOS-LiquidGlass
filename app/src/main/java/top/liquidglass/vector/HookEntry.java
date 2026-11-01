@@ -2894,6 +2894,23 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float edgeGuard20513=1.0-smoothstep(0.0,18.0,outsideDistance20513);\n"+
         " samplingPoint=(folderProbe20530 && sampleIsolation>7.5 && sampleIsolation<8.5)?safe20513:mix(base20513,safe20513,edgeGuard20513);\n"+
         " if(sampleIsolation>11.5 && sampleIsolation<12.5){float h33=clamp(cornerRisk33,0.0,1.0);return half4(half3(h33,1.0-h33,0.0),0.90); }\n"+
+        // V205.35: inspect the FINAL wallpaper sampling coordinate, after screen clipping.
+        // Mode 16: warped grid in the sampled wallpaper coordinate space.
+        // Mode 17: displacement direction and magnitude (red=X, green=Y, blue=magnitude).
+        // Mode 18: unwarped local reference grid for A/B comparison.
+        // These are visual diagnostics, NOT a Jacobian determinant or a fold fix.
+        " if(sampleIsolation>15.5 && sampleIsolation<18.5 && folderContourMode20534>0.5){\n"+
+        "  float2 gridPos35=(sampleIsolation>17.5)?p:samplingPoint;\n"+
+        "  if(sampleIsolation>16.5 && sampleIsolation<17.5){\n"+
+        "   float2 delta35=samplingPoint-p;\n"+
+        "   float scale35=max(1.0,strength*0.65);\n"+
+        "   return half4(half3(clamp(0.5+delta35.x/scale35,0.0,1.0),clamp(0.5+delta35.y/scale35,0.0,1.0),clamp(length(delta35)/scale35,0.0,1.0)),0.90);\n"+
+        "  }\n"+
+        "  float2 period35=abs(fract(gridPos35/24.0)-0.5)*24.0;\n"+
+        "  float grid35=1.0-smoothstep(0.5,1.6,min(period35.x,period35.y));\n"+
+        "  half4 sample35=wallpaper.eval(samplingPoint);\n"+
+        "  return half4(mix(sample35.rgb,half3(0.05,0.95,0.85),half(grid35*0.82)),0.92);\n"+
+        " }\n"+
         " half4 color=wallpaper.eval(samplingPoint);\n"+
         // V201: blend only texture detail, never sampling displacement or output alpha.
         " if(clearDetailMix201>0.001){half4 crisp=wallpaperClear201.eval(samplingPoint);color.rgb=mix(color.rgb,crisp.rgb,half(clamp(clearDetailMix201,0.0,1.0)));}\n"+
