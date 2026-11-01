@@ -2041,7 +2041,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(23,mode));
+                    mode=Math.max(0,Math.min(25,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
@@ -2949,6 +2949,24 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float threshold37=sampleIsolation>19.5?0.55:0.80;\n"+
         "  float guard37=1.0-0.72*smoothstep(threshold37,threshold37+0.65,risk37);\n"+
         "  lensShift20521*=guard37;\n"+
+        " }\n"+
+        // V205.40: independent rounded-contour mapping experiment. Unlike
+        // modes 19/20 this uses a C1 zero-slope profile, no per-pixel hard cap.
+        // A/B 24 conservative / 25 stronger; the original mode 0 is untouched.
+        // This is a monotonicity-oriented experiment, not a global 2D proof.
+        " if(folderContourMode20534>0.5 && sampleIsolation>23.5 && sampleIsolation<25.5){\n"+
+        "  float band40=max(1.0,short20515*mix(0.20,0.29,smoothstep(0.08,0.44,relativeRadius20515)));\n"+
+        "  float depth40=clamp(inside20516/band40,0.0,1.0);\n"+
+        "  float wave40=sin(3.14159265*depth40);\n"+
+        "  float profile40=wave40*wave40;\n"+
+        "  float fraction40=clamp(displacement173/45.0,0.0,1.0);\n"+
+        "  float gain40=(sampleIsolation<24.5?0.13:0.19);\n"+
+        "  float requested40=band40*gain40*fraction40*profile40;\n"+
+        "  float2 q40=max(q20513,0.0);\n"+
+        "  float curvatureRadius40=max(1.0,length(q40));\n"+
+        "  float curvatureGuard40=smoothstep(0.0,1.0,curvatureRadius40/(curvatureRadius40+requested40*1.5));\n"+
+        "  lensNormal20521=normal20513;\n"+
+        "  lensShift20521=requested40*curvatureGuard40;\n"+
         " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
