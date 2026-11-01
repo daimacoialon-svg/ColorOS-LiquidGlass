@@ -2041,7 +2041,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(25,mode));
+                    mode=Math.max(0,Math.min(29,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
@@ -2968,6 +2968,26 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  lensNormal20521=normal20513;\n"+
         "  lensShift20521=requested40*curvatureGuard40;\n"+
         " }\n"+
+        // V205.41: Modes 26/28 (direction-only), 27/29 (direction + smooth
+        // amplitude transition). Preserve mode-0 strength on straight sides.
+        // Grid modes 28/29 use the EXACT SAME branch before final clipping.
+        " if(folderContourMode20534>0.5 && sampleIsolation>25.5 && sampleIsolation<29.5){\n"+
+        "  float2 cornerQ41=max(q20513,0.0);\n"+
+        "  float2 cornerAbs41=abs(q20513);\n"+
+        "  float ratio41=min(cornerAbs41.x,cornerAbs41.y)/max(1.0,max(cornerAbs41.x,cornerAbs41.y));\n"+
+        "  float quadrant41=smoothstep(0.04,0.40,ratio41);\n"+
+        "  float cornerNear41=smoothstep(-radius20513*0.70,radius20513*0.10,min(q20513.x,q20513.y));\n"+
+        "  float cornerWeight41=quadrant41*cornerNear41;\n"+
+        "  float2 cornerNormal41=normalize(normal20513+float2(0.00001,0.00001));\n"+
+        "  float2 originalNormal41=normalize(lensNormal20521+float2(0.00001,0.00001));\n"+
+        "  float blend41=cornerWeight41*0.90;\n"+
+        "  lensNormal20521=normalize(mix(originalNormal41,cornerNormal41,blend41));\n"+
+        "  if(sampleIsolation>26.5 && sampleIsolation<27.5 || sampleIsolation>28.5){\n"+
+        "   float depth41=clamp(inside20516/max(rimWidth20517,1.0),0.0,1.0);\n"+
+        "   float eased41=smoothstep(0.0,0.18,depth41)*(1.0-smoothstep(0.80,1.0,depth41));\n"+
+        "   lensShift20521*=mix(1.0,eased41,cornerWeight41*0.42);\n"+
+        "  }\n"+
+        " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
@@ -2996,6 +3016,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float grid35=1.0-smoothstep(0.5,1.6,min(period35.x,period35.y));\n"+
         "  half4 sample35=wallpaper.eval(samplingPoint);\n"+
         "  return half4(mix(sample35.rgb,half3(0.05,0.95,0.85),half(grid35*0.82)),0.92);\n"+
+        " }\n"+
+        // V205.41: mode-paired FINAL sample-coordinate grids, after screen guard.
+        " if(folderContourMode20534>0.5 && sampleIsolation>27.5 && sampleIsolation<29.5){\n"+
+        "  float2 cell41=abs(fract(samplingPoint/20.0)-0.5)*20.0;\n"+
+        "  float line41=1.0-smoothstep(0.45,1.50,min(cell41.x,cell41.y));\n"+
+        "  half4 bg41=wallpaper.eval(samplingPoint);\n"+
+        "  return half4(mix(bg41.rgb,half3(0.0,1.0,0.78),half(line41*0.88)),0.94);\n"+
         " }\n"+
         // V205.38: finite-difference Jacobian of original mode-0 sampling.
         // Mode 22: determinant heatmap (red = nonpositive, amber = near zero).
