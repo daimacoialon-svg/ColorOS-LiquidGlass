@@ -3037,13 +3037,18 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float main50=smoothstep(0.0,0.17,depth48)*(1.0-smoothstep(0.35,1.0,depth48));\n"+
         // A modest optical shoulder bridges the clear interior without widening
         // the rim or changing its peak. Taper it smoothly before the medial axis.
-        "  float interior50=0.11*smoothstep(0.26,0.52,depth48)*(1.0-smoothstep(0.78,1.0,depth48));\n"+
+        // V205.54: integrate the optical rim into the clear pane instead of
+        // ending as an isolated narrow frame. This low-amplitude shoulder is
+        // C1-smooth at both ends, remains zero at the edge and in the center,
+        // and does not move the existing peak or change the container geometry.
+        // It uses the same SDF depth for square, portrait and landscape folders.
+        "  float interior50=0.15*smoothstep(0.28,0.57,depth48)*(1.0-smoothstep(0.76,1.0,depth48));\n"+
         // V205.52: keep the verified V205.50/51 rim geometry and peak strength.
         // At high user strength, ease only the interior shoulder to reduce
         // visible texture piling near the bottom/right corner. The edge peak
         // and strength uniform remain untouched; this is not a global fade.
         "  float fullProfile52=pow(max(0.0,main50+interior50),1.12);\n"+
-        "  float shoulder52=smoothstep(0.49,0.72,depth48)*(1.0-smoothstep(0.88,1.0,depth48));\n"+
+        "  float shoulder52=smoothstep(0.53,0.76,depth48)*(1.0-smoothstep(0.90,1.0,depth48));\n"+
         "  float highStrength52=smoothstep(14.0,38.0,abs(displacement173));\n"+
         "  float profile48=fullProfile52*(1.0-0.12*highStrength52*shoulder52);\n"+
         "  float2 corner48=max(q20513,0.0);\n"+
