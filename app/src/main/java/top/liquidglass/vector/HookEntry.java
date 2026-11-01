@@ -2770,7 +2770,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // subtly different; for a long dock the orientation modulation is
         // gentler. Blend through corner normals rather than making seams.
         " float orientation20517=normal20513.x*normal20513.x-normal20513.y*normal20513.y;\n"+
-        // V205.31: diagnostic modes 9/10 affect only compact containers.\n        // Mode 9 removes orientation-dependent rim width, keeping radius/size response.\n        // Mode 10 additionally fixes rim width to 24% of short side, keeping strength and normals.\n        " bool compactProbe20531=aspect20517<2.25;\n"+
+        // V205.32: diagnostic modes 9/10 affect only compact containers.
+        // Mode 9 removes orientation-dependent rim width, keeping radius/size response.
+        // Mode 10 additionally fixes rim width to 24% of short side, keeping strength and normals.
+        " bool compactProbe20531=aspect20517<2.25;\n"+
         " bool isotropic20531=compactProbe20531 && sampleIsolation>8.5 && sampleIsolation<10.5;\n"+
         " bool fixedRim20531=compactProbe20531 && sampleIsolation>9.5 && sampleIsolation<10.5;\n"+
         " float anisotropy20517=isotropic20531?0.0:mix(0.12,0.045,elongation20517);\n"+
