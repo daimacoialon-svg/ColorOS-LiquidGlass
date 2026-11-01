@@ -841,6 +841,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
             if(fd==null){log("REFRACTION_CALIBRATION_SOURCE status=NO_FILE");return;}
             android.graphics.BitmapFactory.Options o=new android.graphics.BitmapFactory.Options();
             o.inSampleSize=Math.max(1,Math.max(sourceW/480,sourceH/900));
+            // 205.25: invalid source dimensions must never reach BitmapFactory.
+            if(sourceW<=0 || sourceH<=0){log("REFRACTION_CALIBRATION_SOURCE status=INVALID_DIMENSIONS source="+sourceW+"x"+sourceH);return;}
             sample=android.graphics.BitmapFactory.decodeFileDescriptor(fd.getFileDescriptor(),null,o);
             if(sample==null){log("REFRACTION_CALIBRATION_SOURCE status=DECODE_NULL");return;}
             // Cap binder payload; downsample further when required.
@@ -859,7 +861,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             log("REFRACTION_CALIBRATION_SOURCE status="+(result==null?"NULL_REPLY":result.getString("status","UNKNOWN"))
                 +" source="+sourceW+"x"+sourceH+" preview="+sample.getWidth()+"x"+sample.getHeight()
                 +" bytes="+jpeg.length+" mappingVerified=false");
-        }catch(Throwable t){log("REFRACTION_CALIBRATION_SOURCE status=ERROR reason="+t.getClass().getSimpleName());}
+        }catch(Throwable t){log("REFRACTION_CALIBRATION_SOURCE status=ERROR reason="+t.getClass().getSimpleName()+" message="+String.valueOf(t.getMessage()));}
         finally {if(sample!=null)sample.recycle();if(fd!=null)try{fd.close();}catch(Throwable ignored){}}
     }
     private static void inspectWallpaperGeometry(View folder) {
@@ -1920,11 +1922,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
     }
     private static long coordinateTraceAt155=0L;
     private static int coordinateTraceCount155=0;
+    private static final java.util.concurrent.atomic.AtomicInteger MATRIX_AUDIT_20525 = new java.util.concurrent.atomic.AtomicInteger();
     private static float[] dynamicScreenPosition(View view,DynamicRefraction state) {
         state.transform.reset();
         view.transformMatrixToGlobal(state.transform);
         state.points[0]=0f;state.points[1]=0f;
         state.transform.mapPoints(state.points);
+        // 205.25: read-only affine audit. A transformed origin alone cannot
+        // represent scale/rotation; log the basis for future shader correction.
+        if(diagnostics && MATRIX_AUDIT_20525.getAndIncrement()<64){
+            float[] basis20525={0f,0f,1f,0f,0f,1f};
+            state.transform.mapPoints(basis20525);
+            log("GLASS_MATRIX_20525 view="+view.getClass().getSimpleName()+
+                " origin="+basis20525[0]+","+basis20525[1]+
+                " axisX="+(basis20525[2]-basis20525[0])+","+(basis20525[3]-basis20525[1])+
+                " axisY="+(basis20525[4]-basis20525[0])+","+(basis20525[5]-basis20525[1]));
+        }
         // transformMatrixToGlobal is in window coordinates; compensate window origin.
         View root=view.getRootView();
         root.getLocationOnScreen(state.screen);
