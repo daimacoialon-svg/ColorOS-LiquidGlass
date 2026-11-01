@@ -3002,8 +3002,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float strong42=(sampleIsolation>30.5 && sampleIsolation<31.5 || sampleIsolation>32.5)?1.0:0.0;\n"+
         "  float minRad42=max(1.0,cornerRad42);\n"+
         "  float cap42=minRad42*mix(0.78,0.56,strong42);\n"+
-        // Smooth upper bound: cap * tanh(shift/cap), C-infinity for positive cap.
-        "  float bounded42=cap42*tanh(max(0.0,lensShift20521)/cap42);\n"+
+        // AGSL-compatible smooth saturator (sqrt, not unsupported tanh).
+        "  float ratio42=max(0.0,lensShift20521)/max(0.001,cap42);\n"+
+        "  float bounded42=cap42*ratio42/sqrt(1.0+ratio42*ratio42);\n"+
         "  float transition42=corner42*smoothstep(0.0,max(2.0,radius20513*0.30),cornerRad42);\n"+
         "  lensNormal20521=normalize(mix(oldN42,blendedN42,transition42)+float2(0.000001,0.000001));\n"+
         "  lensShift20521=mix(lensShift20521,bounded42,transition42);\n"+
