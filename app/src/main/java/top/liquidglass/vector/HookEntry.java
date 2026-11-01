@@ -3033,7 +3033,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // Keep Dock and screen clipping untouched.
         " if(folderContourMode20534>0.5 && radius20513>2.0 && sampleIsolation<0.5){\n"+
         "  float rim48=max(2.0,min(short20515*mix(0.16,0.145,smoothstep(1.8,3.6,aspect20517)),radius20513*mix(0.42,0.39,smoothstep(1.8,3.6,aspect20517))));\n"+
-        "  float depth48=clamp(inside20516/rim48,0.0,1.0);\n"+
+        // V205.57: keep the proven optical peak but let its inward shoulder
+        // decay over a modestly longer, geometry-limited distance. This is a
+        // single continuous profile, not an independently drawn second ring.
+        "  float transition57=min(rim48*1.28,max(rim48,radius20513*0.52));\n"+
+        "  float depth48=clamp(inside20516/max(2.0,transition57),0.0,1.0);\n"+
         // V205.56: one C1-continuous optical displacement profile. No stacked
         // shoulders: the old main+interior layers created multiple contour bands.
         // sin(pi*t)^2 has zero slope at both endpoints and a single smooth peak.
@@ -3043,7 +3047,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float s56=sin(3.14159265*t56);\n"+
         "  float profile56=s56*s56;\n"+
         "  float requested56=abs(displacement173)*0.92*sizeGain20516;\n"+
-        "  float bounded56=min(requested56,rim48*0.29);\n"+
+        "  float bounded56=min(requested56,transition57*0.25);\n"+
         "  float profile48=profile56;\n"+
         "  float2 corner48=max(q20513,0.0);\n"+
         "  float2 smoothAxis48=normalize(float2(axis20513.x*max(0.0,q20513.x+rim48),axis20513.y*max(0.0,q20513.y+rim48))+float2(0.00001,0.00001));\n"+
