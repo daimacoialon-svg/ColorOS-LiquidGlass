@@ -2041,7 +2041,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(21,mode));
+                    mode=Math.max(0,Math.min(23,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
@@ -2736,6 +2736,47 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float glassCornerRadius20513;\n"+
         "uniform float continuousLens20521;\n"+
         "uniform float probe143Composite;\n"+
+        // V205.38: numeric finite-difference Jacobian for the original folder lens.
+        // Re-evaluate its original coordinate mapping at neighboring pixels.
+        // This function mirrors mode-0, including continuousLens and screen guard.
+        "float2 map38(float2 p,float4 bounds,float4 screenClip,float radius,float strength,float motionIsolation,float continuousLens){\\n"+
+        " float2 center=bounds.xy+0.5*bounds.zw;\\n"+
+        " float2 q=abs(p-center)-(0.5*bounds.zw-float2(radius));\\n"+
+        " float2 outq=max(q,0.0);\\n"+
+        " float sd=length(outq)+min(max(q.x,q.y),0.0)-radius;\\n"+
+        " float2 axis=sign(p-center);\\n"+
+        " float2 n=length(outq)>0.001?normalize(outq)*axis:(q.x>q.y?float2(axis.x,0.0):float2(0.0,axis.y));\\n"+
+        " float shortSide=max(1.0,min(bounds.z,bounds.w));\\n"+
+        " float relativeRadius=radius/shortSide;\\n"+
+        " float aspect=max(bounds.z,bounds.w)/shortSide;\\n"+
+        " float elongation=smoothstep(1.05,2.8,aspect);\\n"+
+        " float orient=n.x*n.x-n.y*n.y;\\n"+
+        " float rim=shortSide*mix(0.18,0.30,smoothstep(0.06,0.48,relativeRadius))*(1.0+mix(0.12,0.045,elongation)*orient);\\n"+
+        " float t=clamp(max(0.0,-sd)/max(rim,1.0),0.0,1.0);\\n"+
+        " float lens=smoothstep(0.0,0.20,t)*(1.0-smoothstep(0.26,0.94,t))+0.11*(1.0-smoothstep(0.35,1.0,t))*smoothstep(0.05,0.30,t);\\n"+
+        " float disp=(motionIsolation>1.5?0.0:strength);\\n"+
+        " float sizeGain=pow(shortSide/182.0,0.42);\\n"+
+        " float shift=disp*0.92*sizeGain*(1.0+0.055*(1.0-elongation)*orient)*lens;\\n"+
+        " if(continuousLens>0.5){\\n"+
+        "  float e=max(0.75,min(2.5,shortSide*0.008));\\n"+
+        "  float2 ax=abs(p+float2(e,0.0)-center)-(0.5*bounds.zw-float2(radius));\\n"+
+        "  float2 bx=abs(p-float2(e,0.0)-center)-(0.5*bounds.zw-float2(radius));\\n"+
+        "  float2 ay=abs(p+float2(0.0,e)-center)-(0.5*bounds.zw-float2(radius));\\n"+
+        "  float2 by=abs(p-float2(0.0,e)-center)-(0.5*bounds.zw-float2(radius));\\n"+
+        "  float dx=(length(max(ax,0.0))+min(max(ax.x,ax.y),0.0))-(length(max(bx,0.0))+min(max(bx.x,bx.y),0.0));\\n"+
+        "  float dy=(length(max(ay,0.0))+min(max(ay.x,ay.y),0.0))-(length(max(by,0.0))+min(max(by.x,by.y),0.0));\\n"+
+        "  float2 grad=float2(dx,dy);\\n"+
+        "  if(length(grad)>0.0001){n=normalize(grad); }\\n"+
+        "  float width=max(1.0,shortSide*mix(0.20,0.29,smoothstep(0.08,0.44,relativeRadius)));\\n"+
+        "  float tt=clamp(max(0.0,-sd)/width,0.0,1.0);\\n"+
+        "  float curved=pow(max(0.0,smoothstep(0.0,0.16,tt)*(1.0-smoothstep(0.22,0.96,tt))),1.30);\\n"+
+        "  shift=min(max(0.0,disp*0.52*sizeGain*curved),width*0.105);\\n"+
+        " }\\n"+
+        " float2 raw=p-n*shift;\\n"+
+        " float2 safe=clamp(raw,screenClip.xy,screenClip.zw);\\n"+
+        " float outside=max(abs(raw.x-safe.x),abs(raw.y-safe.y));\\n"+
+        " return mix(clamp(p,screenClip.xy,screenClip.zw),safe,1.0-smoothstep(0.0,18.0,outside));\\n"+
+        "}\\n"+
         "half4 main(float2 p) {\n"+
         " float u=clamp((p.x-bounds.x)/max(bounds.z,1.0),0.0,1.0);\n"+
         " float edge=abs(2.0*u-1.0);\n"+
@@ -2938,6 +2979,21 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  half4 sample35=wallpaper.eval(samplingPoint);\n"+
         "  return half4(mix(sample35.rgb,half3(0.05,0.95,0.85),half(grid35*0.82)),0.92);\n"+
         " }\n"+
+        // V205.38: finite-difference Jacobian of original mode-0 sampling.
+        // Mode 22: determinant heatmap (red = nonpositive, amber = near zero).
+        // Mode 23: minimum singular value proxy via J^T J eigenvalues.
+        " if(folderContourMode20534>0.5 && sampleIsolation>21.5 && sampleIsolation<23.5){\\n"+
+        "  float e38=1.0;\\n"+
+        "  float2 jx38=(map38(p+float2(e38,0.0),bounds,screenClip,radius20513,strength,motionIsolation173,continuousLens20521)-map38(p-float2(e38,0.0),bounds,screenClip,radius20513,strength,motionIsolation173,continuousLens20521))/(2.0*e38);\\n"+
+        "  float2 jy38=(map38(p+float2(0.0,e38),bounds,screenClip,radius20513,strength,motionIsolation173,continuousLens20521)-map38(p-float2(0.0,e38),bounds,screenClip,radius20513,strength,motionIsolation173,continuousLens20521))/(2.0*e38);\\n"+
+        "  float det38=jx38.x*jy38.y-jy38.x*jx38.y;\\n"+
+        "  float red38=1.0-smoothstep(-0.02,0.12,det38);\\n"+
+        "  if(sampleIsolation<22.5){float amber38=1.0-smoothstep(0.12,0.60,det38);return half4(half3(red38,clamp(amber38-red38,0.0,1.0),1.0-amber38),0.93); }\\n"+
+        "  float a38=dot(jx38,jx38);float b38=dot(jx38,jy38);float c38=dot(jy38,jy38);\\n"+
+        "  float minEig38=max(0.0,0.5*(a38+c38-sqrt(max(0.0,(a38-c38)*(a38-c38)+4.0*b38*b38))));\\n"+
+        "  float sigma38=sqrt(minEig38);float risk38=1.0-smoothstep(0.10,0.65,sigma38);\\n"+
+        "  return half4(half3(risk38,1.0-risk38,0.10),0.93);\\n"+
+        " }\\n"+
         " half4 color=wallpaper.eval(samplingPoint);\n"+
         // V201: blend only texture detail, never sampling displacement or output alpha.
         " if(clearDetailMix201>0.001){half4 crisp=wallpaperClear201.eval(samplingPoint);color.rgb=mix(color.rgb,crisp.rgb,half(clamp(clearDetailMix201,0.0,1.0)));}\n"+
