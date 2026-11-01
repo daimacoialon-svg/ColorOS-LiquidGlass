@@ -2805,7 +2805,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float rise20521=smoothstep(0.0,0.16,t20521);\n"+
         "  float fall20521=1.0-smoothstep(0.22,0.96,t20521);\n"+
         "  float curved20521=pow(max(0.0,rise20521*fall20521),1.30);\n"+
-        "  lensShift20521=displacement173*0.84*sizeGain20516*curved20521;\n"+
+        // V205.26: folder-only conservative lens-gradient guard. The displacement
+        // is bounded relative to the actual lens band so high-resolution folders
+        // cannot fold or excessively compress the sampled wallpaper near corners.
+        "  float gradientCap20526=width20521*0.105;\n"+
+        "  float requested20526=displacement173*0.52*sizeGain20516*curved20521;\n"+
+        "  lensShift20521=min(max(0.0,requested20526),gradientCap20526);\n"+
         " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
