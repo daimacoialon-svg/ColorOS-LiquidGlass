@@ -3088,19 +3088,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float maxShift63=baseShift64*strength64*clamp(abs(displacement173)/18.0,0.15,1.0);\n"+
         "  lensShift20521+=sign(displacement173)*maxShift63*envelope63;\n"+
         " }\n"+
-        // V205.65: constrain displacement BEFORE sampling, independently per axis.
-        // A partially off-screen folder must never turn the display edge into
-        // a repeated wallpaper texel. Keep p inside the valid display, then
-        // shrink only the displacement that points outwards, with a C1 fade.
-        " float2 base65=clamp(p,screenClip.xy,screenClip.zw);\n"+
-        " float2 desired65=-lensNormal20521*lensShift20521;\n"+
-        " float2 roomNeg65=max(base65-screenClip.xy,float2(0.0));\n"+
-        " float2 roomPos65=max(screenClip.zw-base65,float2(0.0));\n"+
-        " float2 permitted65=float2(desired65.x<0.0?roomNeg65.x:roomPos65.x,desired65.y<0.0?roomNeg65.y:roomPos65.y);\n"+
-        " float2 fade65=smoothstep(float2(0.0),float2(16.0),permitted65);\n"+
-        " float2 delta65=sign(desired65)*min(abs(desired65)*fade65,permitted65);\n"+
-        " float2 samplingPoint=clamp(base65+delta65,screenClip.xy,screenClip.zw);\n"+
-        " bool outOfDisplay=any(notEqual(base65,p));\n"+
+        " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
+        " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
+        // The visible display is the only valid wallpaper sample region. A
+        // folder may be partly offscreen while swiping; never sample a CLAMP
+        // repeated dark boundary pixel outside the visible screen.
+        // V205.65: screen-aware displacement budget. Avoid sampling the same
+        // boundary texel across a strip when the container exits the display.
+        " float2 origin65=clamp(p,screenClip.xy,screenClip.zw);\n"+
+        " float2 offset65=samplingPoint-p;\n"+
+        " float2 room65=max(float2(0.0),min(origin65-screenClip.xy,screenClip.zw-origin65));\n"+
+        " float2 permitted65=float2(offset65.x>=0.0?max(0.0,screenClip.z-origin65.x):max(0.0,origin65.x-screenClip.x),offset65.y>=0.0?max(0.0,screenClip.w-origin65.y):max(0.0,origin65.y-screenClip.y));\n"+
+        " float2 magnitude65=abs(offset65);\n"+
+        " float2 gain65=clamp((permitted65-float2(0.75))/max(magnitude65,float2(0.001)),0.0,1.0);\n"+
+        " gain65=gain65*gain65*(3.0-2.0*gain65);\n"+
+        " float2 bounded65=origin65+offset65*gain65;\n"+
+        " samplingPoint=(folderProbe20530 && sampleIsolation>7.5 && sampleIsolation<8.5)?clamp(samplingPoint,screenClip.xy,screenClip.zw):clamp(bounded65,screenClip.xy,screenClip.zw);\n"+
         " if(sampleIsolation>11.5 && sampleIsolation<12.5){float h33=clamp(cornerRisk33,0.0,1.0);return half4(half3(h33,1.0-h33,0.0),0.90); }\n"+
         // V205.35: inspect the FINAL wallpaper sampling coordinate, after screen clipping.
         // Mode 16: warped grid in the sampled wallpaper coordinate space.
