@@ -3123,6 +3123,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " half4 color=wallpaper.eval(samplingPoint);\n"+
         // V201: blend only texture detail, never sampling displacement or output alpha.
         " if(clearDetailMix201>0.001){half4 crisp=wallpaperClear201.eval(samplingPoint);color.rgb=mix(color.rgb,crisp.rgb,half(clamp(clearDetailMix201,0.0,1.0)));}\n"+
+        // V205.58: static optical material, RGB-only and folder-only.
+        // Preserve the V205.57 displacement, sample coordinates, alpha, Dock,
+        // and existing highlights. A very low-amplitude C1 smooth luminance
+        // response follows the *sampled* wallpaper; no extra refraction ring.
+        " if(folderContourMode20534>0.5 && radius20513>2.0 && sampleIsolation<0.5){\n"+
+        "  float rim58=max(2.0,min(short20515*mix(0.16,0.145,smoothstep(1.8,3.6,aspect20517)),radius20513*mix(0.42,0.39,smoothstep(1.8,3.6,aspect20517))));\n"+
+        "  float width58=min(rim58*1.28,max(rim58,radius20513*0.52));\n"+
+        "  float depth58=clamp(inside20516/max(2.0,width58),0.0,1.0);\n"+
+        "  float fade58=1.0-smoothstep(0.0,1.0,depth58);\n"+
+        "  float lum58=dot(float3(color.rgb),float3(0.2126,0.7152,0.0722));\n"+
+        "  float light58=smoothstep(0.30,0.88,lum58);\n"+
+        "  float edgeTone58=(0.006+0.014*light58)*fade58;\n"+
+        "  color.rgb=mix(color.rgb,half3(0.96,0.975,0.99),half(edgeTone58));\n"+
+        " }\n"+
         " if(fixedOutput167>0.5){return fixedOutput167<1.5?half4(0.50,0.50,0.50,0.18):half4(0.50,0.50,0.50,1.0); }\n"+
         " if(sampleIsolation>0.5 && sampleIsolation<1.5){return half4(0.50,0.50,0.50,0.65); }\n"+
         " if(sampleIsolation>3.5 && sampleIsolation<4.5 && outOfDisplay){return half4(1.0,0.48,0.02,0.93); }\n"+
