@@ -3009,6 +3009,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  lensNormal20521=normalize(mix(oldN42,blendedN42,transition42)+float2(0.000001,0.000001));\n"+
         "  lensShift20521=mix(lensShift20521,bounded42,transition42);\n"+
         " }\n"+
+        // V205.44: diagnose and smooth the *interior* rounded-corner normal
+        // discontinuity. The original SDF switches axes abruptly when both
+        // q components are negative (q.x == q.y). Keep original displacement.
+        // 34/36: narrow soft axis blend; 35/37: wider soft axis blend.
+        " if(folderContourMode20534>0.5 && sampleIsolation>33.5 && sampleIsolation<37.5){\n"+
+        "  float width44=max(1.0,radius20513*(sampleIsolation>34.5 && sampleIsolation<35.5 || sampleIsolation>36.5?0.38:0.16));\n"+
+        "  float bothInside44=1.0-smoothstep(-width44*0.5,width44*0.5,max(q20513.x,q20513.y));\n"+
+        "  float xWeight44=smoothstep(-width44,width44,q20513.x-q20513.y);\n"+
+        "  float2 softNormal44=normalize(float2(axis20513.x*xWeight44,axis20513.y*(1.0-xWeight44))+float2(0.000001,0.000001));\n"+
+        "  lensNormal20521=normalize(mix(lensNormal20521,softNormal44,bothInside44)+float2(0.000001,0.000001));\n"+
+        " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
@@ -3051,6 +3062,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float line42=1.0-smoothstep(0.45,1.50,min(cell42.x,cell42.y));\n"+
         "  half4 bg42=wallpaper.eval(samplingPoint);\n"+
         "  return half4(mix(bg42.rgb,half3(0.0,1.0,0.78),half(line42*0.88)),0.94);\n"+
+        " }\n"+
+        // V205.44: paired FINAL sampling grids for modes 34/35.
+        " if(folderContourMode20534>0.5 && sampleIsolation>35.5 && sampleIsolation<37.5){\n"+
+        "  float2 cell44=abs(fract(samplingPoint/20.0)-0.5)*20.0;\n"+
+        "  float grid44=1.0-smoothstep(0.45,1.50,min(cell44.x,cell44.y));\n"+
+        "  half4 bg44=wallpaper.eval(samplingPoint);\n"+
+        "  return half4(mix(bg44.rgb,half3(0.0,1.0,0.78),half(grid44*0.88)),0.94);\n"+
         " }\n"+
         // V205.38: finite-difference Jacobian of original mode-0 sampling.
         // Mode 22: determinant heatmap (red = nonpositive, amber = near zero).
