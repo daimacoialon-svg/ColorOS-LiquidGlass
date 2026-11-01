@@ -2041,7 +2041,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(45,mode));
+                    mode=Math.max(0,Math.min(33,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
@@ -3020,23 +3020,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 softNormal44=normalize(float2(axis20513.x*xWeight44,axis20513.y*(1.0-xWeight44))+float2(0.000001,0.000001));\n"+
         "  lensNormal20521=normalize(mix(lensNormal20521,softNormal44,bothInside44)+float2(0.000001,0.000001));\n"+
         " }\n"+
-        // V205.46: isolate the interior SDF axis-switch crease without changing
-        // the wallpaper sampling bounds, dock path, or original mode 0.
-        // The interior seam q.x=q.y is softened by a continuous 2D normal;
-        // a smooth curvature-sensitive shift guard reduces local map folding.
-        // 42 conservative, 43 stronger; 44/45 show their final sample grids.
-        " if(folderContourMode20534>0.5 && sampleIsolation>41.5 && sampleIsolation<45.5){\n"+
-        "  float wide46=(sampleIsolation>42.5 && sampleIsolation<43.5 || sampleIsolation>44.5)?1.0:0.0;\n"+
-        "  float width46=max(2.0,radius20513*mix(0.24,0.40,wide46));\n"+
-        "  float interior46=1.0-smoothstep(-width46*0.65,width46*0.15,max(q20513.x,q20513.y));\n"+
-        "  float xw46=smoothstep(-width46,width46,q20513.x-q20513.y);\n"+
-        "  float2 n46=normalize(float2(axis20513.x*xw46,axis20513.y*(1.0-xw46))+float2(0.00001,0.00001));\n"+
-        "  float seam46=1.0-smoothstep(width46*0.12,width46*1.35,abs(q20513.x-q20513.y));\n"+
-        "  float2 old46=lensNormal20521;\n"+
-        "  lensNormal20521=normalize(mix(old46,n46,interior46)+float2(0.00001,0.00001));\n"+
-        "  float seamRisk46=interior46*seam46;\n"+
-        "  float scale46=mix(1.0,mix(0.70,0.52,wide46),seamRisk46);\n"+
-        "  lensShift20521*=scale46;\n"+
+        // V205.48: geometry-adaptive folder rim. The old band could extend
+        // beyond the corner radius into the rounded-rectangle medial axis,
+        // where the nearest-edge normal is not unique (diagonal seams).
+        // Constrain the optical band to the rounded corner's curvature scale.
+        // Keep the Dock (elongated containers) and screen clipping untouched.
+        " if(aspect20517<2.25 && radius20513>2.0 && sampleIsolation<0.5){\n"+
+        "  float rim48=max(2.0,min(short20515*0.16,radius20513*0.42));\n"+
+        "  float depth48=clamp(inside20516/rim48,0.0,1.0);\n"+
+        "  float profile48=pow(max(0.0,smoothstep(0.0,0.17,depth48)*(1.0-smoothstep(0.35,1.0,depth48))),1.12);\n"+
+        "  float2 corner48=max(q20513,0.0);\n"+
+        "  float2 smoothAxis48=normalize(float2(axis20513.x*max(0.0,q20513.x+rim48),axis20513.y*max(0.0,q20513.y+rim48))+float2(0.00001,0.00001));\n"+
+        "  float2 edge48=length(corner48)>0.0001?normalize(corner48)*axis20513:smoothAxis48;\n"+
+        "  lensNormal20521=edge48;\n"+
+        "  lensShift20521=displacement173*0.92*sizeGain20516*profile48;\n"+
         " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
@@ -3087,14 +3084,6 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float grid44=1.0-smoothstep(0.45,1.50,min(cell44.x,cell44.y));\n"+
         "  half4 bg44=wallpaper.eval(samplingPoint);\n"+
         "  return half4(mix(bg44.rgb,half3(0.0,1.0,0.78),half(grid44*0.88)),0.94);\n"+
-        " }\n"+
-        // V205.46: paired grids for modes 42/43, using the identical final
-        // samplingPoint as the corresponding actual glass mode.
-        " if(folderContourMode20534>0.5 && sampleIsolation>43.5 && sampleIsolation<45.5){\n"+
-        "  float2 cell46=abs(fract(samplingPoint/20.0)-0.5)*20.0;\n"+
-        "  float grid46=1.0-smoothstep(0.45,1.50,min(cell46.x,cell46.y));\n"+
-        "  half4 bg46=wallpaper.eval(samplingPoint);\n"+
-        "  return half4(mix(bg46.rgb,half3(0.0,1.0,0.78),half(grid46*0.88)),0.94);\n"+
         " }\n"+
         // V205.38: finite-difference Jacobian of original mode-0 sampling.
         // Mode 22: determinant heatmap (red = nonpositive, amber = near zero).
