@@ -2849,6 +2849,23 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 n30=float2(dx30,dy30);\n"+
         "  if(length(n30)>0.0001){lensNormal20521=normalize(n30); }\n"+
         " }\n"+
+        // V205.33: geometry-independent folder diagnostics (all aspect ratios).
+        // Mode 11: zero shift for all folder glass; leaves compositing intact.
+        // Mode 12: show an approximate local mapping compression heatmap.
+        // Mode 13: curvature-aware local shift guard, preserving straight-edge strength.
+        " float2 diagNormal33=lensNormal20521;\n"+
+        " float diagShift33=lensShift20521;\n"+
+        " float eps33=max(0.75,min(1.5,short20515*0.005));\n"+
+        " float2 dxq33=abs(p+float2(eps33,0.0)-center)-(0.5*bounds.zw-float2(radius20513));\n"+
+        " float2 dyq33=abs(p+float2(0.0,eps33)-center)-(0.5*bounds.zw-float2(radius20513));\n"+
+        " float2 nx33=max(dxq33,0.0)*sign(p+float2(eps33,0.0)-center);\n"+
+        " float2 ny33=max(dyq33,0.0)*sign(p+float2(0.0,eps33)-center);\n"+
+        " float2 normX33=length(nx33)>0.001?normalize(nx33):diagNormal33;\n"+
+        " float2 normY33=length(ny33)>0.001?normalize(ny33):diagNormal33;\n"+
+        " float cornerBend33=max(length(normX33-diagNormal33),length(normY33-diagNormal33))/eps33;\n"+
+        " float cornerRisk33=clamp(cornerBend33*diagShift33,0.0,2.0);\n"+
+        " if(sampleIsolation>10.5 && sampleIsolation<11.5){lensShift20521=0.0;}\n"+
+        " if(sampleIsolation>12.5 && sampleIsolation<13.5){lensShift20521*=1.0-0.65*smoothstep(0.10,0.70,cornerRisk33);}\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
@@ -2860,6 +2877,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float outsideDistance20513=max(delta20513.x,delta20513.y);\n"+
         " float edgeGuard20513=1.0-smoothstep(0.0,18.0,outsideDistance20513);\n"+
         " samplingPoint=(folderProbe20530 && sampleIsolation>7.5 && sampleIsolation<8.5)?safe20513:mix(base20513,safe20513,edgeGuard20513);\n"+
+        " if(sampleIsolation>11.5 && sampleIsolation<12.5){float h33=clamp(cornerRisk33,0.0,1.0);return half4(half3(h33,1.0-h33,0.0),0.90); }\n"+
         " half4 color=wallpaper.eval(samplingPoint);\n"+
         // V201: blend only texture detail, never sampling displacement or output alpha.
         " if(clearDetailMix201>0.001){half4 crisp=wallpaperClear201.eval(samplingPoint);color.rgb=mix(color.rgb,crisp.rgb,half(clamp(clearDetailMix201,0.0,1.0)));}\n"+
