@@ -2041,11 +2041,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(5,mode));
+                    mode=Math.max(0,Math.min(8,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
-                            " legend=0-original,1-neutral,2-screen-clamp,3-luma,4-boundary-overlay,5-compress-luma");
+                            " legend=0-original,1-neutral,2-screen-clamp,3-luma,4-boundary-overlay,5-compress-luma,6-folder-zero-shift,7-folder-sdf-gradient,8-folder-raw-boundary");
                     }
                 }
             }catch(Throwable t){log("REFRACTION_SAMPLE_ISOLATION_READ_FAILED "+t.getClass().getSimpleName());}
@@ -2818,7 +2818,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // preventing a one-dimensional sampling fold without a hard cap seam.
         // This is not a proof of global 2D injectivity around the medial axis.
         // Keep elongated Dock on its previously validated optical path.
-        " float compact20529=1.0-smoothstep(1.35,2.25,aspect20517);\n"+
+        " float compact20529=0.0; // V205.30: restore V205.27 baseline optical strength\n"+
         " float normalizedDepth20529=clamp(inside20516/max(rimWidth20517,1.0),0.0,1.0);\n"+
         " float sinProfile20529=sin(3.14159265*normalizedDepth20529);\n"+
         " sinProfile20529=sinProfile20529*sinProfile20529;\n"+
@@ -2826,6 +2826,23 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float compactShift20529=rimWidth20517*0.18*strengthFraction20529*sinProfile20529;\n"+
         " lensNormal20521=mix(lensNormal20521,normal20513,compact20529);\n"+
         " lensShift20521=mix(lensShift20521,compactShift20529,compact20529);\n"+
+        // V205.30: independent diagnostic branches, limited to compact folder shapes.
+        // Mode 6 removes only displacement; the shader, texture and composite remain active.
+        // Mode 7 computes the SDF gradient numerically to test corner-normal seams.
+        // Mode 8 bypasses the display-edge guard (still clamps to valid texture bounds).
+        " bool folderProbe20530=aspect20517<2.25;\n"+
+        " if(folderProbe20530 && sampleIsolation>5.5 && sampleIsolation<6.5){lensShift20521=0.0;}\n"+
+        " if(folderProbe20530 && sampleIsolation>6.5 && sampleIsolation<7.5){\n"+
+        "  float e30=1.25;\n"+
+        "  float2 hx1=abs(p+float2(e30,0.0)-center)-(0.5*bounds.zw-float2(radius20513));\n"+
+        "  float2 hx0=abs(p-float2(e30,0.0)-center)-(0.5*bounds.zw-float2(radius20513));\n"+
+        "  float2 hy1=abs(p+float2(0.0,e30)-center)-(0.5*bounds.zw-float2(radius20513));\n"+
+        "  float2 hy0=abs(p-float2(0.0,e30)-center)-(0.5*bounds.zw-float2(radius20513));\n"+
+        "  float dx30=(length(max(hx1,0.0))+min(max(hx1.x,hx1.y),0.0))-(length(max(hx0,0.0))+min(max(hx0.x,hx0.y),0.0));\n"+
+        "  float dy30=(length(max(hy1,0.0))+min(max(hy1.x,hy1.y),0.0))-(length(max(hy0,0.0))+min(max(hy0.x,hy0.y),0.0));\n"+
+        "  float2 n30=float2(dx30,dy30);\n"+
+        "  if(length(n30)>0.0001){lensNormal20521=normalize(n30); }\n"+
+        " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
@@ -2836,7 +2853,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float2 delta20513=abs(samplingPoint-safe20513);\n"+
         " float outsideDistance20513=max(delta20513.x,delta20513.y);\n"+
         " float edgeGuard20513=1.0-smoothstep(0.0,18.0,outsideDistance20513);\n"+
-        " samplingPoint=mix(base20513,safe20513,edgeGuard20513);\n"+
+        " samplingPoint=(folderProbe20530 && sampleIsolation>7.5 && sampleIsolation<8.5)?safe20513:mix(base20513,safe20513,edgeGuard20513);\n"+
         " half4 color=wallpaper.eval(samplingPoint);\n"+
         // V201: blend only texture detail, never sampling displacement or output alpha.
         " if(clearDetailMix201>0.001){half4 crisp=wallpaperClear201.eval(samplingPoint);color.rgb=mix(color.rgb,crisp.rgb,half(clamp(clearDetailMix201,0.0,1.0)));}\n"+
