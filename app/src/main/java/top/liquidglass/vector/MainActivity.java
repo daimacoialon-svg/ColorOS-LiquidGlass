@@ -74,7 +74,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.13  ·  边缘透镜与滑动黑影防护",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.59  ·  清透模糊折射融合",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("玻璃效果","独立壁纸模糊、折射、底色和高光。");
         toggle("启用桌面文件夹玻璃", "enabled",false);
         TextView presetInfo=text("玻璃预设仅在手动点击时应用；文件夹与 Dock 共用玻璃渲染参数，不改变功能开关。",12,false);current.addView(presetInfo);
@@ -85,9 +85,9 @@ public final class MainActivity extends Activity {
                 .putBoolean("directional_light",true).putBoolean("native_alpha_probe",false).putBoolean("real_refraction",true)
                 .putInt("probe_mode",0).commit();recreate();
         });
-        action("恢复液态玻璃推荐参数 (14 / 35 / 12 / 30)",()->{
-            prefs.edit().putInt("custom_blur_dp",14).putInt("refraction_percent",35)
-                .putInt("glass_tint_opacity",12).putInt("alpha",0).putInt("tint",0).putInt("tint_strength",0).putInt("highlight_strength",30)
+        action("恢复液态玻璃推荐参数 (3dp / 35% / 6% / 22%)",()->{
+            prefs.edit().putInt("custom_blur_dp",3).putInt("refraction_percent",35)
+                .putInt("glass_tint_opacity",6).putInt("alpha",0).putInt("tint",0).putInt("tint_strength",0).putInt("highlight_strength",22)
                 .putInt("custom_blur_mode",1).putBoolean("real_refraction",true)
                 .putBoolean("highlight",false).putBoolean("enabled",true).commit();recreate();
         });
@@ -96,10 +96,10 @@ public final class MainActivity extends Activity {
             // Do not modify enabled, dock_glass_204, icon_optics_204,
             // real_refraction or clear_refraction toggles.
             prefs.edit()
-                .putInt("custom_blur_dp",8)
+                .putInt("custom_blur_dp",3)
                 .putInt("custom_blur_mode",1)
-                .putInt("refraction_percent",45)
-                .putInt("glass_tint_opacity",14)
+                .putInt("refraction_percent",35)
+                .putInt("glass_tint_opacity",6)
                 .putInt("surface_mode_195",3)
                 .putInt("surface_strength_195",100)
                 .putInt("surface_softness_195",100)
@@ -108,14 +108,14 @@ public final class MainActivity extends Activity {
             Toast.makeText(this,"已应用苹果风格玻璃参数；原有功能开关保持不变",Toast.LENGTH_LONG).show();
             recreate();
         });
-        TextView appleHint=text("推荐：模糊 8dp · 折射 45% · 底色 14% · 柔和表面反射。二维玻璃折射与玻璃细节增强开关保持原状态；需要看到折射时请手动开启。",12,false);
+        TextView appleHint=text("推荐：模糊 3dp · 折射 35% · 底色 6% · 柔和表面反射。二维玻璃折射与玻璃细节增强开关保持原状态；需要看到折射时请手动开启。",12,false);
         current.addView(appleHint);
         toggle("桌面应用图标统一表面光学（首轮适配）","icon_optics_204",false);
         toggle("自适应液态玻璃 Dock（预览）","dock_glass_204",false);
         TextView dockInfo=text("Dock 保持既有 92% 宽度及胶囊形状，与桌面文件夹共用壁纸采样、折射、模糊和表面光学参数；图标轮廓保留 V1.9.205.11。",12,false);current.addView(dockInfo);
 
         slider("玻璃底色不透明度 (%)","glass_tint_opacity",18,0,100);
-        slider("玻璃背景模糊半径 (dp)","custom_blur_dp",14,0,40);
+        slider("玻璃背景模糊半径 (dp，可独立调整)","custom_blur_dp",3,0,40);
         slider("二维折射强度 (%)","refraction_percent",35,0,100);
         TextView modeLabel=text("背景模糊模式",13,false);current.addView(modeLabel);
         Spinner blurMode=new Spinner(this);

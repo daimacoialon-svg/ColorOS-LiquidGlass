@@ -2712,6 +2712,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform shader wallpaper;\n"+
         "uniform shader wallpaperClear201;\n"+
         "uniform float clearDetailMix201;\n"+
+        "uniform float blurFusion59;\n"+
         "uniform float4 bounds;\n"+
         "uniform float strength;\n"+
         "uniform float diagnosticMode;\n"+
@@ -3122,6 +3123,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " }\n"+
         " half4 color=wallpaper.eval(samplingPoint);\n"+
         // V201: blend only texture detail, never sampling displacement or output alpha.
+        // V205.59: for low-radius blur, merge the two sources at the same refracted
+        // coordinate. The continuous, weak geometry-weighted mix prevents the
+        // abrupt sharp-rim/blurred-center material contrast without touching
+        // the proven displacement, rounded geometry, alpha or Dock.
+        " if(blurFusion59>0.001 && folderContourMode20534>0.5 && sampleIsolation<0.5){\n"+
+        "  float inward59=clamp(inside20516/max(2.0,radius20513*1.8),0.0,1.0);\n"+
+        "  float fade59=smoothstep(0.0,1.0,inward59);\n"+
+        "  half3 clear59=wallpaperClear201.eval(samplingPoint).rgb;\n"+
+        "  float mix59=clamp(blurFusion59*(0.92+0.08*fade59),0.0,0.65);\n"+
+        "  color.rgb=mix(color.rgb,clear59,half(mix59));\n"+
+        " }\n"+
         " if(clearDetailMix201>0.001){half4 crisp=wallpaperClear201.eval(samplingPoint);color.rgb=mix(color.rgb,crisp.rgb,half(clamp(clearDetailMix201,0.0,1.0)));}\n"+
         // V205.58: static optical material, RGB-only and folder-only.
         // Preserve the V205.57 displacement, sample coordinates, alpha, Dock,
@@ -3860,6 +3872,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         ? Math.max(0.04f, 0.16f - 0.003f * Math.min(40, Math.max(0, customBlurDp)))
                         : 0.0f;
                     state.continuousShader.setFloatUniform("clearDetailMix201", detailMix202);
+                    // V205.59: soften blur/refraction contrast only for subtle blur.
+                    // The user's blur slider remains authoritative, and 0dp is unchanged.
+                    final float blurFusion59 = (blurredInput195 && customBlurDp>0 && customBlurDp<=5)
+                        ? 0.36f * (6.0f-customBlurDp)/5.0f : 0.0f;
+                    state.continuousShader.setFloatUniform("blurFusion59",blurFusion59);
                     if(opticalPipelineLogs195++<100)log("OPTICAL_PIPELINE_195 source="+
                         (blurredInput195?"BLURRED_WALLPAPER":"CLEAR_WALLPAPER")+
                         " blurDp="+customBlurDp+" refractPercent="+refractionPercent+
