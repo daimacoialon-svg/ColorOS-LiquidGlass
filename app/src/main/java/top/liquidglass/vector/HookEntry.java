@@ -2041,11 +2041,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(8,mode));
+                    mode=Math.max(0,Math.min(10,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
-                            " legend=0-original,1-neutral,2-screen-clamp,3-luma,4-boundary-overlay,5-compress-luma,6-folder-zero-shift,7-folder-sdf-gradient,8-folder-raw-boundary");
+                            " legend=0-original,1-neutral,2-screen-clamp,3-luma,4-boundary-overlay,5-compress-luma,6-folder-zero-shift,7-folder-sdf-gradient,8-folder-raw-boundary,9-folder-isotropic-rim,10-folder-fixed-rim");
                     }
                 }
             }catch(Throwable t){log("REFRACTION_SAMPLE_ISOLATION_READ_FAILED "+t.getClass().getSimpleName());}
@@ -2770,8 +2770,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // subtly different; for a long dock the orientation modulation is
         // gentler. Blend through corner normals rather than making seams.
         " float orientation20517=normal20513.x*normal20513.x-normal20513.y*normal20513.y;\n"+
-        " float anisotropy20517=mix(0.12,0.045,elongation20517);\n"+
-        " float rimWidth20517=baseRim20517*(1.0+anisotropy20517*orientation20517);\n"+
+        // V205.31: diagnostic modes 9/10 affect only compact containers.\n        // Mode 9 removes orientation-dependent rim width, keeping radius/size response.\n        // Mode 10 additionally fixes rim width to 24% of short side, keeping strength and normals.\n        " bool compactProbe20531=aspect20517<2.25;\n"+
+        " bool isotropic20531=compactProbe20531 && sampleIsolation>8.5 && sampleIsolation<10.5;\n"+
+        " bool fixedRim20531=compactProbe20531 && sampleIsolation>9.5 && sampleIsolation<10.5;\n"+
+        " float anisotropy20517=isotropic20531?0.0:mix(0.12,0.045,elongation20517);\n"+
+        " float rimWidth20517=fixedRim20531?short20515*0.24:baseRim20517*(1.0+anisotropy20517*orientation20517);\n"+
         " float inside20516=max(0.0,-signed20513);\n"+
         " float t20517=clamp(inside20516/max(rimWidth20517,1.0),0.0,1.0);\n"+
         " float rise20517=smoothstep(0.0,0.20,t20517);\n"+

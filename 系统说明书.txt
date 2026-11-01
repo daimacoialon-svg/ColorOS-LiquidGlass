@@ -11,3 +11,11 @@ V1.9.205.30｜文件夹采样映射隔离诊断
 通过Termux root执行 settings put global liquidglass_refraction_sample_test 6/7/8 进入文件夹隔离模式；0恢复。
 6=保留渲染但文件夹位移归零；7=文件夹SDF数值梯度法线；8=文件夹直接使用屏幕安全裁剪坐标，跳过渐变边界保护。
 诊断仅临时读取系统设置，不覆盖模块原有用户参数。
+
+
+V1.9.205.31｜文件夹折射带宽隔离诊断
+模式9：仅宽高比小于2.25的容器取消折射带宽的方向调制，保留圆角与尺寸响应。
+模式10：仅上述容器将折射带宽固定为短边24%，保留原始折射法线与强度。
+设置命令：su -c "settings put global liquidglass_refraction_sample_test 9"（模式10同理）。
+恢复：su -c "settings put global liquidglass_refraction_sample_test 0"。
+模式为临时诊断，不修改用户玻璃设置，Dock路径不变。
