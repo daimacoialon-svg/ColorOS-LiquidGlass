@@ -2812,15 +2812,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float requested20526=displacement173*0.52*sizeGain20516*curved20521;\n"+
         "  lensShift20521=min(max(0.0,requested20526),gradientCap20526);\n"+
         " }\n"+
-        // V205.28: bounded monotone lens experiment for compact containers.
-        // The old profile could exceed its spatial transition width and fold
-        // wallpaper details. Limit displacement relative to band width with a
-        // smooth saturating function; leave elongated Dock unchanged.
-        " float compact20528=1.0-smoothstep(1.35,2.25,aspect20517);\n"+
-        " float safeCap20528=max(1.0,rimWidth20517*0.055);\n"+
-        " float positiveShift20528=max(0.0,lensShift20521);\n"+
-        " float boundedShift20528=safeCap20528*(1.0-exp(-positiveShift20528/safeCap20528));\n"+
-        " lensShift20521=mix(lensShift20521,boundedShift20528,compact20528);\n"+
+        // V205.29: compact-container mapping with a bounded spatial derivative.
+        // A sine-squared profile vanishes with zero slope at BOTH band ends.
+        // For a fixed normal, max |d shift / d distance| <= PI * 0.18 < 1,
+        // preventing a one-dimensional sampling fold without a hard cap seam.
+        // This is not a proof of global 2D injectivity around the medial axis.
+        // Keep elongated Dock on its previously validated optical path.
+        " float compact20529=1.0-smoothstep(1.35,2.25,aspect20517);\n"+
+        " float normalizedDepth20529=clamp(inside20516/max(rimWidth20517,1.0),0.0,1.0);\n"+
+        " float sinProfile20529=sin(3.14159265*normalizedDepth20529);\n"+
+        " sinProfile20529=sinProfile20529*sinProfile20529;\n"+
+        " float strengthFraction20529=clamp(displacement173/45.0,0.0,1.0);\n"+
+        " float compactShift20529=rimWidth20517*0.18*strengthFraction20529*sinProfile20529;\n"+
+        " lensNormal20521=mix(lensNormal20521,normal20513,compact20529);\n"+
+        " lensShift20521=mix(lensShift20521,compactShift20529,compact20529);\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
