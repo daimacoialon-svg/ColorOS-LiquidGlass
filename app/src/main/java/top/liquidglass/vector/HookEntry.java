@@ -3020,6 +3020,33 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 softNormal44=normalize(float2(axis20513.x*xWeight44,axis20513.y*(1.0-xWeight44))+float2(0.000001,0.000001));\n"+
         "  lensNormal20521=normalize(mix(lensNormal20521,softNormal44,bothInside44)+float2(0.000001,0.000001));\n"+
         " }\n"+
+        " // V205.45: single smooth rounded-rectangle contour potential. The entire\n"+
+        " // perimeter shares ONE differentiable scalar field; its gradient supplies\n"+
+        " // direction. This avoids hard side/corner switches in the experiment.\n"+
+        " if(folderContourMode20534>0.5 && sampleIsolation>37.5 && sampleIsolation<41.5){\n"+
+        "  float k45=max(1.0,radius20513*(sampleIsolation>38.5 && sampleIsolation<39.5 || sampleIsolation>40.5?0.26:0.13));\n"+
+        "  float2 a45=q20513;\n"+
+        "  float2 rad45=sqrt(a45*a45+float2(k45*k45));\n"+
+        "  float2 pos45=0.5*(a45+rad45);\n"+
+        "  float2 dpos45=0.5*(float2(1.0)+a45/rad45);\n"+
+        "  float outer45=length(pos45);\n"+
+        "  float2 gradOuter45=outer45>0.00001?pos45*dpos45/outer45:float2(0.0);\n"+
+        "  float diff45=a45.x-a45.y;\n"+
+        "  float diag45=sqrt(diff45*diff45+k45*k45);\n"+
+        "  float smoothMax45=0.5*(a45.x+a45.y+diag45);\n"+
+        "  float2 gradMax45=float2(0.5*(1.0+diff45/diag45),0.5*(1.0-diff45/diag45));\n"+
+        "  float insideWeight45=1.0-smoothstep(-k45*0.5,k45*0.5,smoothMax45);\n"+
+        "  float contour45=outer45+min(smoothMax45,0.0)-radius20513;\n"+
+        "  float2 grad45=(gradOuter45+insideWeight45*gradMax45)*axis20513;\n"+
+        "  float2 n45=length(grad45)>0.00001?normalize(grad45):normal20513;\n"+
+        "  float depth45=clamp(-contour45/max(1.0,rimWidth20517),0.0,1.0);\n"+
+        "  float rise45=smoothstep(0.0,0.20,depth45);\n"+
+        "  float fall45=1.0-smoothstep(0.26,0.94,depth45);\n"+
+        "  float tail45=0.11*(1.0-smoothstep(0.35,1.0,depth45))*smoothstep(0.05,0.30,depth45);\n"+
+        "  float profile45=max(0.0,rise45*fall45+tail45);\n"+
+        "  lensNormal20521=n45;\n"+
+        "  lensShift20521=displacement173*0.92*sizeGain20516*curvature20517*profile45;\n"+
+        " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
@@ -3069,6 +3096,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float grid44=1.0-smoothstep(0.45,1.50,min(cell44.x,cell44.y));\n"+
         "  half4 bg44=wallpaper.eval(samplingPoint);\n"+
         "  return half4(mix(bg44.rgb,half3(0.0,1.0,0.78),half(grid44*0.88)),0.94);\n"+
+        " }\n"+
+        " // V205.45: paired final-coordinate grids for smooth-contour modes 38/39.\n"+
+        " if(folderContourMode20534>0.5 && sampleIsolation>39.5 && sampleIsolation<41.5){\n"+
+        "  float2 cell45=abs(fract(samplingPoint/20.0)-0.5)*20.0;\n"+
+        "  float grid45=1.0-smoothstep(0.45,1.50,min(cell45.x,cell45.y));\n"+
+        "  half4 bg45=wallpaper.eval(samplingPoint);\n"+
+        "  return half4(mix(bg45.rgb,half3(0.0,1.0,0.78),half(grid45*0.88)),0.94);\n"+
         " }\n"+
         // V205.38: finite-difference Jacobian of original mode-0 sampling.
         // Mode 22: determinant heatmap (red = nonpositive, amber = near zero).
