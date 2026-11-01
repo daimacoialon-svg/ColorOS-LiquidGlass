@@ -178,3 +178,13 @@ V1.9.205.63 共享内部透镜实验（默认关闭）
 设置：su -c 'settings put global liquidglass_shared_interior_lens_63 1'（仅文件夹）；设置为2（文件夹+Dock）；设置为0（全部关闭）。
 请先测试1，再测试2。61版 sample_test 34 是另一套实验逻辑；测试本版请先恢复 sample_test 0，避免叠加。
 新实验默认0，出现异常立即设为0并重启桌面。未完成真机编译/运行验证。
+
+
+V1.9.205.64 自适应内部透镜实验
+基于63版，保留62版Dock几何。内部透镜位移根据容器短边、宽高比和圆角半径计算；增加运行日志 ADAPTIVE_LENS64，便于判断设置是否被渲染链读取。
+设置命令（Root）：
+settings put global liquidglass_shared_interior_lens_63 0  # 关闭
+settings put global liquidglass_shared_interior_lens_63 1  # 仅文件夹标准
+settings put global liquidglass_shared_interior_lens_63 2  # 文件夹与Dock标准
+settings put global liquidglass_shared_interior_lens_63 3  # 文件夹与Dock增强
+请先使用0dp模糊测试。未完成Android编译与真机验证，建议保留62版。

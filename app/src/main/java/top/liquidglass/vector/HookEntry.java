@@ -29,6 +29,8 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public final class HookEntry implements IXposedHookLoadPackage {
+    private static int lensLogs64=0;
+
     private static final String TAG = "ColorOSLiquidGlass";
     private static final Uri CONFIG = Uri.parse("content://top.liquidglass.vector.config/settings");
     private static volatile long lastRead = 0;
@@ -3077,7 +3079,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float depth63=clamp(inside20516/span63,0.0,1.0);\n"+
         "  float wave63=sin(3.14159265*depth63);\n"+
         "  float envelope63=wave63*wave63*smoothstep(0.0,0.20,depth63);\n"+
-        "  float maxShift63=min(span63*0.035,1.8)*clamp(abs(displacement173)/22.0,0.0,1.0);\n"+
+        // V205.64: adapt to short side, aspect and actual corner radius; no fixed 1.8px cap.
+        "  float aspectGain64=mix(1.0,0.72,smoothstep(1.6,4.0,aspect20517));\n"+
+        "  float sizeGain64=clamp(short20515/125.0,0.65,1.45);\n"+
+        "  float curvatureGain64=clamp(radius20513/max(1.0,short20515)*2.0,0.60,1.15);\n"+
+        "  float baseShift64=min(5.5,span63*0.11)*aspectGain64*sizeGain64*curvatureGain64;\n"+
+        "  float strength64=clamp(sharedInteriorLens63-1.0,0.0,1.0);\n"+
+        "  float maxShift63=baseShift64*strength64*clamp(abs(displacement173)/18.0,0.15,1.0);\n"+
         "  lensShift20521+=sign(displacement173)*maxShift63*envelope63;\n"+
         " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
@@ -3992,8 +4000,16 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             lc63.getContentResolver(),"liquidglass_shared_interior_lens_63",0);
                     }catch(Throwable ignored63){}
                     boolean dock63=view.getBackground() instanceof DockBackground204;
-                    state.continuousShader.setFloatUniform("sharedInteriorLens63",
-                        (sharedLens63>=2 || (sharedLens63==1 && !dock63))?1.0f:0.0f);
+                    // V205.64: 0=off, 1=folder normal, 2=both normal,
+                    // 3=both enhanced.
+                    float lensLevel64=(sharedLens63==1 && dock63)?0.0f:
+                        (sharedLens63>=3?2.0f:(sharedLens63>=1?1.60f:0.0f));
+                    state.continuousShader.setFloatUniform("sharedInteriorLens63",lensLevel64);
+                    if(sharedLens63>0 && lensLogs64<24){
+                        lensLogs64++;
+                        log("ADAPTIVE_LENS64 mode="+sharedLens63+" dock="+dock63+
+                            " uniform="+lensLevel64+" width="+(right-left)+" height="+(bottom-top));
+                    }
                     // Same local p-space as wallpaper.eval(), but bounded by
                     // the actual display rectangle. Only mode 2 clamps p.
                     state.continuousShader.setFloatUniform("screenClip",0.5f-left,0.5f-top,
