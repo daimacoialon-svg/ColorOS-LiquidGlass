@@ -2730,6 +2730,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float stableOpticalMode;\n"+
         "uniform float clearRefraction;\n"+
         "uniform float sampleIsolation;\n"+
+        "uniform float folderContourMode20534;\n"+
         "uniform float compositeProbe157;\n"+
         "uniform float4 screenClip;\n"+
         "uniform float glassCornerRadius20513;\n"+
@@ -2866,6 +2867,21 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float cornerRisk33=clamp(cornerBend33*diagShift33,0.0,2.0);\n"+
         " if(sampleIsolation>10.5 && sampleIsolation<11.5){lensShift20521=0.0;}\n"+
         " if(sampleIsolation>12.5 && sampleIsolation<13.5){lensShift20521*=1.0-0.65*smoothstep(0.10,0.70,cornerRisk33);}\n"+
+        // V205.34: A/B unified contour refraction. The complete rounded-rect SDF
+        // supplies ONE inward normal and ONE distance-based displacement; no
+        // independent horizontal/vertical/corner contributions are accumulated.
+        // Mode 14 uses the contour model; mode 15 uses a gentler bounded profile.
+        // Dock is explicitly excluded by the Java-side folderContourMode uniform.
+        " if(folderContourMode20534>0.5 && sampleIsolation>13.5 && sampleIsolation<15.5){\n"+
+        "  float band34=max(1.0,short20515*mix(0.20,0.29,smoothstep(0.08,0.44,relativeRadius20515)));\n"+
+        "  float depth34=clamp(inside20516/band34,0.0,1.0);\n"+
+        "  float profile34=sin(3.14159265*depth34);\n"+
+        "  profile34=profile34*profile34;\n"+
+        "  float cap34=band34*(sampleIsolation>14.5?0.11:0.16);\n"+
+        "  float requested34=displacement173*0.92*sizeGain20516*profile34;\n"+
+        "  lensShift20521=min(max(requested34,0.0),cap34);\n"+
+        "  lensNormal20521=normal20513;\n"+
+        " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
@@ -3697,6 +3713,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     traceMotionIsolation173(view,isolation173,left,top,System.identityHashCode(frame));
                     int samplingDiagnostic=currentSampleIsolationMode();
                     state.continuousShader.setFloatUniform("sampleIsolation",(float)(probe156==2?1:samplingDiagnostic));
+                    // Dock keeps the exact previous optical path, regardless of diagnostic mode.
+                    state.continuousShader.setFloatUniform("folderContourMode20534",
+                        (view.getBackground() instanceof DockBackground204)?0.0f:1.0f);
                     final int composite157=compositeProbe157();
                     state.continuousShader.setFloatUniform("compositeProbe157",(float)composite157);
                     // Same local p-space as wallpaper.eval(), but bounded by
