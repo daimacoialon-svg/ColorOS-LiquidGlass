@@ -3571,7 +3571,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
 
                     // Preserve the existing Dock appearance; enable the new
                     // continuous profile on square-ish folder surfaces only.
-                    state.continuousShader.setFloatUniform("continuousLens20521",rect.width()/Math.max(1f,rect.height())<2.0f && rect.height()/Math.max(1f,rect.width())<2.0f ? 1f : 0f);
+                    state.continuousShader.setFloatUniform("continuousLens20521",0f /* V1.9.205.27: shared proven Dock lens path for all shapes (A/B isolation) */);
                     int visibilityTest=currentRefractionVisibilityTest();
                     // V1.9.93: mode 0 uses the exact proven mode-2 optical profile.
                     // Keep the requested mode 1/3 diagnostics available.
