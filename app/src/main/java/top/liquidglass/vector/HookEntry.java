@@ -2041,7 +2041,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(33,mode));
+                    mode=Math.max(0,Math.min(45,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
@@ -3020,32 +3020,23 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 softNormal44=normalize(float2(axis20513.x*xWeight44,axis20513.y*(1.0-xWeight44))+float2(0.000001,0.000001));\n"+
         "  lensNormal20521=normalize(mix(lensNormal20521,softNormal44,bothInside44)+float2(0.000001,0.000001));\n"+
         " }\n"+
-        " // V205.45: single smooth rounded-rectangle contour potential. The entire\n"+
-        " // perimeter shares ONE differentiable scalar field; its gradient supplies\n"+
-        " // direction. This avoids hard side/corner switches in the experiment.\n"+
-        " if(folderContourMode20534>0.5 && sampleIsolation>37.5 && sampleIsolation<41.5){\n"+
-        "  float k45=max(1.0,radius20513*(sampleIsolation>38.5 && sampleIsolation<39.5 || sampleIsolation>40.5?0.26:0.13));\n"+
-        "  float2 a45=q20513;\n"+
-        "  float2 rad45=sqrt(a45*a45+float2(k45*k45));\n"+
-        "  float2 pos45=0.5*(a45+rad45);\n"+
-        "  float2 dpos45=0.5*(float2(1.0)+a45/rad45);\n"+
-        "  float outer45=length(pos45);\n"+
-        "  float2 gradOuter45=outer45>0.00001?pos45*dpos45/outer45:float2(0.0);\n"+
-        "  float diff45=a45.x-a45.y;\n"+
-        "  float diag45=sqrt(diff45*diff45+k45*k45);\n"+
-        "  float smoothMax45=0.5*(a45.x+a45.y+diag45);\n"+
-        "  float2 gradMax45=float2(0.5*(1.0+diff45/diag45),0.5*(1.0-diff45/diag45));\n"+
-        "  float insideWeight45=1.0-smoothstep(-k45*0.5,k45*0.5,smoothMax45);\n"+
-        "  float contour45=outer45+min(smoothMax45,0.0)-radius20513;\n"+
-        "  float2 grad45=(gradOuter45+insideWeight45*gradMax45)*axis20513;\n"+
-        "  float2 n45=length(grad45)>0.00001?normalize(grad45):normal20513;\n"+
-        "  float depth45=clamp(-contour45/max(1.0,rimWidth20517),0.0,1.0);\n"+
-        "  float rise45=smoothstep(0.0,0.20,depth45);\n"+
-        "  float fall45=1.0-smoothstep(0.26,0.94,depth45);\n"+
-        "  float tail45=0.11*(1.0-smoothstep(0.35,1.0,depth45))*smoothstep(0.05,0.30,depth45);\n"+
-        "  float profile45=max(0.0,rise45*fall45+tail45);\n"+
-        "  lensNormal20521=n45;\n"+
-        "  lensShift20521=displacement173*0.92*sizeGain20516*curvature20517*profile45;\n"+
+        // V205.46: isolate the interior SDF axis-switch crease without changing
+        // the wallpaper sampling bounds, dock path, or original mode 0.
+        // The interior seam q.x=q.y is softened by a continuous 2D normal;
+        // a smooth curvature-sensitive shift guard reduces local map folding.
+        // 42 conservative, 43 stronger; 44/45 show their final sample grids.
+        " if(folderContourMode20534>0.5 && sampleIsolation>41.5 && sampleIsolation<45.5){\n"+
+        "  float wide46=(sampleIsolation>42.5 && sampleIsolation<43.5 || sampleIsolation>44.5)?1.0:0.0;\n"+
+        "  float width46=max(2.0,radius20513*mix(0.24,0.40,wide46));\n"+
+        "  float interior46=1.0-smoothstep(-width46*0.65,width46*0.15,max(q20513.x,q20513.y));\n"+
+        "  float xw46=smoothstep(-width46,width46,q20513.x-q20513.y);\n"+
+        "  float2 n46=normalize(float2(axis20513.x*xw46,axis20513.y*(1.0-xw46))+float2(0.00001,0.00001));\n"+
+        "  float seam46=1.0-smoothstep(width46*0.12,width46*1.35,abs(q20513.x-q20513.y));\n"+
+        "  float2 old46=lensNormal20521;\n"+
+        "  lensNormal20521=normalize(mix(old46,n46,interior46)+float2(0.00001,0.00001));\n"+
+        "  float seamRisk46=interior46*seam46;\n"+
+        "  float scale46=mix(1.0,mix(0.70,0.52,wide46),seamRisk46);\n"+
+        "  lensShift20521*=scale46;\n"+
         " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
@@ -3058,26 +3049,6 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float outsideDistance20513=max(delta20513.x,delta20513.y);\n"+
         " float edgeGuard20513=1.0-smoothstep(0.0,18.0,outsideDistance20513);\n"+
         " samplingPoint=(folderProbe20530 && sampleIsolation>7.5 && sampleIsolation<8.5)?safe20513:mix(base20513,safe20513,edgeGuard20513);\n"+
-        // V205.46: keep the folder lens mapping continuous at the physical screen boundary.
-        // Rather than mixing two already-clamped coordinates (which can create a visible
-        // moving seam), attenuate ONLY the outward displacement before the sample.
-        // Mode 42 bypasses displacement to isolate the wallpaper input; 43 displays
-        // out-of-bounds regions for verifying the screen/texture coordinate mapping.
-        " if(folderContourMode20534>0.5){\n"+
-        "  float2 origin46=clamp(p,screenClip.xy,screenClip.zw);\n"+
-        "  float2 delta46=p-lensNormal20521*lensShift20521-origin46;\n"+
-        "  float2 roomLo46=max(origin46-screenClip.xy,float2(0.0));\n"+
-        "  float2 roomHi46=max(screenClip.zw-origin46,float2(0.0));\n"+
-        "  float2 maxDelta46=mix(-roomLo46,roomHi46,step(float2(0.0),delta46));\n"+
-        "  float2 absDelta46=abs(delta46);\n"+
-        "  float2 available46=mix(roomLo46,roomHi46,step(float2(0.0),delta46));\n"+
-        "  float2 ratio46=clamp(available46/max(absDelta46,float2(0.001)),float2(0.0),float2(1.0));\n"+
-        "  float fade46=min(ratio46.x,ratio46.y);\n"+
-        "  float smooth46=fade46*fade46*(3.0-2.0*fade46);\n"+
-        "  samplingPoint=clamp(origin46+delta46*smooth46,screenClip.xy,screenClip.zw);\n"+
-        "  if(sampleIsolation>41.5 && sampleIsolation<42.5){samplingPoint=origin46;}\n"+
-        "  if(sampleIsolation>42.5 && sampleIsolation<43.5){float edge46=min(min(samplingPoint.x-screenClip.x,screenClip.z-samplingPoint.x),min(samplingPoint.y-screenClip.y,screenClip.w-samplingPoint.y));return half4(half3(edge46<1.5?1.0:0.0,edge46<1.5?0.0:0.8,0.0),0.93);}\n"+
-        " }\n"+
         " if(sampleIsolation>11.5 && sampleIsolation<12.5){float h33=clamp(cornerRisk33,0.0,1.0);return half4(half3(h33,1.0-h33,0.0),0.90); }\n"+
         // V205.35: inspect the FINAL wallpaper sampling coordinate, after screen clipping.
         // Mode 16: warped grid in the sampled wallpaper coordinate space.
@@ -3117,12 +3088,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  half4 bg44=wallpaper.eval(samplingPoint);\n"+
         "  return half4(mix(bg44.rgb,half3(0.0,1.0,0.78),half(grid44*0.88)),0.94);\n"+
         " }\n"+
-        " // V205.45: paired final-coordinate grids for smooth-contour modes 38/39.\n"+
-        " if(folderContourMode20534>0.5 && sampleIsolation>39.5 && sampleIsolation<41.5){\n"+
-        "  float2 cell45=abs(fract(samplingPoint/20.0)-0.5)*20.0;\n"+
-        "  float grid45=1.0-smoothstep(0.45,1.50,min(cell45.x,cell45.y));\n"+
-        "  half4 bg45=wallpaper.eval(samplingPoint);\n"+
-        "  return half4(mix(bg45.rgb,half3(0.0,1.0,0.78),half(grid45*0.88)),0.94);\n"+
+        // V205.46: paired grids for modes 42/43, using the identical final
+        // samplingPoint as the corresponding actual glass mode.
+        " if(folderContourMode20534>0.5 && sampleIsolation>43.5 && sampleIsolation<45.5){\n"+
+        "  float2 cell46=abs(fract(samplingPoint/20.0)-0.5)*20.0;\n"+
+        "  float grid46=1.0-smoothstep(0.45,1.50,min(cell46.x,cell46.y));\n"+
+        "  half4 bg46=wallpaper.eval(samplingPoint);\n"+
+        "  return half4(mix(bg46.rgb,half3(0.0,1.0,0.78),half(grid46*0.88)),0.94);\n"+
         " }\n"+
         // V205.38: finite-difference Jacobian of original mode-0 sampling.
         // Mode 22: determinant heatmap (red = nonpositive, amber = near zero).
