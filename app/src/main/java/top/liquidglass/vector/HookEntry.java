@@ -3034,28 +3034,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " if(folderContourMode20534>0.5 && radius20513>2.0 && sampleIsolation<0.5){\n"+
         "  float rim48=max(2.0,min(short20515*mix(0.16,0.145,smoothstep(1.8,3.6,aspect20517)),radius20513*mix(0.42,0.39,smoothstep(1.8,3.6,aspect20517))));\n"+
         "  float depth48=clamp(inside20516/rim48,0.0,1.0);\n"+
-        "  float main50=smoothstep(0.0,0.17,depth48)*(1.0-smoothstep(0.35,1.0,depth48));\n"+
-        // V205.55: two-layer optical depth, using the stable V205.53
-        // rim as the first layer. The second layer overlaps the rim and
-        // fades out beyond it; it is NOT a stronger/wider copy of the rim.
-        // Its C1 endpoints prevent a visible hard boundary. Limit the
-        // tail to the corner curvature scale, avoiding medial-axis seams.
-        "  float interior50=0.11*smoothstep(0.26,0.52,depth48)*(1.0-smoothstep(0.78,1.0,depth48));\n"+
-        "  float core55=pow(max(0.0,main50+interior50),1.12);\n"+
-        "  float tailWidth55=max(1.0,min(radius20513*0.36,short20515*0.055));\n"+
-        "  float tailStart55=rim48*0.54;\n"+
-        "  float tailEnd55=rim48+tailWidth55;\n"+
-        "  float tailRise55=smoothstep(tailStart55,rim48*0.90,inside20516);\n"+
-        "  float tailFall55=1.0-smoothstep(rim48*0.94,tailEnd55,inside20516);\n"+
-        "  float tail55=0.095*tailRise55*tailFall55;\n"+
-        "  float highStrength52=smoothstep(14.0,38.0,abs(displacement173));\n"+
-        "  float shoulder52=smoothstep(0.53,0.76,depth48)*(1.0-smoothstep(0.90,1.0,depth48));\n"+
-        "  float profile48=max(0.0,core55*(1.0-0.12*highStrength52*shoulder52)+tail55);\n"+
+        // V205.56: one C1-continuous optical displacement profile. No stacked
+        // shoulders: the old main+interior layers created multiple contour bands.
+        // sin(pi*t)^2 has zero slope at both endpoints and a single smooth peak.
+        // Limit maximum mapping gradient relative to the adaptive rim width to
+        // prevent texture foldover at 100% strength (not a hard per-pixel clamp).
+        "  float t56=depth48;\n"+
+        "  float s56=sin(3.14159265*t56);\n"+
+        "  float profile56=s56*s56;\n"+
+        "  float requested56=abs(displacement173)*0.92*sizeGain20516;\n"+
+        "  float bounded56=min(requested56,rim48*0.29);\n"+
+        "  float profile48=profile56;\n"+
         "  float2 corner48=max(q20513,0.0);\n"+
         "  float2 smoothAxis48=normalize(float2(axis20513.x*max(0.0,q20513.x+rim48),axis20513.y*max(0.0,q20513.y+rim48))+float2(0.00001,0.00001));\n"+
         "  float2 edge48=length(corner48)>0.0001?normalize(corner48)*axis20513:smoothAxis48;\n"+
         "  lensNormal20521=edge48;\n"+
-        "  lensShift20521=displacement173*0.92*sizeGain20516*profile48;\n"+
+        "  lensShift20521=sign(displacement173)*bounded56*profile48;\n"+
         " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
