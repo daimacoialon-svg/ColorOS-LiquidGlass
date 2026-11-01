@@ -3034,7 +3034,14 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // A modest optical shoulder bridges the clear interior without widening
         // the rim or changing its peak. Taper it smoothly before the medial axis.
         "  float interior50=0.11*smoothstep(0.26,0.52,depth48)*(1.0-smoothstep(0.78,1.0,depth48));\n"+
-        "  float profile48=pow(max(0.0,main50+interior50),1.12);\n"+
+        // V205.52: keep the verified V205.50/51 rim geometry and peak strength.
+        // At high user strength, ease only the interior shoulder to reduce
+        // visible texture piling near the bottom/right corner. The edge peak
+        // and strength uniform remain untouched; this is not a global fade.
+        "  float fullProfile52=pow(max(0.0,main50+interior50),1.12);\n"+
+        "  float shoulder52=smoothstep(0.49,0.72,depth48)*(1.0-smoothstep(0.88,1.0,depth48));\n"+
+        "  float highStrength52=smoothstep(14.0,38.0,abs(displacement173));\n"+
+        "  float profile48=fullProfile52*(1.0-0.12*highStrength52*shoulder52);\n"+
         "  float2 corner48=max(q20513,0.0);\n"+
         "  float2 smoothAxis48=normalize(float2(axis20513.x*max(0.0,q20513.x+rim48),axis20513.y*max(0.0,q20513.y+rim48))+float2(0.00001,0.00001));\n"+
         "  float2 edge48=length(corner48)>0.0001?normalize(corner48)*axis20513:smoothAxis48;\n"+
