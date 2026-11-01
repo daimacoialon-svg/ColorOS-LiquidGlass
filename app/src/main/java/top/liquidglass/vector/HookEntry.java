@@ -3020,7 +3020,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 softNormal44=normalize(float2(axis20513.x*xWeight44,axis20513.y*(1.0-xWeight44))+float2(0.000001,0.000001));\n"+
         "  lensNormal20521=normalize(mix(lensNormal20521,softNormal44,bothInside44)+float2(0.000001,0.000001));\n"+
         " }\n"+
-        // V205.50: stable geometry-adaptive rim with a small interior optical shoulder.
+        // V205.51: conservative optical-rim polish on verified V205.50 path.
+        // Preserve geometry, peak displacement, screen bounds and Dock behavior.
         // V205.48: geometry-adaptive folder rim. The old band could extend
         // beyond the corner radius into the rounded-rectangle medial axis,
         // where the nearest-edge normal is not unique (diagonal seams).
@@ -3030,7 +3031,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float rim48=max(2.0,min(short20515*0.16,radius20513*0.42));\n"+
         "  float depth48=clamp(inside20516/rim48,0.0,1.0);\n"+
         "  float main50=smoothstep(0.0,0.17,depth48)*(1.0-smoothstep(0.35,1.0,depth48));\n"+
-        "  float interior50=0.09*smoothstep(0.30,0.52,depth48)*(1.0-smoothstep(0.82,1.0,depth48));\n"+
+        // A modest optical shoulder bridges the clear interior without widening
+        // the rim or changing its peak. Taper it smoothly before the medial axis.
+        "  float interior50=0.11*smoothstep(0.26,0.52,depth48)*(1.0-smoothstep(0.78,1.0,depth48));\n"+
         "  float profile48=pow(max(0.0,main50+interior50),1.12);\n"+
         "  float2 corner48=max(q20513,0.0);\n"+
         "  float2 smoothAxis48=normalize(float2(axis20513.x*max(0.0,q20513.x+rim48),axis20513.y*max(0.0,q20513.y+rim48))+float2(0.00001,0.00001));\n"+
