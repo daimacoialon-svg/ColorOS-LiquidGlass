@@ -3035,22 +3035,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float rim48=max(2.0,min(short20515*mix(0.16,0.145,smoothstep(1.8,3.6,aspect20517)),radius20513*mix(0.42,0.39,smoothstep(1.8,3.6,aspect20517))));\n"+
         "  float depth48=clamp(inside20516/rim48,0.0,1.0);\n"+
         "  float main50=smoothstep(0.0,0.17,depth48)*(1.0-smoothstep(0.35,1.0,depth48));\n"+
-        // A modest optical shoulder bridges the clear interior without widening
-        // the rim or changing its peak. Taper it smoothly before the medial axis.
-        // V205.54: integrate the optical rim into the clear pane instead of
-        // ending as an isolated narrow frame. This low-amplitude shoulder is
-        // C1-smooth at both ends, remains zero at the edge and in the center,
-        // and does not move the existing peak or change the container geometry.
-        // It uses the same SDF depth for square, portrait and landscape folders.
-        "  float interior50=0.15*smoothstep(0.28,0.57,depth48)*(1.0-smoothstep(0.76,1.0,depth48));\n"+
-        // V205.52: keep the verified V205.50/51 rim geometry and peak strength.
-        // At high user strength, ease only the interior shoulder to reduce
-        // visible texture piling near the bottom/right corner. The edge peak
-        // and strength uniform remain untouched; this is not a global fade.
-        "  float fullProfile52=pow(max(0.0,main50+interior50),1.12);\n"+
-        "  float shoulder52=smoothstep(0.53,0.76,depth48)*(1.0-smoothstep(0.90,1.0,depth48));\n"+
+        // V205.55: two-layer optical depth, using the stable V205.53
+        // rim as the first layer. The second layer overlaps the rim and
+        // fades out beyond it; it is NOT a stronger/wider copy of the rim.
+        // Its C1 endpoints prevent a visible hard boundary. Limit the
+        // tail to the corner curvature scale, avoiding medial-axis seams.
+        "  float interior50=0.11*smoothstep(0.26,0.52,depth48)*(1.0-smoothstep(0.78,1.0,depth48));\n"+
+        "  float core55=pow(max(0.0,main50+interior50),1.12);\n"+
+        "  float tailWidth55=max(1.0,min(radius20513*0.36,short20515*0.055));\n"+
+        "  float tailStart55=rim48*0.54;\n"+
+        "  float tailEnd55=rim48+tailWidth55;\n"+
+        "  float tailRise55=smoothstep(tailStart55,rim48*0.90,inside20516);\n"+
+        "  float tailFall55=1.0-smoothstep(rim48*0.94,tailEnd55,inside20516);\n"+
+        "  float tail55=0.095*tailRise55*tailFall55;\n"+
         "  float highStrength52=smoothstep(14.0,38.0,abs(displacement173));\n"+
-        "  float profile48=fullProfile52*(1.0-0.12*highStrength52*shoulder52);\n"+
+        "  float shoulder52=smoothstep(0.53,0.76,depth48)*(1.0-smoothstep(0.90,1.0,depth48));\n"+
+        "  float profile48=max(0.0,core55*(1.0-0.12*highStrength52*shoulder52)+tail55);\n"+
         "  float2 corner48=max(q20513,0.0);\n"+
         "  float2 smoothAxis48=normalize(float2(axis20513.x*max(0.0,q20513.x+rim48),axis20513.y*max(0.0,q20513.y+rim48))+float2(0.00001,0.00001));\n"+
         "  float2 edge48=length(corner48)>0.0001?normalize(corner48)*axis20513:smoothAxis48;\n"+
