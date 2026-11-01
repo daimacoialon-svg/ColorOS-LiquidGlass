@@ -1805,6 +1805,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         android.graphics.BitmapShader shader;
         android.graphics.RuntimeShader continuousShader;
         boolean continuousUnavailable;
+        long continuousRetryAt20549;
         boolean shaderStatusLogged;
         android.graphics.Shader rimGradient;
         android.graphics.Bitmap source;
@@ -3028,7 +3029,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " if(aspect20517<2.25 && radius20513>2.0 && sampleIsolation<0.5){\n"+
         "  float rim48=max(2.0,min(short20515*0.16,radius20513*0.42));\n"+
         "  float depth48=clamp(inside20516/rim48,0.0,1.0);\n"+
-        "  float profile48=pow(max(0.0,smoothstep(0.0,0.17,depth48)*(1.0-smoothstep(0.35,1.0,depth48))),1.12);\n"+
+        // V205.49: retain the proven high-energy outer rim while extending a\n        // low-amplitude C1-smooth optical shoulder into the interior. The\n        // shoulder is only evaluated inside the curvature-safe rim distance.\n        "  float main49=smoothstep(0.0,0.17,depth48)*(1.0-smoothstep(0.35,0.80,depth48));\n"+
+        "  float shoulder49=0.16*smoothstep(0.14,0.32,depth48)*(1.0-smoothstep(0.66,1.0,depth48));\n"+
+        "  float profile48=pow(max(0.0,main49+shoulder49),1.12);\n"+
         "  float2 corner48=max(q20513,0.0);\n"+
         "  float2 smoothAxis48=normalize(float2(axis20513.x*max(0.0,q20513.x+rim48),axis20513.y*max(0.0,q20513.y+rim48))+float2(0.00001,0.00001));\n"+
         "  float2 edge48=length(corner48)>0.0001?normalize(corner48)*axis20513:smoothAxis48;\n"+
@@ -3692,6 +3695,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
         float right=left+rect.width(), bottom=top+rect.height();
         if(right<=0f || bottom<=0f || left>=sw || top>=sh)return;
         if(state.source!=frame){
+            // A newly captured wallpaper is a new shader input: do not retain
+            // an earlier transient AGSL failure against the previous frame.
+            state.continuousUnavailable=false;
+            state.continuousRetryAt20549=0L;
+            state.shaderStatusLogged=false;
             state.source=frame;
             state.shader=new android.graphics.BitmapShader(frame,android.graphics.Shader.TileMode.CLAMP,android.graphics.Shader.TileMode.CLAMP);
         }
@@ -3749,6 +3757,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     canvas.drawRoundRect(rect,contourRadius,contourRadius,state.cachedBlurPaint);
                     if(GLASS_PIPELINE_DIAGNOSTICS.getAndIncrement()<48)log("GLASS126_BLUR_DRAWN enabled="+REFRACTION_ENABLED+" radiusDp="+customBlurDp);
                 }else if(blurHitLogs142++<24){log("BLUR_DRAW_142 WAIT radius="+customBlurDp+" frame="+System.identityHashCode(frame)+" pending="+BLUR_PENDING);}
+            }
+            // V205.49: transient render failures must not disable Dock optics
+            // forever. Retry at most once per 2 seconds, not on every frame.
+            if(state.continuousUnavailable &&
+                    android.os.SystemClock.uptimeMillis()>=state.continuousRetryAt20549){
+                state.continuousUnavailable=false;
             }
             if(opticalAb!=2 && probe141!=1 && !(probe141==3 && Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && !(probe141==4 && !Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && !(probe141==5 && Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && refractionActive && pathMode169!=1 && canvas.isHardwareAccelerated() && !state.continuousUnavailable && !Boolean.TRUE.equals(AGSL_SUBMITTED_144.get())){
                 try {
@@ -4030,6 +4044,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if(!state.shaderStatusLogged){state.shaderStatusLogged=true;log("REFRACTION_SHADER_STATUS mode=AGSL_ACTIVE");}
                 }catch(Throwable t){
                     state.continuousUnavailable=true;
+                    state.continuousRetryAt20549=android.os.SystemClock.uptimeMillis()+2000L;
+                    // A failed shader object may be invalid; recreate on retry.
+                    state.continuousShader=null;
                     if(!state.shaderStatusLogged){state.shaderStatusLogged=true;log("REFRACTION_SHADER_STATUS mode=SHADER_FAILED reason="+t.getClass().getName()+" detail="+String.valueOf(t.getMessage()));}
                 }
             }
