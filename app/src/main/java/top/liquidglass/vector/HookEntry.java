@@ -29,8 +29,6 @@ import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public final class HookEntry implements IXposedHookLoadPackage {
-    private static int lensLogs64=0;
-
     private static final String TAG = "ColorOSLiquidGlass";
     private static final Uri CONFIG = Uri.parse("content://top.liquidglass.vector.config/settings");
     private static volatile long lastRead = 0;
@@ -3079,29 +3077,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float depth63=clamp(inside20516/span63,0.0,1.0);\n"+
         "  float wave63=sin(3.14159265*depth63);\n"+
         "  float envelope63=wave63*wave63*smoothstep(0.0,0.20,depth63);\n"+
-        // V205.64: adapt to short side, aspect and actual corner radius; no fixed 1.8px cap.
-        "  float aspectGain64=mix(1.0,0.72,smoothstep(1.6,4.0,aspect20517));\n"+
-        "  float sizeGain64=clamp(short20515/125.0,0.65,1.45);\n"+
-        "  float curvatureGain64=clamp(radius20513/max(1.0,short20515)*2.0,0.60,1.15);\n"+
-        "  float baseShift64=min(5.5,span63*0.11)*aspectGain64*sizeGain64*curvatureGain64;\n"+
-        "  float strength64=clamp(sharedInteriorLens63-1.0,0.0,1.0);\n"+
-        "  float maxShift63=baseShift64*strength64*clamp(abs(displacement173)/18.0,0.15,1.0);\n"+
+        "  float maxShift63=min(span63*0.035,1.8)*clamp(abs(displacement173)/22.0,0.0,1.0);\n"+
         "  lensShift20521+=sign(displacement173)*maxShift63*envelope63;\n"+
         " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
-        // V205.66: Prevent horizontal streaks when a folder partially exits the
-        // screen. Do not first clamp the source point and then add displacement:
-        // that can repeat a single edge texel across the visible strip.
-        // Instead smoothly fade ONLY the outward component of displacement
-        // before the sampling point reaches the wallpaper texture boundary.
-        " float2 delta66=samplingPoint-p;\n"+
-        " float2 margin66=float2(delta66.x>=0.0?screenClip.z-p.x:p.x-screenClip.x,delta66.y>=0.0?screenClip.w-p.y:p.y-screenClip.y);\n"+
-        " float2 fadeRange66=max(float2(3.0),abs(delta66)*1.8+float2(2.0));\n"+
-        " float2 safeGain66=smoothstep(float2(0.0),fadeRange66,max(float2(0.0),margin66));\n"+
-        " float2 corrected66=p+delta66*safeGain66;\n"+
-        // Keep existing explicit diagnostic bypass mode 8 intact.
-        " samplingPoint=(folderProbe20530 && sampleIsolation>7.5 && sampleIsolation<8.5)?clamp(samplingPoint,screenClip.xy,screenClip.zw):clamp(corrected66,screenClip.xy,screenClip.zw);\n"+
+        // The visible display is the only valid wallpaper sample region. A
+        // folder may be partly offscreen while swiping; never sample a CLAMP
+        // repeated dark boundary pixel outside the visible screen.
+        " float2 safe20513=clamp(samplingPoint,screenClip.xy,screenClip.zw);\n"+
+        " float2 base20513=clamp(p,screenClip.xy,screenClip.zw);\n"+
+        " float2 delta20513=abs(samplingPoint-safe20513);\n"+
+        " float outsideDistance20513=max(delta20513.x,delta20513.y);\n"+
+        " float edgeGuard20513=1.0-smoothstep(0.0,18.0,outsideDistance20513);\n"+
+        " samplingPoint=(folderProbe20530 && sampleIsolation>7.5 && sampleIsolation<8.5)?safe20513:mix(base20513,safe20513,edgeGuard20513);\n"+
         " if(sampleIsolation>11.5 && sampleIsolation<12.5){float h33=clamp(cornerRisk33,0.0,1.0);return half4(half3(h33,1.0-h33,0.0),0.90); }\n"+
         // V205.35: inspect the FINAL wallpaper sampling coordinate, after screen clipping.
         // Mode 16: warped grid in the sampled wallpaper coordinate space.
@@ -4003,16 +3992,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             lc63.getContentResolver(),"liquidglass_shared_interior_lens_63",0);
                     }catch(Throwable ignored63){}
                     boolean dock63=view.getBackground() instanceof DockBackground204;
-                    // V205.64: 0=off, 1=folder normal, 2=both normal,
-                    // 3=both enhanced.
-                    float lensLevel64=(sharedLens63==1 && dock63)?0.0f:
-                        (sharedLens63>=3?2.0f:(sharedLens63>=1?1.60f:0.0f));
-                    state.continuousShader.setFloatUniform("sharedInteriorLens63",lensLevel64);
-                    if(sharedLens63>0 && lensLogs64<24){
-                        lensLogs64++;
-                        log("ADAPTIVE_LENS64 mode="+sharedLens63+" dock="+dock63+
-                            " uniform="+lensLevel64+" width="+(right-left)+" height="+(bottom-top));
-                    }
+                    state.continuousShader.setFloatUniform("sharedInteriorLens63",
+                        (sharedLens63>=2 || (sharedLens63==1 && !dock63))?1.0f:0.0f);
                     // Same local p-space as wallpaper.eval(), but bounded by
                     // the actual display rectangle. Only mode 2 clamps p.
                     state.continuousShader.setFloatUniform("screenClip",0.5f-left,0.5f-top,
