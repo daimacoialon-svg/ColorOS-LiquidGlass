@@ -2041,7 +2041,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(29,mode));
+                    mode=Math.max(0,Math.min(33,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
@@ -2988,6 +2988,26 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "   lensShift20521*=mix(1.0,eased41,cornerWeight41*0.42);\n"+
         "  }\n"+
         " }\n"+
+        // V205.42: folder-only curvature-aware sampling-map experiment.
+        // Modes 30/32 = gentle, 31/33 = stronger. Preserve the original
+        // mode-0 profile and straight-edge strength. No global monotonicity claim.
+        " if(folderContourMode20534>0.5 && sampleIsolation>29.5 && sampleIsolation<33.5){\n"+
+        "  float2 q42=q20513;\n"+
+        "  float2 outside42=max(q42,0.0);\n"+
+        "  float corner42=smoothstep(0.0,max(1.0,radius20513*0.35),min(q42.x,q42.y));\n"+
+        "  float cornerRad42=length(outside42);\n"+
+        "  float2 smoothN42=cornerRad42>0.0001?normalize(outside42)*sign(p-center):normal20513;\n"+
+        "  float2 oldN42=normalize(lensNormal20521+float2(0.000001,0.000001));\n"+
+        "  float2 blendedN42=normalize(mix(oldN42,smoothN42,corner42*0.95)+float2(0.000001,0.000001));\n"+
+        "  float strong42=(sampleIsolation>30.5 && sampleIsolation<31.5 || sampleIsolation>32.5)?1.0:0.0;\n"+
+        "  float minRad42=max(1.0,cornerRad42);\n"+
+        "  float cap42=minRad42*mix(0.78,0.56,strong42);\n"+
+        // Smooth upper bound: cap * tanh(shift/cap), C-infinity for positive cap.
+        "  float bounded42=cap42*tanh(max(0.0,lensShift20521)/cap42);\n"+
+        "  float transition42=corner42*smoothstep(0.0,max(2.0,radius20513*0.30),cornerRad42);\n"+
+        "  lensNormal20521=normalize(mix(oldN42,blendedN42,transition42)+float2(0.000001,0.000001));\n"+
+        "  lensShift20521=mix(lensShift20521,bounded42,transition42);\n"+
+        " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
@@ -3023,6 +3043,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float line41=1.0-smoothstep(0.45,1.50,min(cell41.x,cell41.y));\n"+
         "  half4 bg41=wallpaper.eval(samplingPoint);\n"+
         "  return half4(mix(bg41.rgb,half3(0.0,1.0,0.78),half(line41*0.88)),0.94);\n"+
+        " }\n"+
+        // V205.42: grid after the EXACT same final samplingPoint path as 30/31.
+        " if(folderContourMode20534>0.5 && sampleIsolation>31.5 && sampleIsolation<33.5){\n"+
+        "  float2 cell42=abs(fract(samplingPoint/20.0)-0.5)*20.0;\n"+
+        "  float line42=1.0-smoothstep(0.45,1.50,min(cell42.x,cell42.y));\n"+
+        "  half4 bg42=wallpaper.eval(samplingPoint);\n"+
+        "  return half4(mix(bg42.rgb,half3(0.0,1.0,0.78),half(line42*0.88)),0.94);\n"+
         " }\n"+
         // V205.38: finite-difference Jacobian of original mode-0 sampling.
         // Mode 22: determinant heatmap (red = nonpositive, amber = near zero).
