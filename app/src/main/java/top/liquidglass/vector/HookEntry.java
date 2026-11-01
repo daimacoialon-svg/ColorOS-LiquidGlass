@@ -2041,11 +2041,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(10,mode));
+                    mode=Math.max(0,Math.min(18,mode));
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
                         log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
-                            " legend=0-original,1-neutral,2-screen-clamp,3-luma,4-boundary-overlay,5-compress-luma,6-folder-zero-shift,7-folder-sdf-gradient,8-folder-raw-boundary,9-folder-isotropic-rim,10-folder-fixed-rim");
+                            " legend=0-original,1-neutral,2-screen-clamp,3-luma,4-boundary-overlay,5-compress-luma,6-folder-zero-shift,7-folder-sdf-gradient,8-folder-raw-boundary,9-folder-isotropic-rim,10-folder-fixed-rim,11-all-folder-zero-shift,12-corner-risk,13-local-cap,14-contour,15-contour-capped,16-sample-grid,17-sample-displacement,18-reference-grid");
                     }
                 }
             }catch(Throwable t){log("REFRACTION_SAMPLE_ISOLATION_READ_FAILED "+t.getClass().getSimpleName());}
