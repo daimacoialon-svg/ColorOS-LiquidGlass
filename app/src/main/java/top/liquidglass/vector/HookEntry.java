@@ -3058,6 +3058,26 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float outsideDistance20513=max(delta20513.x,delta20513.y);\n"+
         " float edgeGuard20513=1.0-smoothstep(0.0,18.0,outsideDistance20513);\n"+
         " samplingPoint=(folderProbe20530 && sampleIsolation>7.5 && sampleIsolation<8.5)?safe20513:mix(base20513,safe20513,edgeGuard20513);\n"+
+        // V205.46: keep the folder lens mapping continuous at the physical screen boundary.
+        // Rather than mixing two already-clamped coordinates (which can create a visible
+        // moving seam), attenuate ONLY the outward displacement before the sample.
+        // Mode 42 bypasses displacement to isolate the wallpaper input; 43 displays
+        // out-of-bounds regions for verifying the screen/texture coordinate mapping.
+        " if(folderContourMode20534>0.5){\n"+
+        "  float2 origin46=clamp(p,screenClip.xy,screenClip.zw);\n"+
+        "  float2 delta46=p-lensNormal20521*lensShift20521-origin46;\n"+
+        "  float2 roomLo46=max(origin46-screenClip.xy,float2(0.0));\n"+
+        "  float2 roomHi46=max(screenClip.zw-origin46,float2(0.0));\n"+
+        "  float2 maxDelta46=mix(-roomLo46,roomHi46,step(float2(0.0),delta46));\n"+
+        "  float2 absDelta46=abs(delta46);\n"+
+        "  float2 available46=mix(roomLo46,roomHi46,step(float2(0.0),delta46));\n"+
+        "  float2 ratio46=clamp(available46/max(absDelta46,float2(0.001)),float2(0.0),float2(1.0));\n"+
+        "  float fade46=min(ratio46.x,ratio46.y);\n"+
+        "  float smooth46=fade46*fade46*(3.0-2.0*fade46);\n"+
+        "  samplingPoint=clamp(origin46+delta46*smooth46,screenClip.xy,screenClip.zw);\n"+
+        "  if(sampleIsolation>41.5 && sampleIsolation<42.5){samplingPoint=origin46;}\n"+
+        "  if(sampleIsolation>42.5 && sampleIsolation<43.5){float edge46=min(min(samplingPoint.x-screenClip.x,screenClip.z-samplingPoint.x),min(samplingPoint.y-screenClip.y,screenClip.w-samplingPoint.y));return half4(half3(edge46<1.5?1.0:0.0,edge46<1.5?0.0:0.8,0.0),0.93);}\n"+
+        " }\n"+
         " if(sampleIsolation>11.5 && sampleIsolation<12.5){float h33=clamp(cornerRisk33,0.0,1.0);return half4(half3(h33,1.0-h33,0.0),0.90); }\n"+
         // V205.35: inspect the FINAL wallpaper sampling coordinate, after screen clipping.
         // Mode 16: warped grid in the sampled wallpaper coordinate space.
