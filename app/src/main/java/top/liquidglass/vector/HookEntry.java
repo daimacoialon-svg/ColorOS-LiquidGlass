@@ -2731,6 +2731,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float clearRefraction;\n"+
         "uniform float sampleIsolation;\n"+
         "uniform float folderContourMode20534;\n"+
+        "uniform float sharedInteriorLens63;\n"+
         "uniform float compositeProbe157;\n"+
         "uniform float4 screenClip;\n"+
         "uniform float glassCornerRadius20513;\n"+
@@ -3067,6 +3068,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float safe61=interiorSpan61*0.055*clamp(abs(displacement173)/22.0,0.0,1.0);\n"+
         "  float edgeFade61=smoothstep(0.0,0.18,depth61);\n"+
         "  lensShift20521+=sign(displacement173)*safe61*inner61*edgeFade61;\n"+
+        " }\n"+
+        // V205.63: opt-in, shared interior lens. Both container types use the same
+        // bounded lens wave; only the existing rounded-rect geometry differs.
+        // Disabled (uniform=0) leaves the V205.62 sampling path untouched.
+        " if(sharedInteriorLens63>0.5 && radius20513>2.0){\n"+
+        "  float span63=max(2.0,min(short20515*0.42,radius20513*1.10));\n"+
+        "  float depth63=clamp(inside20516/span63,0.0,1.0);\n"+
+        "  float wave63=sin(3.14159265*depth63);\n"+
+        "  float envelope63=wave63*wave63*smoothstep(0.0,0.20,depth63);\n"+
+        "  float maxShift63=min(span63*0.035,1.8)*clamp(abs(displacement173)/22.0,0.0,1.0);\n"+
+        "  lensShift20521+=sign(displacement173)*maxShift63*envelope63;\n"+
         " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
@@ -3971,6 +3983,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         (view.getBackground() instanceof DockBackground204)?0.0f:1.0f);
                     final int composite157=compositeProbe157();
                     state.continuousShader.setFloatUniform("compositeProbe157",(float)composite157);
+                    // V205.63 opt-in: 0=off, 1=folder only, 2=folder+Dock.
+                    // Read errors fail closed. No changes to Dock geometry.
+                    int sharedLens63=0;
+                    try{
+                        android.content.Context lc63=launcherContext;
+                        if(lc63!=null)sharedLens63=android.provider.Settings.Global.getInt(
+                            lc63.getContentResolver(),"liquidglass_shared_interior_lens_63",0);
+                    }catch(Throwable ignored63){}
+                    boolean dock63=view.getBackground() instanceof DockBackground204;
+                    state.continuousShader.setFloatUniform("sharedInteriorLens63",
+                        (sharedLens63>=2 || (sharedLens63==1 && !dock63))?1.0f:0.0f);
                     // Same local p-space as wallpaper.eval(), but bounded by
                     // the actual display rectangle. Only mode 2 clamps p.
                     state.continuousShader.setFloatUniform("screenClip",0.5f-left,0.5f-top,
