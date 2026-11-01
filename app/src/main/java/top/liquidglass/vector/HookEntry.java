@@ -2812,6 +2812,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float requested20526=displacement173*0.52*sizeGain20516*curved20521;\n"+
         "  lensShift20521=min(max(0.0,requested20526),gradientCap20526);\n"+
         " }\n"+
+        // V205.28: bounded monotone lens experiment for compact containers.
+        // The old profile could exceed its spatial transition width and fold
+        // wallpaper details. Limit displacement relative to band width with a
+        // smooth saturating function; leave elongated Dock unchanged.
+        " float compact20528=1.0-smoothstep(1.35,2.25,aspect20517);\n"+
+        " float safeCap20528=max(1.0,rimWidth20517*0.055);\n"+
+        " float positiveShift20528=max(0.0,lensShift20521);\n"+
+        " float boundedShift20528=safeCap20528*(1.0-exp(-positiveShift20528/safeCap20528));\n"+
+        " lensShift20521=mix(lensShift20521,boundedShift20528,compact20528);\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
