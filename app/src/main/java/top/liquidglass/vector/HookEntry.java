@@ -4652,7 +4652,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     int shaderMode=(visibilityTest==0?2:visibilityTest);
                     int displacementMode=currentDisplacementIsolationMode();
                     int probe156=opticalProbe156();
-                    state.continuousShader.setFloatUniform("strength",probe156==1?0.0f:(displacementMode==0?0.0f:22.0f*refractionPercent/35.0f));
+                    state.continuousShader.setFloatUniform("strength",probe156==1?0.0f:(displacementMode==0?0.0f:22.0f*(legacyRefractionActive117 ? refractionPercent : 0f)/35.0f));
                     state.continuousShader.setFloatUniform("diagnosticMode",(float)shaderMode);
                     final int alphaMode177=0; // V179: disable legacy gray underlay experiments
                     state.continuousShader.setFloatUniform("alphaUnderlay177",(float)alphaMode177);
@@ -4922,7 +4922,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                         // The folder geometry is always the full local rect.
                                         // Offscreen sampling blends to the unwarped wallpaper,
                                         // rather than stretching CLAMP's last pixel or dropping strips.
-                                        if(sourceIsolationMode90==3 && (refractionPercent>0.01f || nonlinear107>0 || thickness107>0 || interior107>0 || focus107>0 || reflection107>0 || opticalProbeRoute118>0 || (customBlurMode==1 && folderMicroBlurDp95>0f))){
+                                        if(sourceIsolationMode90==3 && (legacyRefractionActive117 || nonlinear107>0 || thickness107>0 || interior107>0 || focus107>0 || reflection107>0 || opticalProbeRoute118>0 || (customBlurMode==1 && folderMicroBlurDp95>0f))){
                                             try{
                                                 android.graphics.BitmapShader wallpaper93=new android.graphics.BitmapShader(
                                                     frame,android.graphics.Shader.TileMode.DECAL,
@@ -4963,20 +4963,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 opticalProbe118=Math.max(0,Math.min(2,opticalProbe118));
                                                 shader93.setFloatUniform("opticalProbe118",residualMode120==2?0f:(float)opticalProbe118);
                                                 if(residualMode120==2)residualLog120("ZERO_LENS_UNIFORMS","mode=2");
-                                                if(lensPipelineLogs111++<160)log("OPTICAL_UV_119 stage=UNIFORMS probe="+opticalProbe118+" legacy="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107);
+                                                if(lensPipelineLogs111++<160)log("OPTICAL_UV_119 stage=UNIFORMS probe="+opticalProbe118+" legacy="+(legacyRefractionActive117 ? refractionPercent : 0)+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107);
                                                 shader93.setFloatUniform("blurMix101",blend101);
                                                 shader93.setFloatUniform("bounds",rect.left,rect.top,rect.right,rect.bottom);
                                                 shader93.setFloatUniform("validBounds",rect.left-left,rect.top-top,
                                                     rect.left-left+frame.getWidth()*referenceScaleX,
                                                     rect.top-top+frame.getHeight()*referenceScaleY);
                                                 shader93.setFloatUniform("radius",contourRadius);
-                                                shader93.setFloatUniform("strength",REFRACTION_ENABLED ? Math.min(1.0f,Math.max(0f,refractionPercent)/100f) : 0f);
+                                                shader93.setFloatUniform("strength",legacyRefractionActive117 ? Math.min(1.0f,Math.max(0f,refractionPercent)/100f) : 0f);
                                                 shader93.setFloatUniform("blurPx95",blend101>0f ? 0f : requestedBlurPx101);
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
                                                 if(lensPipelineLogs111++<160)log("LENS_PIPELINE_111 stage=SHADER_DRAW mode="+sourceIsolationMode90+
-                                                    " legacy="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+
+                                                    " legacy="+(legacyRefractionActive117 ? refractionPercent : 0)+" lens="+nonlinear107+","+thickness107+","+interior107+
                                                     ","+focus107+","+reflection107+" rect="+rect.toShortString());
                                                 if(lensDiag111==2){
                                                     Paint proof111=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -4986,7 +4986,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     canvas.drawRoundRect(rect,contourRadius,contourRadius,proof111);
                                                     if(lensProofLogs111++<40)log("LENS_PIPELINE_111 stage=MAGENTA_PROOF_DRAW");
                                                 }
-                                                if(edgeShaderLogs93++<60)log("FOLDER_DIAG_104 stage=DRAW interior="+diagInterior103+" blurDiag="+diagBlur103+" requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+" lens110="+nonlinear107+","+thickness107+","+interior107+
+                                                if(edgeShaderLogs93++<60)log("FOLDER_DIAG_104 stage=DRAW interior="+diagInterior103+" blurDiag="+diagBlur103+" requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+(legacyRefractionActive117 ? refractionPercent : 0)+" lens110="+nonlinear107+","+thickness107+","+interior107+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
                                                 if(lensPipelineLogs111++<160)log("LENS_PIPELINE_111 stage=SHADER_ERROR "+e);
@@ -4996,7 +4996,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                     }
                                 }
                                 if(sourceIsolationDrawLogs90++<90)
-                                    log("EDGE_REFRACTION_94 stage=DIRECT_BITMAP mode="+sourceIsolationMode90+" strength="+refractionPercent+" lens110="+nonlinear107+","+thickness107+","+interior107+" drawn="+drawn90+
+                                    log("EDGE_REFRACTION_94 stage=DIRECT_BITMAP mode="+sourceIsolationMode90+" strength="+(legacyRefractionActive117 ? refractionPercent : 0)+" lens110="+nonlinear107+","+thickness107+","+interior107+" drawn="+drawn90+
                                         " view="+System.identityHashCode(view));
                             }else if(executionProofMode89==1){
                                 Paint proof89=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -5033,7 +5033,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         referenceScaleX,referenceScaleY,state.samplePaint.getAlpha(),
                         System.identityHashCode(frame),pathMode169,compositeMode170,
                         canvasMode159,sampleMode160,
-                        probe156==1?0.0f:(displacementMode==0?0.0f:22.0f*refractionPercent/35.0f),
+                        probe156==1?0.0f:(displacementMode==0?0.0f:22.0f*(legacyRefractionActive117 ? refractionPercent : 0f)/35.0f),
                         shaderMode,fixed167);
                     traceFolderMotion161(view,canvas,left,top,frame,sampleMode160,canvasMode159);
                     traceLayerChain162(view,canvas,"AGSL_SUBMIT");
