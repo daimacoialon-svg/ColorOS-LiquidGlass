@@ -3100,14 +3100,36 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // a continuous, per-axis reduction of displacement before sampling.
         " if(validSampleDomain70>0.5 && folderContourMode20534>0.5){\n"+
         "  float2 margin70=min(p-screenClip.xy,screenClip.zw-p);\n"+
-        "  if(min(margin70.x,margin70.y)<0.0){return half4(0.0,0.0,0.0,0.0); }\n"+
+        // V205.71: do not turn an entire offscreen source pixel transparent.
+        // For experimental mode 2, reflect out-of-domain coordinates across the
+        // actual screen sample boundary. This keeps sample values continuous at
+        // the edge and avoids repeating a single wallpaper column. It is an
+        // optical fallback, not access to genuinely offscreen wallpaper pixels.
+        "  if(validSampleDomain70>1.5){\n"+
+        "   float2 span71=max(screenClip.zw-screenClip.xy,float2(1.0));\n"+
+        "   float2 t71=mod(p-screenClip.xy,2.0*span71);\n"+
+        "   float2 mirrored71=screenClip.xy+span71-abs(t71-span71);\n"+
+        "   float2 source71=clamp(mirrored71,screenClip.xy,screenClip.zw);\n"+
+        "   float2 out71=max(screenClip.xy-p,float2(0.0))+max(p-screenClip.zw,float2(0.0));\n"+
+        "   if(max(out71.x,out71.y)>0.0){samplingPoint=source71;}\n"+
+        "   else {\n"+
+        "    float2 requested71=rawSample69-p;\n"+
+        "    float2 pos71=max(screenClip.zw-p,float2(0.0));\n"+
+        "    float2 neg71=max(p-screenClip.xy,float2(0.0));\n"+
+        "    float2 room71=float2(requested71.x>=0.0?pos71.x:neg71.x,requested71.y>=0.0?pos71.y:neg71.y);\n"+
+        "    float2 limited71=sign(requested71)*min(abs(requested71)*smoothstep(float2(0.0),float2(12.0),room71),max(room71-float2(0.5),float2(0.0)));\n"+
+        "    samplingPoint=p+limited71;\n"+
+        "   }\n"+
+        "  } else {\n"+
+        "   if(min(margin70.x,margin70.y)<0.0){return half4(0.0,0.0,0.0,0.0); }\n"+
         "  float2 requested70=rawSample69-p;\n"+
         "  float2 positive70=max(screenClip.zw-p,float2(0.0));\n"+
         "  float2 negative70=max(p-screenClip.xy,float2(0.0));\n"+
         "  float2 room70=float2(requested70.x>=0.0?positive70.x:negative70.x,requested70.y>=0.0?positive70.y:negative70.y);\n"+
         "  float2 scale70=smoothstep(float2(0.0),float2(12.0),room70);\n"+
         "  float2 limited70=sign(requested70)*min(abs(requested70)*scale70,max(room70-float2(0.5),float2(0.0)));\n"+
-        "  samplingPoint=p+limited70;\n"+
+        "   samplingPoint=p+limited70;\n"+
+        "  }\n"+
         " }\n"+
         // V205.69: folder-only diagnostics; no changes to normal mode-0 sampling.
         // 1: zero displacement; 2: raw pre-clamp boundary heatmap;
@@ -4037,7 +4059,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             c70.getContentResolver(),"liquidglass_valid_sample_domain_70",0);
                     }catch(Throwable ignored70){}
                     state.continuousShader.setFloatUniform("validSampleDomain70",
-                        (view.getBackground() instanceof DockBackground204)?0.0f:(validDomain70==1?1.0f:0.0f));
+                        (view.getBackground() instanceof DockBackground204)?0.0f:(validDomain70==2?2.0f:(validDomain70==1?1.0f:0.0f)));
                     final int composite157=compositeProbe157();
                     state.continuousShader.setFloatUniform("compositeProbe157",(float)composite157);
                     // V205.63 opt-in: 0=off, 1=folder only, 2=folder+Dock.
