@@ -1,4 +1,18 @@
-ColorOS-LiquidGlass V1.9.205.70
+ColorOS-LiquidGlass V1.9.205.72｜壁纸采样域与边界连续性诊断版
 
-本版为回归隔离验证版：渲染核心回退到 V1.9.205.63，保留原 Dock 几何。禁用内部透镜实验后检查屏幕右侧横向拉伸。
-本版并未声称解决所有边界异常。
+以 V1.9.205.71 为基础。保留原有文件夹及 Dock 的尺寸、圆角、玻璃算法；新增两个仅文件夹生效的诊断模式。
+
+su -c 'settings put global liquidglass_edge_diagnostic_69 0'
+su -c 'settings put global liquidglass_shared_interior_lens_63 0'
+su -c 'settings put global liquidglass_valid_sample_domain_70 3'
+模式3：安全位移 + 14px 透明渐变，让原生桌面壁纸在屏幕边缘透出。测试是否消除镜像与硬接缝；注意透明度合成可能影响实际效果。
+
+su -c 'settings put global liquidglass_valid_sample_domain_70 4'
+模式4：取消折射位移与屏幕裁剪，直接以原始局部坐标采样缓存壁纸；用于检验底层 BitmapShader.CLAMP 是否仍导致纹理拖尾。不是正常使用模式。
+
+su -c 'settings put global liquidglass_valid_sample_domain_70 0'
+恢复原始稳定渲染路径。
+
+诊断日志：WALLPAPER_DOMAIN_72，记录屏幕尺寸、壁纸缓存尺寸、缩放系数、容器越界距离。
+
+说明：当前输入是壁纸位图缓存，无法凭空取得屏幕外纹理。模式3、4均为可回退的诊断功能，并非已经验证的最终修复。Dock 渲染和几何不变。

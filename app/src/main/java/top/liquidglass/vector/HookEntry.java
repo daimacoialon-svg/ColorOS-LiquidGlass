@@ -3105,7 +3105,19 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // actual screen sample boundary. This keeps sample values continuous at
         // the edge and avoids repeating a single wallpaper column. It is an
         // optical fallback, not access to genuinely offscreen wallpaper pixels.
-        "  if(validSampleDomain70>1.5){\n"+
+        // V205.72: mode 3 is a smooth native-wallpaper reveal diagnostic;
+        // mode 4 bypasses displacement AND the screenClip clamp, proving
+        // whether the underlying CLAMP bitmap source is itself exhausted.
+        "  if(validSampleDomain70>3.5){samplingPoint=p;}\n"+
+        "  else if(validSampleDomain70>2.5){\n"+
+        "   float2 positive72=max(screenClip.zw-p,float2(0.0));\n"+
+        "   float2 negative72=max(p-screenClip.xy,float2(0.0));\n"+
+        "   float2 requested72=rawSample69-p;\n"+
+        "   float2 room72=float2(requested72.x>=0.0?positive72.x:negative72.x,requested72.y>=0.0?positive72.y:negative72.y);\n"+
+        "   float2 limited72=sign(requested72)*min(abs(requested72)*smoothstep(float2(0.0),float2(12.0),room72),max(room72-float2(0.5),float2(0.0)));\n"+
+        "   samplingPoint=clamp(p+limited72,screenClip.xy,screenClip.zw);\n"+
+        "   if(p.x<screenClip.x || p.y<screenClip.y || p.x>screenClip.z || p.y>screenClip.w){return half4(0.0); }\n"+
+        "  } else if(validSampleDomain70>1.5){\n"+
         "   float2 span71=max(screenClip.zw-screenClip.xy,float2(1.0));\n"+
         "   float2 t71=mod(p-screenClip.xy,2.0*span71);\n"+
         "   float2 mirrored71=screenClip.xy+span71-abs(t71-span71);\n"+
@@ -3295,6 +3307,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float frostedAlpha=(0.045+0.080*edgeWeight);\n"+
         " float clearAlpha=(0.18+0.08*edgeWeight);\n"+
         " color.a=half(probe143Composite>0.5?0.18:frostedAlpha*temporalOpacity);\n"+
+        // V205.72 mode 3: fade only the glass overlay close to the actual
+        // screen boundary; native wallpaper below remains visible. No mirror.
+        " if(validSampleDomain70>2.5 && validSampleDomain70<3.5 && folderContourMode20534>0.5){\n"+
+        "  float d72=min(min(p.x-screenClip.x,screenClip.z-p.x),min(p.y-screenClip.y,screenClip.w-p.y));\n"+
+        "  color.a*=half(smoothstep(0.0,14.0,d72));\n"+
+        " }\n"+
         " return color;\n"+
         "}\n";
     private static int clampInt(int v,int lo,int hi){return Math.max(lo,Math.min(hi,v));}
@@ -3808,6 +3826,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // the highlight blink off as soon as a folder crossed a screen edge.
         // The BitmapShader uses CLAMP, so partial off-screen sampling is safe.
         float right=left+rect.width(), bottom=top+rect.height();
+        // V205.72: bounded logging of true viewport vs bitmap domain.
+        if((left<0f || top<0f || right>sw || bottom>sh) && REFRACTION_LOGS++<70){
+            log("WALLPAPER_DOMAIN_72 screen="+sw+"x"+sh+
+                " bitmap="+frame.getWidth()+"x"+frame.getHeight()+
+                " viewRect="+left+","+top+","+right+","+bottom+
+                " bitmapScale="+referenceScaleX+","+referenceScaleY+
+                " sampleOutsideRight="+Math.max(0f,right-sw)+
+                " visibleRight="+Math.min(right,(float)sw));
+        }
         if(right<=0f || bottom<=0f || left>=sw || top>=sh)return;
         if(state.source!=frame){
             state.source=frame;
@@ -4059,7 +4086,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             c70.getContentResolver(),"liquidglass_valid_sample_domain_70",0);
                     }catch(Throwable ignored70){}
                     state.continuousShader.setFloatUniform("validSampleDomain70",
-                        (view.getBackground() instanceof DockBackground204)?0.0f:(validDomain70==2?2.0f:(validDomain70==1?1.0f:0.0f)));
+                        (view.getBackground() instanceof DockBackground204)?0.0f:(validDomain70>=1 && validDomain70<=4?(float)validDomain70:0.0f));
                     final int composite157=compositeProbe157();
                     state.continuousShader.setFloatUniform("compositeProbe157",(float)composite157);
                     // V205.63 opt-in: 0=off, 1=folder only, 2=folder+Dock.
