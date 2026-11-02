@@ -63,23 +63,25 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
         "  half4 bent = wallpaper.eval(samplePos);\n"+
         "  half4 optical = mix(base,bent,half(safe));\n"+
-        // Subpixel gaussian: at 0.2/0.3/0.4dp sample offsets remain fractional.
-        // The original V94 SDF, normal, edge profile and displacement are untouched.
-        "  float sigma = clamp(blurPx95,0.0,10.0);\n"+
-        "  float2 tap = float2(max(0.01,sigma),0.0);\n"+
-        "  half4 softened = wallpaper.eval(p)*half(0.375);\n"+
-        "  softened += wallpaper.eval(p+tap)*half(0.15625);\n"+
-        "  softened += wallpaper.eval(p-tap)*half(0.15625);\n"+
-        "  softened += wallpaper.eval(p+tap.yx)*half(0.15625);\n"+
-        "  softened += wallpaper.eval(p-tap.yx)*half(0.15625);\n"+
-        "  float blurMix = smoothstep(0.0,0.85,sigma);\n"+
-        "  half4 bentSoft = wallpaper.eval(samplePos)*half(0.375);\n"+
-        "  bentSoft += wallpaper.eval(samplePos+tap)*half(0.15625);\n"+
-        "  bentSoft += wallpaper.eval(samplePos-tap)*half(0.15625);\n"+
-        "  bentSoft += wallpaper.eval(samplePos+tap.yx)*half(0.15625);\n"+
-        "  bentSoft += wallpaper.eval(samplePos-tap.yx)*half(0.15625);\n"+
-        "  half4 softOptical = mix(softened,bentSoft,half(safe));\n"+
-        "  return mix(optical,softOptical,half(blurMix));\n"+
+        // V96: exact V94 optical output for zero radius; no extra texture taps.
+        // Blur only the already-refracted optical field, with normalized weights.
+        "  if (blurPx95 <= 0.0001) return optical;\n"+
+        "  float sigma = clamp(blurPx95,0.0,8.0);\n"+
+        "  float2 tapX=float2(sigma,0.0);\n"+
+        "  float2 tapY=float2(0.0,sigma);\n"+
+        "  float2 qx=clamp(samplePos+tapX,validBounds.xy,validBounds.zw);\n"+
+        "  float2 qmx=clamp(samplePos-tapX,validBounds.xy,validBounds.zw);\n"+
+        "  float2 qy=clamp(samplePos+tapY,validBounds.xy,validBounds.zw);\n"+
+        "  float2 qmy=clamp(samplePos-tapY,validBounds.xy,validBounds.zw);\n"+
+        "  half4 blurBent=(wallpaper.eval(qx)+wallpaper.eval(qmx)+wallpaper.eval(qy)+wallpaper.eval(qmy))*half(0.25);\n"+
+        "  float2 bx=clamp(p+tapX,validBounds.xy,validBounds.zw);\n"+
+        "  float2 bmx=clamp(p-tapX,validBounds.xy,validBounds.zw);\n"+
+        "  float2 by=clamp(p+tapY,validBounds.xy,validBounds.zw);\n"+
+        "  float2 bmy=clamp(p-tapY,validBounds.xy,validBounds.zw);\n"+
+        "  half4 blurBase=(wallpaper.eval(bx)+wallpaper.eval(bmx)+wallpaper.eval(by)+wallpaper.eval(bmy))*half(0.25);\n"+
+        "  half4 blurOptical=mix(blurBase,blurBent,half(safe));\n"+
+        "  float blend=clamp(sigma*0.28,0.0,0.75);\n"+
+        "  return mix(optical,blurOptical,half(blend));\n"+
         "}\n";
 
     private static final Uri CONFIG = Uri.parse("content://top.liquidglass.vector.config/settings");
@@ -4200,7 +4202,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     // clear wallpaper use the exact same AGSL displacement/strength.
                     android.graphics.Shader opticalInput195=state.shader;
                     boolean blurredInput195=false;
-                    if(customBlurMode==1 && customBlurDp>0){
+                    if(customBlurMode==1 && customBlurDp>0 && sourceIsolation90!=3){
                         android.graphics.Bitmap b195=blurredWallpaper(frame,dm.density,view);
                         if(b195!=null && !b195.isRecycled()){
                             if(state.cachedBlurBitmap!=b195 || state.cachedBlurShader==null){
@@ -4730,7 +4732,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
-                                                if(edgeShaderLogs93++<60)log("EDGE_SHADER_94 stage=DRAW strength="+refractionPercent+
+                                                if(edgeShaderLogs93++<60)log("EDGE_SHADER_96 stage=DRAW blurDp="+folderMicroBlurDp95+" blurMode="+customBlurMode+" strength="+refractionPercent+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
                                                 if(edgeShaderLogs93++<60)log("EDGE_SHADER_94 stage=ERROR "+e);
@@ -4821,7 +4823,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             state.samplePaint.setAlpha(255);
             // Independent background blur and tint: always visible with refraction OFF.
             // With refraction ON, retain some optical detail beneath the blur.
-            if(customBlurMode==1 && customBlurDp>0 && !continuousDrawn && !directCropDrawn82){
+            if(customBlurMode==1 && customBlurDp>0 && sourceIsolation90!=3 && !continuousDrawn && !directCropDrawn82){
                 android.graphics.Bitmap blurred=blurredWallpaper(frame,dm.density,view);
                 if(blurred!=null){
                     if(blurHitLogs142++<24)log("BLUR_DRAW_142 READY radius="+customBlurDp+" afterOEM="+Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get()));
