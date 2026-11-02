@@ -2733,6 +2733,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float folderContourMode20534;\n"+
         "uniform float sharedInteriorLens63;\n"+
         "uniform float edgeDiagnostic69;\n"+
+        "uniform float validSampleDomain70;\n"+
         "uniform float compositeProbe157;\n"+
         "uniform float4 screenClip;\n"+
         "uniform float glassCornerRadius20513;\n"+
@@ -3093,6 +3094,21 @@ public final class HookEntry implements IXposedHookLoadPackage {
         " float outsideDistance20513=max(delta20513.x,delta20513.y);\n"+
         " float edgeGuard20513=1.0-smoothstep(0.0,18.0,outsideDistance20513);\n"+
         " samplingPoint=(folderProbe20530 && sampleIsolation>7.5 && sampleIsolation<8.5)?safe20513:mix(base20513,safe20513,edgeGuard20513);\n"+
+        // V205.70: opt-in folder-only safe domain.  A source pixel already
+        // outside the display cannot be repaired by clamping it to the last
+        // wallpaper column.  Leave it transparent; visible source pixels use
+        // a continuous, per-axis reduction of displacement before sampling.
+        " if(validSampleDomain70>0.5 && folderContourMode20534>0.5){\n"+
+        "  float2 margin70=min(p-screenClip.xy,screenClip.zw-p);\n"+
+        "  if(min(margin70.x,margin70.y)<0.0){return half4(0.0,0.0,0.0,0.0); }\n"+
+        "  float2 requested70=rawSample69-p;\n"+
+        "  float2 positive70=max(screenClip.zw-p,float2(0.0));\n"+
+        "  float2 negative70=max(p-screenClip.xy,float2(0.0));\n"+
+        "  float2 room70=float2(requested70.x>=0.0?positive70.x:negative70.x,requested70.y>=0.0?positive70.y:negative70.y);\n"+
+        "  float2 scale70=smoothstep(float2(0.0),float2(12.0),room70);\n"+
+        "  float2 limited70=sign(requested70)*min(abs(requested70)*scale70,max(room70-float2(0.5),float2(0.0)));\n"+
+        "  samplingPoint=p+limited70;\n"+
+        " }\n"+
         // V205.69: folder-only diagnostics; no changes to normal mode-0 sampling.
         // 1: zero displacement; 2: raw pre-clamp boundary heatmap;
         // 3: split coordinate grids (left=unwarped, right=final sample).
@@ -4013,6 +4029,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     state.continuousShader.setFloatUniform("edgeDiagnostic69",
                         (view.getBackground() instanceof DockBackground204)?0.0f:(float)edgeMode69);
 
+                    // V205.70 opt-in; mode 0 preserves the V205.69 renderer.
+                    int validDomain70=0;
+                    try{
+                        android.content.Context c70=launcherContext;
+                        if(c70!=null)validDomain70=android.provider.Settings.Global.getInt(
+                            c70.getContentResolver(),"liquidglass_valid_sample_domain_70",0);
+                    }catch(Throwable ignored70){}
+                    state.continuousShader.setFloatUniform("validSampleDomain70",
+                        (view.getBackground() instanceof DockBackground204)?0.0f:(validDomain70==1?1.0f:0.0f));
                     final int composite157=compositeProbe157();
                     state.continuousShader.setFloatUniform("compositeProbe157",(float)composite157);
                     // V205.63 opt-in: 0=off, 1=folder only, 2=folder+Dock.
