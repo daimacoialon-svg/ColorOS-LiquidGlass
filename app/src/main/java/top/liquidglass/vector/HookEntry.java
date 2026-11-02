@@ -3581,6 +3581,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
 
     // V1.9.172: bounded per-frame motion/optical-chain telemetry. Diagnostic only.
     private static final java.util.WeakHashMap<View,float[]> MOTION_LAST_172=new java.util.WeakHashMap<>();
+    private static int SAMPLE_DOMAIN_76_COUNT=0;
+    private static long SAMPLE_DOMAIN_76_AT=0L;
     private static int SAMPLE_DOMAIN_75_COUNT=0;
     private static long SAMPLE_DOMAIN_75_AT=0L;
     private static int COORD_DOMAIN_74_COUNT=0;
@@ -4019,6 +4021,38 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                     " note=base_only_AGSL_displacement_not_measured");
                             }
                         }catch(Throwable e75){if(SAMPLE_DOMAIN_75_COUNT<6)log("SAMPLE_DOMAIN_75_ERROR "+e75.getClass().getSimpleName());}
+                    }
+                    // V205.76: non-invasive BitmapShader CLAMP boundary evidence.
+                    // Measures visible-area proximity to source edge; no AGSL changes.
+                    if(!(view.getBackground() instanceof DockBackground204) &&
+                            (left<0f || right>sw || top<0f || bottom>sh) &&
+                            SAMPLE_DOMAIN_76_COUNT<140 &&
+                            android.os.SystemClock.uptimeMillis()-SAMPLE_DOMAIN_76_AT>=100L){
+                        SAMPLE_DOMAIN_76_AT=android.os.SystemClock.uptimeMillis();
+                        SAMPLE_DOMAIN_76_COUNT++;
+                        try{
+                            float vL76=Math.max(0f,left),vR76=Math.min((float)sw,right);
+                            float vT76=Math.max(0f,top),vB76=Math.min((float)sh,bottom);
+                            if(vR76>vL76 && vB76>vT76 && referenceScaleX>0f && referenceScaleY>0f){
+                                float bL76=vL76/referenceScaleX,bR76=vR76/referenceScaleX;
+                                float edge76=frame.getWidth()-1f;
+                                float lastColFraction76=Math.max(0f,Math.min(bR76,edge76+1f)-Math.max(bL76,edge76)) / Math.max(1f,bR76-bL76);
+                                float beyond76=Math.max(0f,bR76-edge76);
+                                float localL76=vL76-shaderLeft,localR76=vR76-shaderLeft;
+                                log("BITMAP_BOUNDARY_76 id="+System.identityHashCode(view)+
+                                    " view="+left+","+top+","+right+","+bottom+
+                                    " visible="+vL76+","+vT76+","+vR76+","+vB76+
+                                    " frame="+frame.getWidth()+"x"+frame.getHeight()+
+                                    " scale="+referenceScaleX+","+referenceScaleY+
+                                    " shaderOrigin="+shaderLeft+","+shaderTop+
+                                    " localVisibleX="+localL76+","+localR76+
+                                    " baseSourceX="+bL76+","+bR76+
+                                    " sourceLastPixelX="+edge76+
+                                    " beyondLastPixelPx="+beyond76+
+                                    " lastPixelBandFraction="+lastColFraction76+
+                                    " clampTile=true agslDisplacement=not_measured");
+                            }
+                        }catch(Throwable e76){if(SAMPLE_DOMAIN_76_COUNT<5)log("BITMAP_BOUNDARY_76_ERROR "+e76.getClass().getSimpleName());}
                     }
                     state.shaderMatrix.postTranslate(-shaderLeft,-shaderTop);
                     state.shader.setLocalMatrix(state.shaderMatrix);
