@@ -1,4 +1,1 @@
-ColorOS-LiquidGlass V1.9.205.101
-文件夹模糊：0.1dp精度；大半径改为缓存的低分辨率分离式滤波输入，再用94版连续SDF折射采样。Dock未修改。
-实验模式：su -c 'settings put global liquidglass_source_isolation_90 3'
-未经过真机编译及性能验证。
+V1.9.205.103 折痕与预模糊分层诊断版。基于102版。新增liquidglass_diag_interior_103和liquidglass_diag_blur_103两项可恢复的诊断设置；默认行为与102版一致。参见V1.9.205.103-测试说明.txt。

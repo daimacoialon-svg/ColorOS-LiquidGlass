@@ -44,6 +44,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float blurPx95;\n"+
         "uniform shader blurredWallpaper101;\n"+
         "uniform float blurMix101;\n"+
+        "uniform float diagnosticInterior103;\n"+
+        "uniform float diagnosticBlur103;\n"+
         "float glassSdf(float2 p) {\n"+
         "  float2 halfSize = max((bounds.zw-bounds.xy)*0.5,float2(0.5));\n"+
         "  float r = clamp(radius,0.0,min(halfSize.x,halfSize.y));\n"+
@@ -67,7 +69,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float medialBlend=1.0-smoothstep(-35.0,-12.0,d);\n"+
         "  float2 n=mix(nOriginal,nSoft,medialBlend);\n"+
         "  float nearEdge = smoothstep(-32.0,-10.0,d)*(1.0-smoothstep(-3.0,1.0,d));\n"+
-        "  float interior = 0.075*(1.0-smoothstep(-45.0,-18.0,d));\n"+
+        "  float interior = 0.075*diagnosticInterior103*(1.0-smoothstep(-45.0,-18.0,d));\n"+
         "  float profile = max(nearEdge,interior);\n"+
         "  float2 delta = n*(17.0*strength*profile);\n"+
         "  float2 samplePos = p+delta;\n"+
@@ -76,6 +78,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  half4 bent = wallpaper.eval(samplePos);\n"+
         "  half4 optical = mix(base,bent,half(safe));\n"+
         // V99: 0dp must be bit-for-bit the V94 optical field; no blur taps.
+        "  if (diagnosticBlur103 > 1.5) return optical;\n"+
+        "  if (diagnosticBlur103 > 0.5) return blurredWallpaper101.eval(p);\n"+
         "  if (blurMix101 > 0.0001) {\n"+
         "    half4 softBase=blurredWallpaper101.eval(p);\n"+
         "    half4 softBent=blurredWallpaper101.eval(samplePos);\n"+
@@ -4812,6 +4816,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     0f,referenceScaleY*(float)frame.getHeight()/blurredFrame101.getHeight(),rect.top-top,0f,0f,1f});
                                                 blurredWallpaper101.setLocalMatrix(blurredMatrix101);
                                                 shader93.setInputShader("blurredWallpaper101",blurredWallpaper101);
+                                                int diagInterior103=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_diag_interior_103",1);
+                                                int diagBlur103=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_diag_blur_103",0);
+                                                shader93.setFloatUniform("diagnosticInterior103",diagInterior103==0?0f:1f);
+                                                shader93.setFloatUniform("diagnosticBlur103",(float)Math.max(0,Math.min(2,diagBlur103)));
                                                 shader93.setFloatUniform("blurMix101",blend101);
                                                 shader93.setFloatUniform("bounds",rect.left,rect.top,rect.right,rect.bottom);
                                                 shader93.setFloatUniform("validBounds",rect.left-left,rect.top-top,
@@ -4823,7 +4831,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
-                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_102 stage=DRAW requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
+                                                if(edgeShaderLogs93++<60)log("FOLDER_DIAG_103 stage=DRAW interior="+diagInterior103+" blurDiag="+diagBlur103+" requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
                                                 if(edgeShaderLogs93++<60)log("FOLDER_BLUR_102 stage=ERROR "+e);
