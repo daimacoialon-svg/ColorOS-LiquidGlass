@@ -3974,13 +3974,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
     }
 
     private static final java.util.concurrent.atomic.AtomicInteger SAFE_GEOMETRY_LOGS_20524 = new java.util.concurrent.atomic.AtomicInteger();
+    // V116: bounded, process-wide diagnostic breadcrumbs; no per-frame log flood.
+    private static final java.util.concurrent.atomic.AtomicInteger LENS_TRACE_116 = new java.util.concurrent.atomic.AtomicInteger();
+    private static void lensTrace116(String stage, String details) {
+        int n=LENS_TRACE_116.getAndIncrement();
+        if(n<140 || (n<2000 && n%200==0)) log("LENS_TRACE_116 stage="+stage+" "+details);
+    }
     private static void drawReferenceRefraction(View view,Canvas canvas,RectF rect,float radius) {
         long[] drawCtx1761=DRAW_CONTEXT_1761.get();
         if(drawCtx1761!=null)drawCtx1761[1]++;
         drawTrace1761("AGSL_ATTEMPT",view,canvas,"refractionActive="+glassEnabled);
         int[] compositeCounts158=COMPOSITE_COUNTS_158.get();
         if(compositeCounts158!=null)compositeCounts158[0]++;
-        if(rect.width()<80 || rect.height()<80)return;
+        lensTrace116("ENTER", "w="+rect.width()+" h="+rect.height()+" legacy="+refractionPercent+
+            " refractionEnabled="+REFRACTION_ENABLED+" frameReady="+(REFRACTION_FRAME!=null && !REFRACTION_FRAME.isRecycled())+
+            " hardware="+canvas.isHardwareAccelerated());
+        if(rect.width()<80 || rect.height()<80){lensTrace116("RETURN_SIZE","rect="+rect);return;}
         scheduleReferenceLoad(view);
         android.graphics.Bitmap frame=REFRACTION_FRAME;
         if(frame==null||frame.isRecycled()){
@@ -3997,6 +4006,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 float dir198=updateSurfaceMotion198(view,surfaceState198,rim198);
                 drawRoundedRim190(canvas,rect,radius,dir198,rim198);
             }
+            lensTrace116("RETURN_FRAME", "frameNull="+(frame==null)+" recycled="+(frame!=null && frame.isRecycled()));
             return;
         }
         android.util.DisplayMetrics dm=view.getResources().getDisplayMetrics();
@@ -4108,7 +4118,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     " parents="+parents74);
             }catch(Throwable err74){if(COORD_DOMAIN_74_COUNT<5)log("COORD_DOMAIN_74_ERROR "+err74.getClass().getSimpleName());}
         }
-        if(right<=0f || bottom<=0f || left>=sw || top>=sh)return;
+        if(right<=0f || bottom<=0f || left>=sw || top>=sh){
+            lensTrace116("RETURN_OFFSCREEN", "left="+left+" top="+top+" right="+right+" bottom="+bottom+" screen="+sw+"x"+sh);
+            return;
+        }
         // V205.78: opt-in bitmap-boundary isolation. The default (0) is byte-for-byte
         // equivalent to the V205.77 CLAMP construction. Folder only: never change Dock.
         // DECAL returns transparent outside the bitmap instead of repeating its last column.
@@ -4251,6 +4264,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
             }
             // Strict master switch: clear-refraction and blur must never activate AGSL.
             final boolean refractionActive=REFRACTION_ENABLED && refractionPercent>0;
+            lensTrace116("LEGACY_GATE", "active="+refractionActive+" enabled="+REFRACTION_ENABLED+
+                " percent="+refractionPercent+" nonlinear="+nonlinear107+" thickness="+thickness107+
+                " interior="+interior107+" focus="+focus107+" reflection="+reflection107);
             final int pathMode169=refractionPathMode169();
             logRefractionPath169(pathMode169,"ENTER",refractionActive);
             final int compositeMode170=refractionComposite170();
@@ -4286,6 +4302,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if(GLASS_PIPELINE_DIAGNOSTICS.getAndIncrement()<48)log("GLASS126_BLUR_DRAWN enabled="+REFRACTION_ENABLED+" radiusDp="+customBlurDp);
                 }else if(blurHitLogs142++<24){log("BLUR_DRAW_142 WAIT radius="+customBlurDp+" frame="+System.identityHashCode(frame)+" pending="+BLUR_PENDING);}
             }
+            lensTrace116("AGSL_GATE", "crop="+directCropDrawn82+" opticalAb="+opticalAb+
+                " probe="+probe141+" afterOEM="+Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())+
+                " active="+refractionActive+" path="+pathMode169+" hw="+canvas.isHardwareAccelerated()+
+                " unavailable="+state.continuousUnavailable+" submitted="+Boolean.TRUE.equals(AGSL_SUBMITTED_144.get()));
             if(!directCropDrawn82 && opticalAb!=2 && probe141!=1 && !(probe141==3 && Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && !(probe141==4 && !Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && !(probe141==5 && Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && refractionActive && pathMode169!=1 && canvas.isHardwareAccelerated() && !state.continuousUnavailable && !Boolean.TRUE.equals(AGSL_SUBMITTED_144.get())){
                 try {
                     if(state.continuousShader==null){
@@ -4355,6 +4375,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     boolean folderOptical115 = !(view.getBackground() instanceof DockBackground204);
                     if(folderOptical115 && (lensDiag111>0 || independentLens115 || independentSurface115))
                         sourceIsolation90=3;
+                    lensTrace116("ROUTE_REACHED", "mode="+sourceIsolation90+" legacy="+refractionPercent+" lens="+independentLens115);
                     if(lensGateLogs115++<120)log("LENS_GATE_115 stage=ROUTE legacy="+refractionPercent+
                         " lens="+independentLens115+" surface="+independentSurface115+
                         " diag="+lensDiag111+" original="+originalIsolation111+
@@ -5157,7 +5178,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
             " legacy="+refractionPercent+" diag="+lensDiagnostic113(v)+" glass="+glassEnabled+
             " probe="+probeMode+" width="+v.getWidth()+" height="+v.getHeight());
         if (!glassEnabled || probeMode == 1 || canvas == null || v.getWidth() <= 0 || v.getHeight() <= 0) return;
-        if (!edgeOnly && Boolean.TRUE.equals(SURFACE_SUBMITTED_144.get())) return;
+        if (!edgeOnly && Boolean.TRUE.equals(SURFACE_SUBMITTED_144.get())) {
+            lensTrace116("FOLDER_SKIP_SUBMITTED", "legacy="+refractionPercent);
+            return;
+        }
         if (Boolean.TRUE.equals(FOLDER_FUSION_GUARD.get())) return;
         try {
             Object preview = field(v.getClass(), "mBackground").get(v);
@@ -5233,6 +5257,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             try {
                 if(!edgeOnly){
                     SURFACE_SUBMITTED_144.set(Boolean.TRUE);
+                    lensTrace116("FOLDER_CALL", "edge="+edgeOnly+" rect="+rect+" legacy="+refractionPercent);
                     drawReferenceRefraction(v,canvas,rect,radius);
                 }
                 canvas.translate(rect.left,rect.top);
