@@ -1808,6 +1808,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         boolean shaderStatusLogged;
         android.graphics.Shader rimGradient;
         android.graphics.Bitmap source;
+        int bitmapBoundaryMode78=-1;
         float lastX=Float.NaN,lastY=Float.NaN;
         android.view.ViewTreeObserver.OnPreDrawListener listener;
         int moveLogs;
@@ -3861,9 +3862,27 @@ public final class HookEntry implements IXposedHookLoadPackage {
             }catch(Throwable err74){if(COORD_DOMAIN_74_COUNT<5)log("COORD_DOMAIN_74_ERROR "+err74.getClass().getSimpleName());}
         }
         if(right<=0f || bottom<=0f || left>=sw || top>=sh)return;
-        if(state.source!=frame){
+        // V205.78: opt-in bitmap-boundary isolation. The default (0) is byte-for-byte
+        // equivalent to the V205.77 CLAMP construction. Folder only: never change Dock.
+        // DECAL returns transparent outside the bitmap instead of repeating its last column.
+        // This is a diagnostic, not a claim that missing wallpaper pixels can be recovered.
+        int bitmapBoundary78=0;
+        if(!(view.getBackground() instanceof DockBackground204)){
+            try{
+                android.content.Context ctx78=launcherContext;
+                if(ctx78!=null)bitmapBoundary78=android.provider.Settings.Global.getInt(
+                    ctx78.getContentResolver(),"liquidglass_bitmap_boundary_78",0);
+            }catch(Throwable ignored78){}
+        }
+        bitmapBoundary78=(bitmapBoundary78==1)?1:0;
+        if(state.source!=frame || state.bitmapBoundaryMode78!=bitmapBoundary78){
             state.source=frame;
-            state.shader=new android.graphics.BitmapShader(frame,android.graphics.Shader.TileMode.CLAMP,android.graphics.Shader.TileMode.CLAMP);
+            state.bitmapBoundaryMode78=bitmapBoundary78;
+            android.graphics.Shader.TileMode tile78=bitmapBoundary78==1
+                ?android.graphics.Shader.TileMode.DECAL:android.graphics.Shader.TileMode.CLAMP;
+            state.shader=new android.graphics.BitmapShader(frame,tile78,tile78);
+            if(bitmapBoundary78==1)log("BITMAP_BOUNDARY_78 active=DECAL folderOnly=true bitmap="+
+                frame.getWidth()+"x"+frame.getHeight());
         }
         int save=canvas.save();
         try {
