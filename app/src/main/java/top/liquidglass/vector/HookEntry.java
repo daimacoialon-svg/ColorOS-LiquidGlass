@@ -91,7 +91,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float innerProfile=smoothstep(4.0,9.0,rimDepth)*(1.0-smoothstep(13.0,20.0,rimDepth));\n"+
         "  float gain106=1.0+lensRimEnhance106*0.28*rimCore106;\n"+
         "  float extra=(nonlinear107*23.0*nonlinearProfile+thickness107*13.0*thicknessProfile+interior107*7.0*innerProfile)*rimWindow;\n"+
-        "  float2 delta=n*strength*(17.0*profile*gain106+extra);\n"+
+        "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
+        "  float2 deltaLens=n*extra; // independent of legacy strength\n"+
+        "  float2 delta=deltaLegacy+deltaLens;\n"+
         "  float2 samplePos = p+delta;\n"+
         "  samplePos=clamp(samplePos,validBounds.xy+float2(1.0),validBounds.zw-float2(1.0));\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
@@ -4838,7 +4840,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                         // The folder geometry is always the full local rect.
                                         // Offscreen sampling blends to the unwarped wallpaper,
                                         // rather than stretching CLAMP's last pixel or dropping strips.
-                                        if(sourceIsolationMode90==3 && (refractionPercent>0.01f || (customBlurMode==1 && folderMicroBlurDp95>0f))){
+                                        if(sourceIsolationMode90==3 && (refractionPercent>0.01f || nonlinear107>0 || thickness107>0 || interior107>0 || focus107>0 || reflection107>0 || (customBlurMode==1 && folderMicroBlurDp95>0f))){
                                             try{
                                                 android.graphics.BitmapShader wallpaper93=new android.graphics.BitmapShader(
                                                     frame,android.graphics.Shader.TileMode.DECAL,
@@ -4885,7 +4887,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
-                                                if(edgeShaderLogs93++<60)log("FOLDER_DIAG_104 stage=DRAW interior="+diagInterior103+" blurDiag="+diagBlur103+" requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
+                                                if(edgeShaderLogs93++<60)log("FOLDER_DIAG_104 stage=DRAW interior="+diagInterior103+" blurDiag="+diagBlur103+" requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+" lens110="+nonlinear107+","+thickness107+","+interior107+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
                                                 if(edgeShaderLogs93++<60)log("FOLDER_BLUR_102 stage=ERROR "+e);
@@ -4894,7 +4896,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                     }
                                 }
                                 if(sourceIsolationDrawLogs90++<90)
-                                    log("EDGE_REFRACTION_94 stage=DIRECT_BITMAP mode="+sourceIsolationMode90+" strength="+refractionPercent+" drawn="+drawn90+
+                                    log("EDGE_REFRACTION_94 stage=DIRECT_BITMAP mode="+sourceIsolationMode90+" strength="+refractionPercent+" lens110="+nonlinear107+","+thickness107+","+interior107+" drawn="+drawn90+
                                         " view="+System.identityHashCode(view));
                             }else if(executionProofMode89==1){
                                 Paint proof89=new Paint(Paint.ANTI_ALIAS_FLAG);
