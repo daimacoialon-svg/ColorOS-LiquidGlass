@@ -5109,6 +5109,31 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 " sampleX="+left+" sampleY="+top+" mode="+(continuousDrawn?"AGSL":"NATIVE_BLUR_FALLBACK")+" frameReady=true");
         }finally{canvas.restoreToCount(save);}
     }
+    // V113: independent, outermost folder diagnostic. Never use legacy strength,
+    // AGSL state, wallpaper readiness, or the inner refraction clip to gate it.
+    private static int outerProofLogs113=0;
+    private static int lensDiagnostic113(View v) {
+        try { return android.provider.Settings.Global.getInt(v.getContext().getContentResolver(),
+            "liquidglass_lens_diagnostic_111",0); }
+        catch(Throwable e) { return 0; }
+    }
+    private static void drawOuterProof113(View v, Canvas canvas, RectF rect, float radius) {
+        if(lensDiagnostic113(v)!=2)return;
+        Paint proof=new Paint(Paint.ANTI_ALIAS_FLAG);
+        proof.setStyle(Paint.Style.STROKE);
+        float density=v.getResources().getDisplayMetrics().density;
+        proof.setStrokeWidth(4f*density);
+        proof.setColor(Color.MAGENTA);
+        // Inset the stroke so that clipping to the native folder outline does not erase it.
+        RectF visible=new RectF(rect);
+        float inset=2.5f*density;
+        visible.inset(inset,inset);
+        if(visible.width()>0 && visible.height()>0) {
+            canvas.drawRoundRect(visible,Math.max(0,radius-inset),Math.max(0,radius-inset),proof);
+            if(outerProofLogs113++<80)log("LENS_OUTER_113 stage=PROOF_DRAW legacy="+refractionPercent+
+                " diag=2 edgePass=true rect="+visible.toShortString());
+        }
+    }
     private static int glass123GateLogs=0;
     private static void drawFolderIconFusion(View v, Canvas canvas, boolean edgeOnly) {
         long[] fusion1761=DRAW_CONTEXT_1761.get();
@@ -5116,6 +5141,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
         drawTrace1761("FUSION_ENTRY",v,canvas,"edge="+edgeOnly+
             " surfaceGuard="+Boolean.TRUE.equals(SURFACE_SUBMITTED_144.get())+
             " fusionGuard="+Boolean.TRUE.equals(FOLDER_FUSION_GUARD.get()));
+        if(outerProofLogs113<40 && v!=null && canvas!=null)log("LENS_OUTER_113 stage=ENTRY edge="+edgeOnly+
+            " legacy="+refractionPercent+" diag="+lensDiagnostic113(v)+" glass="+glassEnabled+
+            " probe="+probeMode+" width="+v.getWidth()+" height="+v.getHeight());
         if (!glassEnabled || probeMode == 1 || canvas == null || v.getWidth() <= 0 || v.getHeight() <= 0) return;
         if (!edgeOnly && Boolean.TRUE.equals(SURFACE_SUBMITTED_144.get())) return;
         if (Boolean.TRUE.equals(FOLDER_FUSION_GUARD.get())) return;
@@ -5204,6 +5232,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     envelope=1.0f; // keep the native outline static; motion sheen lives in AGSL only
                 }
                 if(edgeOnly || refractionPathMode169()!=2)drawUnifiedMaterial(canvas,mask,edgeOnly,envelope);
+                // Draw on the final folder edge pass, AFTER the surface and material layers.
+                if(edgeOnly)drawOuterProof113(v,canvas,rect,radius);
                 if(folderFusionLogs++<16)log("UNIFIED_MATERIAL_DRAW phase="+(edgeOnly?"edge":"surface")+
                     " rect="+rect+" radius="+radius+" nativeOutline="+nativeOutline+
                     " geometryInsetPx=0 maskSource=corner-only-synthetic-mask cornerDeltaPx="+BLUR_CORNER_RADIUS_DELTA_PX+" alphaMask=true");
