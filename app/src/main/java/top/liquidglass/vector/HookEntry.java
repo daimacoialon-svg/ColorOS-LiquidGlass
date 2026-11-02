@@ -3983,7 +3983,26 @@ public final class HookEntry implements IXposedHookLoadPackage {
         int n=LENS_TRACE_116.getAndIncrement();
         if(n<140 || (n<2000 && n%200==0)) log("LENS_TRACE_116 stage="+stage+" "+details);
     }
+    // V120: independently isolate the background displacement paths without changing
+    // OEM folder geometry, icons, blur masks or highlight passes.
+    // 0=normal, 1=skip direct-bitmap path, 2=zero optical lens uniforms,
+    // 3=skip all module wallpaper/refraction drawing in this entry point.
+    private static int residualIsolation120(View view) {
+        try {
+            return Math.max(0,Math.min(3,android.provider.Settings.Global.getInt(
+                view.getContext().getContentResolver(),"liquidglass_residual_isolation_120",0)));
+        } catch(Throwable ignored) { return 0; }
+    }
+    private static final java.util.concurrent.atomic.AtomicInteger RESIDUAL_LOGS_120 =
+        new java.util.concurrent.atomic.AtomicInteger();
+    private static void residualLog120(String stage,String detail) {
+        int n=RESIDUAL_LOGS_120.getAndIncrement();
+        if(n<80 || (n<800 && n%100==0)) log("RESIDUAL_ISOLATION_120 stage="+stage+" "+detail);
+    }
     private static void drawReferenceRefraction(View view,Canvas canvas,RectF rect,float radius) {
+        final int residualMode120=residualIsolation120(view);
+        residualLog120("ENTRY","mode="+residualMode120+" legacyEnabled="+REFRACTION_ENABLED+" legacyStrength="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107);
+        if(residualMode120==3){residualLog120("SKIP_ALL_MODULE_REFRACTION","mode=3");return;}
         long[] drawCtx1761=DRAW_CONTEXT_1761.get();
         if(drawCtx1761!=null)drawCtx1761[1]++;
         drawTrace1761("AGSL_ATTEMPT",view,canvas,"refractionActive="+glassEnabled);
@@ -4876,7 +4895,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             }
                             // V205.89 proof is injected at the real final AGSL draw call.
                             // Paint is created independently so no RuntimeShader can hide it.
-                            if(sourceIsolationMode90==2 || sourceIsolationMode90==3){
+                            if(residualMode120!=1 && (sourceIsolationMode90==2 || sourceIsolationMode90==3)){
+                                residualLog120("DIRECT_BITMAP_PATH","mode="+residualMode120+" sourceIsolation="+sourceIsolationMode90);
                                 // Clip to the visible bitmap domain. Unlike BitmapShader
                                 // CLAMP, the source/destination rectangles cannot repeat
                                 // the last wallpaper column beyond the display edge.
@@ -4933,15 +4953,16 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 // 0=V104/V105 optical baseline; 1=standard; 2=enhanced.
                                                 int rimLevel106=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_lens_rim_106",0);
                                                 shader93.setFloatUniform("lensRimEnhance106",(float)Math.max(0,Math.min(2,rimLevel106)));
-                                                shader93.setFloatUniform("nonlinear107",nonlinear107/100f);
-                                                shader93.setFloatUniform("thickness107",thickness107/100f);
-                                                shader93.setFloatUniform("interior107",interior107/100f);
-                                                shader93.setFloatUniform("focus107",focus107/100f);
-                                                shader93.setFloatUniform("reflection107",reflection107/100f);
+                                                shader93.setFloatUniform("nonlinear107",residualMode120==2?0f:nonlinear107/100f);
+                                                shader93.setFloatUniform("thickness107",residualMode120==2?0f:thickness107/100f);
+                                                shader93.setFloatUniform("interior107",residualMode120==2?0f:interior107/100f);
+                                                shader93.setFloatUniform("focus107",residualMode120==2?0f:focus107/100f);
+                                                shader93.setFloatUniform("reflection107",residualMode120==2?0f:reflection107/100f);
                                                 int opticalProbe118=0;
                                                 try { opticalProbe118=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_optical_probe_118",0); }catch(Throwable ignored118){}
                                                 opticalProbe118=Math.max(0,Math.min(2,opticalProbe118));
-                                                shader93.setFloatUniform("opticalProbe118",(float)opticalProbe118);
+                                                shader93.setFloatUniform("opticalProbe118",residualMode120==2?0f:(float)opticalProbe118);
+                                                if(residualMode120==2)residualLog120("ZERO_LENS_UNIFORMS","mode=2");
                                                 if(lensPipelineLogs111++<160)log("OPTICAL_UV_119 stage=UNIFORMS probe="+opticalProbe118+" legacy="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107);
                                                 shader93.setFloatUniform("blurMix101",blend101);
                                                 shader93.setFloatUniform("bounds",rect.left,rect.top,rect.right,rect.bottom);
