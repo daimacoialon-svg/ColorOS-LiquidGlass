@@ -4262,9 +4262,19 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 log("OPTICAL_PROBE_141 mode="+probe141+" refraction="+REFRACTION_ENABLED+
                     " blur="+customBlurDp+" afterOEM="+Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get()));
             }
-            // Strict master switch: clear-refraction and blur must never activate AGSL.
-            final boolean refractionActive=REFRACTION_ENABLED && refractionPercent>0;
-            lensTrace116("LEGACY_GATE", "active="+refractionActive+" enabled="+REFRACTION_ENABLED+
+            // V117: independent optical lens may submit AGSL with legacy 2D strength at zero.
+            // Keep the master refraction switch authoritative; preserve the original legacy
+            // value separately for diagnosis. No unsafe bypass of crop/path/hardware gates.
+            final boolean legacyRefractionActive117=REFRACTION_ENABLED && refractionPercent>0;
+            final boolean opticalLensActive117=REFRACTION_ENABLED &&
+                (nonlinear107>0 || thickness107>0 || interior107>0 || focus107>0 || reflection107>0);
+            final boolean refractionActive=legacyRefractionActive117 || opticalLensActive117;
+            lensTrace116("LENS_GATE_117", "legacy="+legacyRefractionActive117+
+                " optical="+opticalLensActive117+" combined="+refractionActive+
+                " enabled="+REFRACTION_ENABLED+" strength="+refractionPercent+
+                " nonlinear="+nonlinear107+" thickness="+thickness107+
+                " interior="+interior107+" focus="+focus107+" reflection="+reflection107);
+            lensTrace116("LEGACY_GATE", "active="+legacyRefractionActive117+" enabled="+REFRACTION_ENABLED+
                 " percent="+refractionPercent+" nonlinear="+nonlinear107+" thickness="+thickness107+
                 " interior="+interior107+" focus="+focus107+" reflection="+reflection107);
             final int pathMode169=refractionPathMode169();
