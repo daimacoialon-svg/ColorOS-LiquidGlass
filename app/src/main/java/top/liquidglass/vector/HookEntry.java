@@ -33,27 +33,35 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static int edgeShaderLogs93=0;
     // Independent AGSL path: local geometry, screen-aligned bitmap coordinates.
     // Both the base and warped samples come from the same DECAL bitmap source.
+    // V205.94: one continuous rounded-rectangle SDF lens, not independent strips.
+    // The outward normal is the local SDF gradient, not the center-to-pixel vector.
     private static final String EDGE_SHADER_93 =
         "uniform shader wallpaper;\n"+
         "uniform float4 bounds;\n"+
         "uniform float4 validBounds;\n"+
         "uniform float radius;\n"+
         "uniform float strength;\n"+
+        "float glassSdf(float2 p) {\n"+
+        "  float2 halfSize = max((bounds.zw-bounds.xy)*0.5,float2(0.5));\n"+
+        "  float r = clamp(radius,0.0,min(halfSize.x,halfSize.y));\n"+
+        "  float2 q = abs(p-(bounds.xy+bounds.zw)*0.5)-(halfSize-r);\n"+
+        "  return length(max(q,float2(0.0)))+min(max(q.x,q.y),0.0)-r;\n"+
+        "}\n"+
         "half4 main(float2 p) {\n"+
         "  half4 base = wallpaper.eval(p);\n"+
-        "  float2 size = max(bounds.zw-bounds.xy, float2(1.0));\n"+
-        "  float2 center = (bounds.xy+bounds.zw)*0.5;\n"+
-        "  float2 q = abs(p-center)-(size*0.5-min(radius,min(size.x,size.y)*0.5));\n"+
-        "  float2 outside = max(q,float2(0.0));\n"+
-        "  float sdf = length(outside)+min(max(q.x,q.y),0.0)-min(radius,min(size.x,size.y)*0.5);\n"+
-        "  float edge = 1.0-smoothstep(-25.0,-1.0,sdf);\n"+
-        "  float2 normal = (p-center)/max(length(p-center),0.001);\n"+
-        "  float2 delta = normal * (8.0*strength*edge*edge);\n"+
+        "  float d = glassSdf(p);\n"+
+        "  float2 grad = float2(glassSdf(p+float2(1.0,0.0))-glassSdf(p-float2(1.0,0.0)),\n"+
+        "                       glassSdf(p+float2(0.0,1.0))-glassSdf(p-float2(0.0,1.0)));\n"+
+        "  float2 n = grad/max(length(grad),0.0001);\n"+
+        "  float nearEdge = smoothstep(-32.0,-10.0,d)*(1.0-smoothstep(-3.0,1.0,d));\n"+
+        "  float interior = 0.075*(1.0-smoothstep(-45.0,-18.0,d));\n"+
+        "  float profile = max(nearEdge,interior);\n"+
+        "  float2 delta = n*(17.0*strength*profile);\n"+
         "  float2 samplePos = p+delta;\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
-        "  float valid = smoothstep(0.0,5.0,min(room.x,room.y));\n"+
-        "  half4 refracted = wallpaper.eval(samplePos);\n"+
-        "  return mix(base,refracted,half(valid*edge));\n"+
+        "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
+        "  half4 bent = wallpaper.eval(samplePos);\n"+
+        "  return mix(base,bent,half(safe));\n"+
         "}\n";
 
     private static final Uri CONFIG = Uri.parse("content://top.liquidglass.vector.config/settings");
@@ -4676,7 +4684,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 rect.left+sr90*referenceScaleX-left,
                                                 rect.top+sb90*referenceScaleY-top),paint90);
                                         drawn90=true;
-                                        // V205.93: continuous per-pixel sampling over the same
+                                        // V205.94: nonlinear SDF edge-lens sampling over the same
                                         // screen-aligned Bitmap that the proven direct-crop uses.
                                         // The folder geometry is always the full local rect.
                                         // Offscreen sampling blends to the unwarped wallpaper,
@@ -4697,20 +4705,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     rect.left-left+frame.getWidth()*referenceScaleX,
                                                     rect.top-top+frame.getHeight()*referenceScaleY);
                                                 shader93.setFloatUniform("radius",contourRadius);
-                                                shader93.setFloatUniform("strength",Math.min(1.5f,Math.max(0f,refractionPercent)/100f));
+                                                shader93.setFloatUniform("strength",Math.min(1.0f,Math.max(0f,refractionPercent)/100f));
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
-                                                if(edgeShaderLogs93++<60)log("EDGE_SHADER_93 stage=DRAW strength="+refractionPercent+
+                                                if(edgeShaderLogs93++<60)log("EDGE_SHADER_94 stage=DRAW strength="+refractionPercent+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
-                                                if(edgeShaderLogs93++<60)log("EDGE_SHADER_93 stage=ERROR "+e);
+                                                if(edgeShaderLogs93++<60)log("EDGE_SHADER_94 stage=ERROR "+e);
                                             }
                                         }
                                     }
                                 }
                                 if(sourceIsolationDrawLogs90++<90)
-                                    log("EDGE_REFRACTION_92 stage=DIRECT_BITMAP mode="+sourceIsolationMode90+" strength="+refractionPercent+" drawn="+drawn90+
+                                    log("EDGE_REFRACTION_94 stage=DIRECT_BITMAP mode="+sourceIsolationMode90+" strength="+refractionPercent+" drawn="+drawn90+
                                         " view="+System.identityHashCode(view));
                             }else if(executionProofMode89==1){
                                 Paint proof89=new Paint(Paint.ANTI_ALIAS_FLAG);
