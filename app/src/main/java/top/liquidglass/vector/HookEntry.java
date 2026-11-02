@@ -46,6 +46,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float blurMix101;\n"+
         "uniform float diagnosticInterior103;\n"+
         "uniform float diagnosticBlur103;\n"+
+        "uniform float lensRimEnhance106;\n"+
         "float glassSdf(float2 p) {\n"+
         "  float2 halfSize = max((bounds.zw-bounds.xy)*0.5,float2(0.5));\n"+
         "  float r = clamp(radius,0.0,min(halfSize.x,halfSize.y));\n"+
@@ -71,7 +72,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float nearEdge = smoothstep(-32.0,-10.0,d)*(1.0-smoothstep(-3.0,1.0,d));\n"+
         "  float interior = 0.0; // V104: eliminate medial-axis diagonal displacement seams\n"+
         "  float profile = max(nearEdge,interior);\n"+
-        "  float2 delta = n*(17.0*strength*profile);\n"+
+        // V106: opt-in rim-only convex lens enhancement. The extra term vanishes
+        // away from the edge band, avoiding the medial-axis seams fixed in V104.
+        "  float rimCore106=smoothstep(-24.0,-13.0,d)*(1.0-smoothstep(-8.0,-2.0,d));\n"+
+        "  float gain106=1.0+lensRimEnhance106*0.28*rimCore106;\n"+
+        "  float2 delta = n*(17.0*strength*profile*gain106);\n"+
         "  float2 samplePos = p+delta;\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
         "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
@@ -4837,6 +4842,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 int diagBlur103=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_diag_blur_103",0);
                                                 shader93.setFloatUniform("diagnosticInterior103",diagInterior103==0?0f:1f);
                                                 shader93.setFloatUniform("diagnosticBlur103",(float)Math.max(0,Math.min(2,diagBlur103)));
+                                                // 0=V104/V105 optical baseline; 1=standard; 2=enhanced.
+                                                int rimLevel106=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_lens_rim_106",0);
+                                                shader93.setFloatUniform("lensRimEnhance106",(float)Math.max(0,Math.min(2,rimLevel106)));
                                                 shader93.setFloatUniform("blurMix101",blend101);
                                                 shader93.setFloatUniform("bounds",rect.left,rect.top,rect.right,rect.bottom);
                                                 shader93.setFloatUniform("validBounds",rect.left-left,rect.top-top,
