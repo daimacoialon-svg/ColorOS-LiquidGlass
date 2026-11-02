@@ -4539,7 +4539,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                 c90.getContentResolver(),"liquidglass_source_isolation_90",0);
                         }catch(Throwable ignored90){}
                     }
-                    sourceIsolation90=Math.max(0,Math.min(2,sourceIsolation90));
+                    sourceIsolation90=Math.max(0,Math.min(3,sourceIsolation90));
                     final int sourceIsolationMode90=sourceIsolation90;
                     if(sourceIsolationMode90==1){
                         // Force the existing V87 shader branch at the verified draw site,
@@ -4629,7 +4629,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             }
                             // V205.89 proof is injected at the real final AGSL draw call.
                             // Paint is created independently so no RuntimeShader can hide it.
-                            if(sourceIsolationMode90==2){
+                            if(sourceIsolationMode90==2 || sourceIsolationMode90==3){
                                 // Clip to the visible bitmap domain. Unlike BitmapShader
                                 // CLAMP, the source/destination rectangles cannot repeat
                                 // the last wallpaper column beyond the display edge.
@@ -4650,10 +4650,54 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 rect.left+sr90*referenceScaleX-left,
                                                 rect.top+sb90*referenceScaleY-top),paint90);
                                         drawn90=true;
+                                        // V205.91 opt-in: preserve proven direct-crop base and
+                                        // add a clipped, locally displaced edge-only sampling pass.
+                                        // Unlike BitmapShader(CLAMP), every tile is bounded to
+                                        // valid wallpaper pixels. The displacement is controlled
+                                        // by the existing UI refractionPercent.
+                                        if(sourceIsolationMode90==3 && refractionPercent>0.01f){
+                                            final float edge91=24f;
+                                            final float maxShift91=7f*Math.min(1.5f,Math.max(0f,refractionPercent)/100f);
+                                            final float step91=3f;
+                                            final int save91=canvas.save();
+                                            try{
+                                                android.graphics.Path path91=new android.graphics.Path();
+                                                path91.addRoundRect(rect,contourRadius,contourRadius,android.graphics.Path.Direction.CW);
+                                                canvas.clipPath(path91);
+                                                Paint refract91=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+                                                // Horizontal displacement along both vertical edges.
+                                                for(float x91=rect.left;x91<rect.right;x91+=step91){
+                                                    float xEnd91=Math.min(rect.right,x91+step91);
+                                                    float center91=(x91+xEnd91)*0.5f;
+                                                    float dist91=Math.min(center91-rect.left,rect.right-center91);
+                                                    if(dist91>=edge91)continue;
+                                                    float t91=Math.max(0f,1f-dist91/edge91);
+                                                    float smooth91=t91*t91*(3f-2f*t91);
+                                                    float sign91=(center91-rect.left<rect.right-center91)?1f:-1f;
+                                                    float offset91=sign91*maxShift91*smooth91;
+                                                    float screenX91=left+center91;
+                                                    float sampleL91=screenX91+offset91;
+                                                    float sampleR91=sampleL91+(xEnd91-x91);
+                                                    float sampleT91=top+rect.top;
+                                                    float sampleB91=top+rect.bottom;
+                                                    // Never sample a clamped edge column. Let the
+                                                    // unwarped base show where overscan is unavailable.
+                                                    if(sampleL91<0f||sampleR91>sw||sampleT91<0f||sampleB91>sh)continue;
+                                                    int sx091=(int)Math.floor(sampleL91/referenceScaleX);
+                                                    int sx191=(int)Math.ceil(sampleR91/referenceScaleX);
+                                                    int sy091=(int)Math.floor(sampleT91/referenceScaleY);
+                                                    int sy191=(int)Math.ceil(sampleB91/referenceScaleY);
+                                                    if(sx091<0||sy091<0||sx191>frame.getWidth()||sy191>frame.getHeight()||sx191<=sx091||sy191<=sy091)continue;
+                                                    refract91.setAlpha(235);
+                                                    canvas.drawBitmap(frame,new android.graphics.Rect(sx091,sy091,sx191,sy191),
+                                                        new RectF(x91,rect.top,xEnd91,rect.bottom),refract91);
+                                                }
+                                            }finally{canvas.restoreToCount(save91);}
+                                        }
                                     }
                                 }
                                 if(sourceIsolationDrawLogs90++<90)
-                                    log("SOURCE_ISOLATION_90 stage=DIRECT_BITMAP mode=2 drawn="+drawn90+
+                                    log("EDGE_REFRACTION_91 stage=DIRECT_BITMAP mode="+sourceIsolationMode90+" strength="+refractionPercent+" drawn="+drawn90+
                                         " view="+System.identityHashCode(view));
                             }else if(executionProofMode89==1){
                                 Paint proof89=new Paint(Paint.ANTI_ALIAS_FLAG);
