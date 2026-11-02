@@ -4347,7 +4347,18 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     }catch(Throwable ignored111){}
                     lensDiag111=Math.max(0,Math.min(2,lensDiag111));
                     int originalIsolation111=sourceIsolation90;
-                    if(lensDiag111>0 && !(view.getBackground() instanceof DockBackground204)) sourceIsolation90=3;
+                    // V115: the independent optical lens must enter the verified
+                    // DECAL bitmap / rounded-SDF path even when legacy strength is zero.
+                    // Do not change Dock rendering or the V104 safe rim normals.
+                    boolean independentLens115 = nonlinear107>0 || thickness107>0 || interior107>0;
+                    boolean independentSurface115 = focus107>0 || reflection107>0;
+                    boolean folderOptical115 = !(view.getBackground() instanceof DockBackground204);
+                    if(folderOptical115 && (lensDiag111>0 || independentLens115 || independentSurface115))
+                        sourceIsolation90=3;
+                    if(lensGateLogs115++<120)log("LENS_GATE_115 stage=ROUTE legacy="+refractionPercent+
+                        " lens="+independentLens115+" surface="+independentSurface115+
+                        " diag="+lensDiag111+" original="+originalIsolation111+
+                        " effective="+sourceIsolation90+" folder="+folderOptical115);
                     if(lensPipelineLogs111++<160)log("LENS_PIPELINE_111 stage=CONFIG diag="+lensDiag111+
                         " originalMode="+originalIsolation111+" effectiveMode="+sourceIsolation90+
                         " legacy="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+
@@ -5111,6 +5122,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     }
     // V113: independent, outermost folder diagnostic. Never use legacy strength,
     // AGSL state, wallpaper readiness, or the inner refraction clip to gate it.
+    private static int lensGateLogs115=0;
     private static int outerProofLogs113=0;
     private static int lensDiagnostic113(View v) {
         try { return android.provider.Settings.Global.getInt(v.getContext().getContentResolver(),
