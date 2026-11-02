@@ -3921,8 +3921,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     view.getContext().getContentResolver(),"liquidglass_direct_fusion_82",0); }
                 catch(Throwable ignored82){}
             }
+            // V85: A transparent folder needs no wallpaper bitmap sampling.
+            // The master refraction switch must not leave an opaque direct-crop
+            // wallpaper layer active after the optical path is disabled.
+            // Keep the existing blur pipeline independent below.
+            final boolean directFusionAllowed85=REFRACTION_ENABLED && refractionPercent>0f;
             boolean directCropDrawn82=false;
-            if(fusion82==1 || fusion82==2){
+            if(directFusionAllowed85 && (fusion82==1 || fusion82==2)){
                 try {
                     float vL82=Math.max(0f,left),vT82=Math.max(0f,top);
                     float vR82=Math.min((float)sw,left+rect.width());
@@ -4003,7 +4008,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         log("DIRECT_FUSION_82 ERROR "+e82.getClass().getSimpleName());
                 }
                 if(DIRECT_FUSION_82_LOGS.getAndIncrement()<24)
-                    log("DIRECT_FUSION_83 mode="+fusion82+" drawn="+directCropDrawn82+
+                    log("DIRECT_FUSION_83 mode="+fusion82+" masterEnabled="+REFRACTION_ENABLED+
+                        " uiStrength="+refractionPercent+" directAllowed="+directFusionAllowed85+
+                        " drawn="+directCropDrawn82+
                         " frame="+frame.getWidth()+"x"+frame.getHeight()+" left="+left+" top="+top);
             }
             boolean continuousDrawn=false;
