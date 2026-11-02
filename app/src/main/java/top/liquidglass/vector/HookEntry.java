@@ -4200,6 +4200,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     }
                     // V195: blur is a SOURCE texture, not a later overlay. Both blurred and
                     // clear wallpaper use the exact same AGSL displacement/strength.
+                    // V1.9.205.97: resolve isolation mode before either blur branch uses it.
+                    // Previously declared below the first use, causing javac errors.
+                    int sourceIsolation90=0;
+                    if(!(view.getBackground() instanceof DockBackground204)){
+                        try{
+                            android.content.Context c90=launcherContext;
+                            if(c90!=null)sourceIsolation90=android.provider.Settings.Global.getInt(
+                                c90.getContentResolver(),"liquidglass_source_isolation_90",0);
+                        }catch(Throwable ignored90){}
+                    }
+                    sourceIsolation90=Math.max(0,Math.min(3,sourceIsolation90));
                     android.graphics.Shader opticalInput195=state.shader;
                     boolean blurredInput195=false;
                     if(customBlurMode==1 && customBlurDp>0 && sourceIsolation90!=3){
@@ -4587,15 +4598,6 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     // V205.90: confirmed final draw-site isolation, folder only.
                     // 0=original AGSL; 1=AGSL unwarped wallpaper.eval(p) via V87
                     // uniform; 2=direct screen-aligned bitmap crop at SAME draw call.
-                    int sourceIsolation90=0;
-                    if(!isDock89){
-                        try{
-                            android.content.Context c90=launcherContext;
-                            if(c90!=null)sourceIsolation90=android.provider.Settings.Global.getInt(
-                                c90.getContentResolver(),"liquidglass_source_isolation_90",0);
-                        }catch(Throwable ignored90){}
-                    }
-                    sourceIsolation90=Math.max(0,Math.min(3,sourceIsolation90));
                     final int sourceIsolationMode90=sourceIsolation90;
                     if(sourceIsolationMode90==1){
                         // Force the existing V87 shader branch at the verified draw site,
