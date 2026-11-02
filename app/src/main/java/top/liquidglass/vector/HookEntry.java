@@ -2732,6 +2732,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float sampleIsolation;\n"+
         "uniform float folderContourMode20534;\n"+
         "uniform float sharedInteriorLens63;\n"+
+        "uniform float edgeDiagnostic69;\n"+
         "uniform float compositeProbe157;\n"+
         "uniform float4 screenClip;\n"+
         "uniform float glassCornerRadius20513;\n"+
@@ -3085,12 +3086,32 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // The visible display is the only valid wallpaper sample region. A
         // folder may be partly offscreen while swiping; never sample a CLAMP
         // repeated dark boundary pixel outside the visible screen.
+        " float2 rawSample69=samplingPoint;\n"+
         " float2 safe20513=clamp(samplingPoint,screenClip.xy,screenClip.zw);\n"+
         " float2 base20513=clamp(p,screenClip.xy,screenClip.zw);\n"+
         " float2 delta20513=abs(samplingPoint-safe20513);\n"+
         " float outsideDistance20513=max(delta20513.x,delta20513.y);\n"+
         " float edgeGuard20513=1.0-smoothstep(0.0,18.0,outsideDistance20513);\n"+
         " samplingPoint=(folderProbe20530 && sampleIsolation>7.5 && sampleIsolation<8.5)?safe20513:mix(base20513,safe20513,edgeGuard20513);\n"+
+        // V205.69: folder-only diagnostics; no changes to normal mode-0 sampling.
+        // 1: zero displacement; 2: raw pre-clamp boundary heatmap;
+        // 3: split coordinate grids (left=unwarped, right=final sample).
+        " if(edgeDiagnostic69>0.5 && folderContourMode20534>0.5){\n"+
+        "  if(edgeDiagnostic69<1.5){samplingPoint=clamp(p,screenClip.xy,screenClip.zw); }\n"+
+        "  else if(edgeDiagnostic69<2.5){\n"+
+        "   float2 excess69=max(screenClip.xy-rawSample69,float2(0.0))+max(rawSample69-screenClip.zw,float2(0.0));\n"+
+        "   float risk69=clamp(max(excess69.x,excess69.y)/16.0,0.0,1.0);\n"+
+        "   half4 base69=wallpaper.eval(samplingPoint);\n"+
+        "   return half4(mix(base69.rgb,half3(1.0,0.05,0.05),half(max(0.08,risk69)*0.88)),0.95);\n"+
+        "  } else if(edgeDiagnostic69<3.5){\n"+
+        "   float2 gridP69=(p.x<bounds.x+bounds.z*0.5)?p:samplingPoint;\n"+
+        "   float2 cell69=abs(fract(gridP69/24.0)-0.5)*24.0;\n"+
+        "   float line69=1.0-smoothstep(0.4,1.6,min(cell69.x,cell69.y));\n"+
+        "   half4 bg69=wallpaper.eval(samplingPoint);\n"+
+        "   half3 tint69=(p.x<bounds.x+bounds.z*0.5)?half3(0.15,0.95,0.85):half3(1.0,0.75,0.1);\n"+
+        "   return half4(mix(bg69.rgb,tint69,half(line69*0.9)),0.95);\n"+
+        "  }\n"+
+        " }\n"+
         " if(sampleIsolation>11.5 && sampleIsolation<12.5){float h33=clamp(cornerRisk33,0.0,1.0);return half4(half3(h33,1.0-h33,0.0),0.90); }\n"+
         // V205.35: inspect the FINAL wallpaper sampling coordinate, after screen clipping.
         // Mode 16: warped grid in the sampled wallpaper coordinate space.
@@ -3981,6 +4002,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     // Dock keeps the exact previous optical path, regardless of diagnostic mode.
                     state.continuousShader.setFloatUniform("folderContourMode20534",
                         (view.getBackground() instanceof DockBackground204)?0.0f:1.0f);
+                    // V205.69 diagnostic, explicitly folder-only; off by default.
+                    int edgeMode69=0;
+                    try{
+                        android.content.Context context69=launcherContext;
+                        if(context69!=null)edgeMode69=android.provider.Settings.Global.getInt(
+                            context69.getContentResolver(),"liquidglass_edge_diagnostic_69",0);
+                    }catch(Throwable ignored69){}
+                    edgeMode69=Math.max(0,Math.min(3,edgeMode69));
+                    state.continuousShader.setFloatUniform("edgeDiagnostic69",
+                        (view.getBackground() instanceof DockBackground204)?0.0f:(float)edgeMode69);
+
                     final int composite157=compositeProbe157();
                     state.continuousShader.setFloatUniform("compositeProbe157",(float)composite157);
                     // V205.63 opt-in: 0=off, 1=folder only, 2=folder+Dock.
