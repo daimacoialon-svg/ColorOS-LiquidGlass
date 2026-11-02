@@ -2756,6 +2756,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float edgeDiagnostic69;\n"+
         "uniform float validSampleDomain70;\n"+
         "uniform float rightEdgeExperiment86;\n"+
+        "uniform float textureInputExperiment87;\n"+
         "uniform float compositeProbe157;\n"+
         "uniform float4 screenClip;\n"+
         "uniform float glassCornerRadius20513;\n"+
@@ -3129,6 +3130,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float allowed86=max(0.0,room86)*fade86;\n"+
         "  samplingPoint.x=p.x+min(outward86,allowed86)+min(0.0,samplingPoint.x-p.x);\n"+
         " }\n"+
+        // V87: folder-only input-path isolation. Modes 1/2 intentionally change
+        // optical displacement for diagnosis; mode 3 compares input vs warped
+        // coordinates in the SAME RuntimeShader/BitmapShader path.
+        " if(textureInputExperiment87>0.5 && folderContourMode20534>0.5){\n"+
+        "  if(textureInputExperiment87<1.5){samplingPoint=p;}\n"+
+        "  else if(textureInputExperiment87<2.5){samplingPoint=p+float2(4.0,0.0);}\n"+
+        " }\n"+
         " float2 safe20513=clamp(samplingPoint,screenClip.xy,screenClip.zw);\n"+
         " float2 base20513=clamp(p,screenClip.xy,screenClip.zw);\n"+
         " float2 delta20513=abs(samplingPoint-safe20513);\n"+
@@ -3244,6 +3252,16 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float minEig38=max(0.0,0.5*(a38+c38-sqrt(max(0.0,(a38-c38)*(a38-c38)+4.0*b38*b38))));\n"+
         "  float sigma38=sqrt(minEig38);float risk38=1.0-smoothstep(0.10,0.65,sigma38);\n"+
         "  return half4(half3(risk38,1.0-risk38,0.10),0.93);\n"+
+        " }\n"+
+        // V87 mode 3: left half shows unwarped input in the exact AGSL shader,
+        // right half keeps the original warped sampling; a thin separator marks
+        // the comparison. Both halves use the same source texture and matrix.
+        " if(textureInputExperiment87>2.5 && folderContourMode20534>0.5){\n"+
+        "  float center87=bounds.x+bounds.z*0.5;\n"+
+        "  float2 coord87=p.x<center87?clamp(p,screenClip.xy,screenClip.zw):samplingPoint;\n"+
+        "  half4 raw87=wallpaper.eval(coord87);\n"+
+        "  if(abs(p.x-center87)<1.0)raw87.rgb=half3(0.0,1.0,0.9);\n"+
+        "  return half4(raw87.rgb,0.98);\n"+
         " }\n"+
         " half4 color=wallpaper.eval(samplingPoint);\n"+
         // V201: blend only texture detail, never sampling displacement or output alpha.
@@ -4468,6 +4486,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     }
                     edge86=Math.max(0,Math.min(3,edge86));
                     state.continuousShader.setFloatUniform("rightEdgeExperiment86",(float)edge86);
+                    // V87 is independent from V86; test with V86 mode 0.
+                    int texture87=0;
+                    if(!(view.getBackground() instanceof DockBackground204)){
+                        try{
+                            android.content.Context c87=launcherContext;
+                            if(c87!=null)texture87=android.provider.Settings.Global.getInt(
+                                c87.getContentResolver(),"liquidglass_texture_input_experiment_87",0);
+                        }catch(Throwable ignored87){}
+                    }
+                    texture87=Math.max(0,Math.min(3,texture87));
+                    state.continuousShader.setFloatUniform("textureInputExperiment87",(float)texture87);
+                    if(texture87!=0 && rightEdge86Logs++<70)log("TEXTURE_INPUT_87 mode="+texture87+
+                        " left="+left+" top="+top+" screen="+sw+"x"+sh+
+                        " folder="+view.getWidth()+"x"+view.getHeight());
                     if(edge86!=0 && rightEdge86Logs++<35)log("RIGHT_EDGE_86 mode="+edge86+
                         " left="+left+" top="+top+" screenW="+sw+" screenH="+sh+
                         " viewSize="+view.getWidth()+"x"+view.getHeight());
