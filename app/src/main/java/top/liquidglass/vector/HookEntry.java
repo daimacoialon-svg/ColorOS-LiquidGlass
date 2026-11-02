@@ -4200,7 +4200,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     }
                     // V195: blur is a SOURCE texture, not a later overlay. Both blurred and
                     // clear wallpaper use the exact same AGSL displacement/strength.
-                    // V1.9.205.97: resolve isolation mode before either blur branch uses it.
+                    // V1.9.205.97: resolve isolation mode for the earlier blur branch.
                     // Previously declared below the first use, causing javac errors.
                     int sourceIsolation90=0;
                     if(!(view.getBackground() instanceof DockBackground204)){
@@ -4825,7 +4825,18 @@ public final class HookEntry implements IXposedHookLoadPackage {
             state.samplePaint.setAlpha(255);
             // Independent background blur and tint: always visible with refraction OFF.
             // With refraction ON, retain some optical detail beneath the blur.
-            if(customBlurMode==1 && customBlurDp>0 && sourceIsolation90!=3 && !continuousDrawn && !directCropDrawn82){
+            // V1.9.205.98: this fallback is outside the earlier sourceIsolation90 local scope.
+            // Resolve its own mode rather than referencing a variable from another block.
+            int sourceIsolationFallback98=0;
+            if(!(view.getBackground() instanceof DockBackground204)){
+                try{
+                    android.content.Context context98=launcherContext;
+                    if(context98!=null)sourceIsolationFallback98=android.provider.Settings.Global.getInt(
+                        context98.getContentResolver(),"liquidglass_source_isolation_90",0);
+                }catch(Throwable ignored98){}
+            }
+            sourceIsolationFallback98=Math.max(0,Math.min(3,sourceIsolationFallback98));
+            if(customBlurMode==1 && customBlurDp>0 && sourceIsolationFallback98!=3 && !continuousDrawn && !directCropDrawn82){
                 android.graphics.Bitmap blurred=blurredWallpaper(frame,dm.density,view);
                 if(blurred!=null){
                     if(blurHitLogs142++<24)log("BLUR_DRAW_142 READY radius="+customBlurDp+" afterOEM="+Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get()));
