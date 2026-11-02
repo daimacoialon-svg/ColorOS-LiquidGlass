@@ -42,6 +42,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float radius;\n"+
         "uniform float strength;\n"+
         "uniform float blurPx95;\n"+
+        "uniform shader blurredWallpaper101;\n"+
+        "uniform float blurMix101;\n"+
         "float glassSdf(float2 p) {\n"+
         "  float2 halfSize = max((bounds.zw-bounds.xy)*0.5,float2(0.5));\n"+
         "  float r = clamp(radius,0.0,min(halfSize.x,halfSize.y));\n"+
@@ -64,35 +66,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  half4 bent = wallpaper.eval(samplePos);\n"+
         "  half4 optical = mix(base,bent,half(safe));\n"+
         // V99: 0dp must be bit-for-bit the V94 optical field; no blur taps.
-        "  if (blurPx95 <= 0.0001) return optical;\n"+
-        // Small-radius symmetric low-pass at the SAME source locations as V94.
-        // Center-heavy normalized weights prevent 4-neighbour ghosting/pixelation.
-        "  if (blurPx95 > 1.0) {\n"+
-        "    float sigmaWide = max(0.5,blurPx95*0.42);\n"+
-        "    float stepWide = max(0.5,sigmaWide*0.68);\n"+
-        "    half4 accum = half4(0.0);\n"+
-        "    float sumWeight = 0.0;\n"+
-        "    for (int iy=-2;iy<=2;iy++) {\n"+
-        "      for (int ix=-2;ix<=2;ix++) {\n"+
-        "        float2 shift=float2(float(ix),float(iy))*stepWide;\n"+
-        "        float2 q0=p+shift;\n"+
-        "        float2 q1=samplePos+shift;\n"+
-        "        float2 room0=min(q0-validBounds.xy,validBounds.zw-q0);\n"+
-        "        float2 room1=min(q1-validBounds.xy,validBounds.zw-q1);\n"+
-        "        float valid0=step(0.5,min(room0.x,room0.y));\n"+
-        "        float valid1=step(0.5,min(room1.x,room1.y));\n"+
-        "        float w=exp(-dot(shift,shift)/(2.0*sigmaWide*sigmaWide));\n"+
-        "        half4 tapBase=wallpaper.eval(clamp(q0,validBounds.xy+0.5,validBounds.zw-0.5));\n"+
-        "        half4 tapBent=wallpaper.eval(clamp(q1,validBounds.xy+0.5,validBounds.zw-0.5));\n"+
-        "        float bentWeight=safe*valid1;\n"+
-        "        accum+=mix(tapBase,tapBent,half(bentWeight))*half(w*valid0);\n"+
-        "        sumWeight+=w*valid0;\n"+
-        "      }\n"+
-        "    }\n"+
-        "    half4 wide=accum/half(max(sumWeight,0.0001));\n"+
-        "    float wideMix=smoothstep(1.0,2.0,blurPx95);\n"+
-        "    return mix(optical,wide,half(wideMix));\n"+
+        "  if (blurMix101 > 0.0001) {\n"+
+        "    half4 softBase=blurredWallpaper101.eval(p);\n"+
+        "    half4 softBent=blurredWallpaper101.eval(samplePos);\n"+
+        "    half4 softOptical=mix(softBase,softBent,half(safe));\n"+
+        "    return mix(optical,softOptical,half(blurMix101));\n"+
         "  }\n"+
+        "  if (blurPx95 <= 0.0001) return optical;\n"+
+        // V101: large-radius blur is performed once on a cached, downsampled
+        // bitmap before lens sampling; no sparse wide-spaced shader taps.
         "  float sigma = clamp(blurPx95,0.0,4.0);\n"+
         "  float2 offX=float2(max(0.35,sigma),0.0);\n"+
         "  float2 offY=float2(0.0,max(0.35,sigma));\n"+
@@ -110,6 +92,51 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float weight=clamp(sigma*sigma*0.10,0.0,0.45);\n"+
         "  return mix(optical,avg,half(weight));\n"+
         "}\n";
+
+    // V101: cached separable box filter at reduced resolution. No render-thread
+    // recomputation while the wallpaper object and radius remain unchanged.
+    private static android.graphics.Bitmap cachedBlurFrame101;
+    private static android.graphics.Bitmap cachedBlurOutput101;
+    private static int cachedBlurRadius101=-1;
+    private static synchronized android.graphics.Bitmap preblur101(android.graphics.Bitmap frame,float radiusPx){
+        if(frame==null || radiusPx<=1f)return frame;
+        int key=Math.max(1,Math.round(radiusPx*10f));
+        if(frame==cachedBlurFrame101 && key==cachedBlurRadius101 && cachedBlurOutput101!=null && !cachedBlurOutput101.isRecycled())return cachedBlurOutput101;
+        // Downsample moderately, then apply a true dense separable blur.
+        // Scaling preserves the full wallpaper coordinate system in BitmapShader.
+        int factor=radiusPx>18f?4:2;
+        int w=Math.max(2,frame.getWidth()/factor),h=Math.max(2,frame.getHeight()/factor);
+        android.graphics.Bitmap small=android.graphics.Bitmap.createScaledBitmap(frame,w,h,true);
+        int[] pixels=new int[w*h],tmp=new int[w*h],dst=new int[w*h];
+        small.getPixels(pixels,0,w,0,0,w,h);
+        int r=Math.max(1,Math.min(80,Math.round(radiusPx/factor*0.65f)));
+        for(int y=0;y<h;y++){
+            for(int x=0;x<w;x++){
+                int aa=0,rr=0,gg=0,bb=0,n=0;
+                for(int k=-r;k<=r;k++){
+                    int xx=Math.max(0,Math.min(w-1,x+k));int c=pixels[y*w+xx];
+                    aa+=c>>>24;rr+=(c>>>16)&255;gg+=(c>>>8)&255;bb+=c&255;n++;
+                }
+                tmp[y*w+x]=((aa/n)<<24)|((rr/n)<<16)|((gg/n)<<8)|(bb/n);
+            }
+        }
+        for(int y=0;y<h;y++){
+            for(int x=0;x<w;x++){
+                int aa=0,rr=0,gg=0,bb=0,n=0;
+                for(int k=-r;k<=r;k++){
+                    int yy=Math.max(0,Math.min(h-1,y+k));int c=tmp[yy*w+x];
+                    aa+=c>>>24;rr+=(c>>>16)&255;gg+=(c>>>8)&255;bb+=c&255;n++;
+                }
+                dst[y*w+x]=((aa/n)<<24)|((rr/n)<<16)|((gg/n)<<8)|(bb/n);
+            }
+        }
+        android.graphics.Bitmap result=android.graphics.Bitmap.createBitmap(w,h,android.graphics.Bitmap.Config.ARGB_8888);
+        result.setPixels(dst,0,w,0,0,w,h);
+        if(small!=frame && small!=result)small.recycle();
+        // Avoid recycling the previous output: an in-flight draw may still reference it.
+        cachedBlurFrame101=frame;cachedBlurRadius101=key;cachedBlurOutput101=result;
+        return result;
+    }
 
     private static final Uri CONFIG = Uri.parse("content://top.liquidglass.vector.config/settings");
     private static volatile long lastRead = 0;
@@ -4762,20 +4789,34 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 wallpaper93.setLocalMatrix(matrix93);
                                                 android.graphics.RuntimeShader shader93=new android.graphics.RuntimeShader(EDGE_SHADER_93);
                                                 shader93.setInputShader("wallpaper",wallpaper93);
+                                                float requestedBlurPx101=(customBlurMode==1 ? Math.max(0f,folderMicroBlurDp95) : 0f)*view.getResources().getDisplayMetrics().density;
+                                                float blend101=requestedBlurPx101<=1f?0f:Math.min(1f,Math.max(0f,(requestedBlurPx101-1f)/3f));
+                                                android.graphics.Bitmap blurredFrame101=blend101>0f?preblur101(frame,requestedBlurPx101):frame;
+                                                android.graphics.BitmapShader blurredWallpaper101=new android.graphics.BitmapShader(blurredFrame101,
+                                                    android.graphics.Shader.TileMode.DECAL,android.graphics.Shader.TileMode.DECAL);
+                                                Matrix blurredMatrix101=new Matrix(matrix93);
+                                                blurredMatrix101.postScale((float)frame.getWidth()/blurredFrame101.getWidth(),
+                                                    (float)frame.getHeight()/blurredFrame101.getHeight());
+                                                // Scale in source coordinates before applying the original screen transform.
+                                                blurredMatrix101.setValues(new float[]{referenceScaleX*(float)frame.getWidth()/blurredFrame101.getWidth(),0f,rect.left-left,
+                                                    0f,referenceScaleY*(float)frame.getHeight()/blurredFrame101.getHeight(),rect.top-top,0f,0f,1f});
+                                                blurredWallpaper101.setLocalMatrix(blurredMatrix101);
+                                                shader93.setInputShader("blurredWallpaper101",blurredWallpaper101);
+                                                shader93.setFloatUniform("blurMix101",blend101);
                                                 shader93.setFloatUniform("bounds",rect.left,rect.top,rect.right,rect.bottom);
                                                 shader93.setFloatUniform("validBounds",rect.left-left,rect.top-top,
                                                     rect.left-left+frame.getWidth()*referenceScaleX,
                                                     rect.top-top+frame.getHeight()*referenceScaleY);
                                                 shader93.setFloatUniform("radius",contourRadius);
                                                 shader93.setFloatUniform("strength",Math.min(1.0f,Math.max(0f,refractionPercent)/100f));
-                                                shader93.setFloatUniform("blurPx95",(customBlurMode==1 ? Math.max(0f,folderMicroBlurDp95) : 0f)*view.getResources().getDisplayMetrics().density);
+                                                shader93.setFloatUniform("blurPx95",blend101>0f ? 0f : requestedBlurPx101);
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
-                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_100 stage=DRAW requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
+                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_101 stage=DRAW requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
-                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_100 stage=ERROR "+e);
+                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_101 stage=ERROR "+e);
                                             }
                                         }
                                     }
