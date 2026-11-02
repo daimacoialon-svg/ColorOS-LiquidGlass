@@ -3922,7 +3922,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 catch(Throwable ignored82){}
             }
             boolean directCropDrawn82=false;
-            if(fusion82==1){
+            if(fusion82==1 || fusion82==2){
                 try {
                     float vL82=Math.max(0f,left),vT82=Math.max(0f,top);
                     float vR82=Math.min((float)sw,left+rect.width());
@@ -3945,7 +3945,42 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             android.graphics.Path clip82=new android.graphics.Path();
                             clip82.addRoundRect(rect,contourRadius,contourRadius,android.graphics.Path.Direction.CW);
                             canvas.clipPath(clip82);
-                            canvas.drawBitmap(frame,src82,dst82,cropPaint82);
+                            if(fusion82==2){
+                                // V83: drawBitmapMesh samples the same bitmap without BitmapShader.
+                                // The mesh is displaced in destination space using the container's
+                                // LOCAL edge distance, preserving live screen-to-bitmap alignment.
+                                // This is a folder-only optical experiment, NOT the old AGSL path.
+                                final int cols83=32, rows83=64;
+                                final float[] vertices83=new float[(cols83+1)*(rows83+1)*2];
+                                final float fw83=frame.getWidth(),fh83=frame.getHeight();
+                                final float glassL83=left, glassT83=top;
+                                final float glassR83=left+rect.width(),glassB83=top+rect.height();
+                                final float edge83=Math.max(12f,Math.min(48f,Math.min(rect.width(),rect.height())*.24f));
+                                // Keep displacement modest to minimize mesh folds at rounded corners.
+                                final float strength83=Math.min(7f,Math.max(1.5f,refractionPercent*.055f));
+                                for(int yy83=0;yy83<=rows83;yy83++){
+                                    float sy83=fh83*yy83/rows83;
+                                    float screenY83=sy83*referenceScaleY;
+                                    for(int xx83=0;xx83<=cols83;xx83++){
+                                        float sx83=fw83*xx83/cols83;
+                                        float screenX83=sx83*referenceScaleX;
+                                        float dx83=Math.min(screenX83-glassL83,glassR83-screenX83);
+                                        float dy83=Math.min(screenY83-glassT83,glassB83-screenY83);
+                                        float wx83=(dx83>=0f && dx83<edge83)?(1f-dx83/edge83):0f;
+                                        float wy83=(dy83>=0f && dy83<edge83)?(1f-dy83/edge83):0f;
+                                        wx83=wx83*wx83*(3f-2f*wx83);
+                                        wy83=wy83*wy83*(3f-2f*wy83);
+                                        float signX83=(screenX83<(glassL83+glassR83)*.5f)?1f:-1f;
+                                        float signY83=(screenY83<(glassT83+glassB83)*.5f)?1f:-1f;
+                                        int idx83=(yy83*(cols83+1)+xx83)*2;
+                                        vertices83[idx83]=screenX83-left+signX83*strength83*wx83;
+                                        vertices83[idx83+1]=screenY83-top+signY83*strength83*wy83;
+                                    }
+                                }
+                                canvas.drawBitmapMesh(frame,cols83,rows83,vertices83,0,null,0,cropPaint82);
+                            }else{
+                                canvas.drawBitmap(frame,src82,dst82,cropPaint82);
+                            }
                             canvas.restoreToCount(save82);
                             directCropDrawn82=true;
                         }
@@ -3955,7 +3990,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         log("DIRECT_FUSION_82 ERROR "+e82.getClass().getSimpleName());
                 }
                 if(DIRECT_FUSION_82_LOGS.getAndIncrement()<24)
-                    log("DIRECT_FUSION_82 mode="+fusion82+" drawn="+directCropDrawn82+
+                    log("DIRECT_FUSION_83 mode="+fusion82+" drawn="+directCropDrawn82+
                         " frame="+frame.getWidth()+"x"+frame.getHeight()+" left="+left+" top="+top);
             }
             boolean continuousDrawn=false;
