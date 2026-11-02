@@ -2710,6 +2710,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
         log("STABLE_SHEEN_179 mode="+mode+" view="+System.identityHashCode(view)+" shaderAlpha=1.0");
     }
     // V205.80: independent per-mode counters; do not exhaust diagnostics in mode 1.
+    private static final java.util.concurrent.atomic.AtomicIntegerArray MAPPING_PROBE_81_COUNTS =
+        new java.util.concurrent.atomic.AtomicIntegerArray(4);
+    private static final java.util.concurrent.atomic.AtomicInteger MAPPING_PROBE_81_LAST =
+        new java.util.concurrent.atomic.AtomicInteger(-1);
+    private static boolean shouldLogMapping81(int mode){
+        int previous=MAPPING_PROBE_81_LAST.getAndSet(mode);
+        int count=MAPPING_PROBE_81_COUNTS.getAndIncrement(mode);
+        return previous!=mode || count<12 || count%120==0;
+    }
     private static final java.util.concurrent.atomic.AtomicIntegerArray LAYER_PROBE_80_COUNTS = new java.util.concurrent.atomic.AtomicIntegerArray(4);
     private static final java.util.concurrent.atomic.AtomicInteger LAYER_PROBE_80_LAST = new java.util.concurrent.atomic.AtomicInteger(-1);
     private static boolean shouldLogLayer80(int mode){
@@ -4081,6 +4090,71 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                     " clampTile=true agslDisplacement=not_measured");
                             }
                         }catch(Throwable e76){if(SAMPLE_DOMAIN_76_COUNT<5)log("BITMAP_BOUNDARY_76_ERROR "+e76.getClass().getSimpleName());}
+                    }
+                    // V1.9.205.81: folder-only independent source mapping probes.
+                    // Mode 0: unchanged V80 path; 1: existing shader matrix;
+                    // 2: fresh screen-space matrix; 3: direct bitmap crop without BitmapShader.
+                    int mappingProbe81=0;
+                    if(!(view.getBackground() instanceof DockBackground204)){
+                        try { mappingProbe81=android.provider.Settings.Global.getInt(
+                            view.getContext().getContentResolver(),"liquidglass_mapping_probe_81",0); }
+                        catch(Throwable ignored81){}
+                    }
+                    if(mappingProbe81>=1 && mappingProbe81<=3){
+                        String actual81="UNSET";
+                        try {
+                            android.graphics.Paint p81=new android.graphics.Paint(
+                                android.graphics.Paint.ANTI_ALIAS_FLAG|android.graphics.Paint.FILTER_BITMAP_FLAG);
+                            p81.setAlpha(255);
+                            if(mappingProbe81==1){
+                                android.graphics.Matrix original81=new android.graphics.Matrix();
+                                original81.setScale(referenceScaleX,referenceScaleY);
+                                original81.postTranslate(-shaderLeft,-shaderTop);
+                                state.shader.setLocalMatrix(original81);
+                                p81.setShader(state.shader);
+                                canvas.drawRect(rect,p81);
+                                actual81="ORIGINAL_MATRIX";
+                            }else if(mappingProbe81==2){
+                                android.graphics.Matrix independent81=new android.graphics.Matrix();
+                                independent81.setValues(new float[]{referenceScaleX,0f,-left,
+                                    0f,referenceScaleY,-top,0f,0f,1f});
+                                state.shader.setLocalMatrix(independent81);
+                                p81.setShader(state.shader);
+                                canvas.drawRect(rect,p81);
+                                actual81="INDEPENDENT_SCREEN_MATRIX";
+                            }else{
+                                float vL=Math.max(0f,left),vT=Math.max(0f,top);
+                                float vR=Math.min((float)sw,left+rect.width());
+                                float vB=Math.min((float)sh,top+rect.height());
+                                if(vR>vL && vB>vT){
+                                    int srcL=Math.max(0,Math.min(frame.getWidth(),(int)Math.floor(vL/referenceScaleX)));
+                                    int srcT=Math.max(0,Math.min(frame.getHeight(),(int)Math.floor(vT/referenceScaleY)));
+                                    int srcR=Math.max(srcL,Math.min(frame.getWidth(),(int)Math.ceil(vR/referenceScaleX)));
+                                    int srcB=Math.max(srcT,Math.min(frame.getHeight(),(int)Math.ceil(vB/referenceScaleY)));
+                                    if(srcR>srcL && srcB>srcT){
+                                        android.graphics.Rect source81=new android.graphics.Rect(srcL,srcT,srcR,srcB);
+                                        android.graphics.RectF dest81=new android.graphics.RectF(
+                                            rect.left+(srcL*referenceScaleX-left),
+                                            rect.top+(srcT*referenceScaleY-top),
+                                            rect.left+(srcR*referenceScaleX-left),
+                                            rect.top+(srcB*referenceScaleY-top));
+                                        int saved81=canvas.save();
+                                        canvas.clipRect(rect);
+                                        canvas.drawBitmap(frame,source81,dest81,p81);
+                                        canvas.restoreToCount(saved81);
+                                        actual81="DIRECT_BITMAP_CROP";
+                                    }else actual81="EMPTY_SOURCE";
+                                }else actual81="OUTSIDE_SCREEN";
+                            }
+                        }catch(Throwable error81){
+                            actual81="ERROR_"+error81.getClass().getSimpleName();
+                        }
+                        if(shouldLogMapping81(mappingProbe81))log("MAPPING_PROBE_81 requested="+
+                            mappingProbe81+" actual="+actual81+" folder=true frame="+
+                            frame.getWidth()+"x"+frame.getHeight()+" screen="+sw+"x"+sh+
+                            " left="+left+" top="+top+" shaderOrigin="+shaderLeft+","+shaderTop+
+                            " rect="+rect.toString());
+                        return; // existing outer finally restores Canvas state
                     }
                     state.shaderMatrix.postTranslate(-shaderLeft,-shaderTop);
                     state.shader.setLocalMatrix(state.shaderMatrix);
