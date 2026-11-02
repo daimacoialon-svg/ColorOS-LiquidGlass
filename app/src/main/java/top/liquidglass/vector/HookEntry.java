@@ -67,6 +67,32 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  if (blurPx95 <= 0.0001) return optical;\n"+
         // Small-radius symmetric low-pass at the SAME source locations as V94.
         // Center-heavy normalized weights prevent 4-neighbour ghosting/pixelation.
+        "  if (blurPx95 > 1.0) {\n"+
+        "    float sigmaWide = max(0.5,blurPx95*0.42);\n"+
+        "    float stepWide = max(0.5,sigmaWide*0.68);\n"+
+        "    half4 accum = half4(0.0);\n"+
+        "    float sumWeight = 0.0;\n"+
+        "    for (int iy=-2;iy<=2;iy++) {\n"+
+        "      for (int ix=-2;ix<=2;ix++) {\n"+
+        "        float2 shift=float2(float(ix),float(iy))*stepWide;\n"+
+        "        float2 q0=p+shift;\n"+
+        "        float2 q1=samplePos+shift;\n"+
+        "        float2 room0=min(q0-validBounds.xy,validBounds.zw-q0);\n"+
+        "        float2 room1=min(q1-validBounds.xy,validBounds.zw-q1);\n"+
+        "        float valid0=step(0.5,min(room0.x,room0.y));\n"+
+        "        float valid1=step(0.5,min(room1.x,room1.y));\n"+
+        "        float w=exp(-dot(shift,shift)/(2.0*sigmaWide*sigmaWide));\n"+
+        "        half4 tapBase=wallpaper.eval(clamp(q0,validBounds.xy+0.5,validBounds.zw-0.5));\n"+
+        "        half4 tapBent=wallpaper.eval(clamp(q1,validBounds.xy+0.5,validBounds.zw-0.5));\n"+
+        "        float bentWeight=safe*valid1;\n"+
+        "        accum+=mix(tapBase,tapBent,half(bentWeight))*half(w*valid0);\n"+
+        "        sumWeight+=w*valid0;\n"+
+        "      }\n"+
+        "    }\n"+
+        "    half4 wide=accum/half(max(sumWeight,0.0001));\n"+
+        "    float wideMix=smoothstep(1.0,2.0,blurPx95);\n"+
+        "    return mix(optical,wide,half(wideMix));\n"+
+        "  }\n"+
         "  float sigma = clamp(blurPx95,0.0,4.0);\n"+
         "  float2 offX=float2(max(0.35,sigma),0.0);\n"+
         "  float2 offY=float2(0.0,max(0.35,sigma));\n"+
@@ -4746,10 +4772,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
-                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_99 stage=DRAW requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
+                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_100 stage=DRAW requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
-                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_99 stage=ERROR "+e);
+                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_100 stage=ERROR "+e);
                                             }
                                         }
                                     }
