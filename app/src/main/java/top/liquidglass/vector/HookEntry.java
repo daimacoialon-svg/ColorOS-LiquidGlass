@@ -66,10 +66,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 smoothN=float2(w4.y-w4.x,w4.w-w4.z);\n"+
         "  float2 nOriginal=grad/max(length(grad),0.0001);\n"+
         "  float2 nSoft=smoothN/max(length(smoothN),0.0001);\n"+
-        "  float medialBlend=1.0-smoothstep(-35.0,-12.0,d);\n"+
+        "  float medialBlend=0.0; // V104: preserve proven V94 edge normals\n"+
         "  float2 n=mix(nOriginal,nSoft,medialBlend);\n"+
         "  float nearEdge = smoothstep(-32.0,-10.0,d)*(1.0-smoothstep(-3.0,1.0,d));\n"+
-        "  float interior = 0.075*diagnosticInterior103*(1.0-smoothstep(-45.0,-18.0,d));\n"+
+        "  float interior = 0.0; // V104: eliminate medial-axis diagonal displacement seams\n"+
         "  float profile = max(nearEdge,interior);\n"+
         "  float2 delta = n*(17.0*strength*profile);\n"+
         "  float2 samplePos = p+delta;\n"+
@@ -107,47 +107,56 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  return mix(optical,avg,half(weight));\n"+
         "}\n";
 
-    // V101: cached separable box filter at reduced resolution. No render-thread
-    // recomputation while the wallpaper object and radius remain unchanged.
+    // V104: full-resolution, three-pass separable box approximation to Gaussian.
+    // Sliding window O(width*height) per pass; avoids sparse taps and downsampling banding.
     private static android.graphics.Bitmap cachedBlurFrame101;
     private static android.graphics.Bitmap cachedBlurOutput101;
     private static int cachedBlurRadius101=-1;
+    private static int[] gaussianBoxes104(float sigma){
+        double ideal=Math.sqrt(1.0+4.0*sigma*sigma/3.0);
+        int lower=Math.max(1,(int)Math.floor(ideal));if((lower&1)==0)lower--;
+        int upper=lower+2;
+        double m=(12.0*sigma*sigma-3.0*lower*lower-12.0*lower-9.0)/(-4.0*lower-4.0);
+        int count=Math.max(0,Math.min(3,(int)Math.round(m)));
+        return new int[]{(count>0?lower:upper)/2,(count>1?lower:upper)/2,(count>2?lower:upper)/2};
+    }
+    private static void boxPass104(int[] input,int[] output,int w,int h,int radius,boolean horizontal){
+        if(radius<=0){System.arraycopy(input,0,output,0,input.length);return;}
+        int lines=horizontal?h:w, length=horizontal?w:h;
+        int stride=horizontal?1:w, lineStride=horizontal?w:1;
+        int div=2*radius+1;
+        for(int line=0;line<lines;line++){
+            int start=line*lineStride;
+            long a=0,r=0,g=0,b=0;
+            for(int k=-radius;k<=radius;k++){
+                int pos=Math.max(0,Math.min(length-1,k));int c=input[start+pos*stride];
+                a+=(c>>>24);r+=(c>>>16)&255;g+=(c>>>8)&255;b+=c&255;
+            }
+            for(int x=0;x<length;x++){
+                output[start+x*stride]=((int)(a/div)<<24)|((int)(r/div)<<16)|((int)(g/div)<<8)|(int)(b/div);
+                int oldPos=Math.max(0,Math.min(length-1,x-radius));
+                int newPos=Math.max(0,Math.min(length-1,x+radius+1));
+                int old=input[start+oldPos*stride],next=input[start+newPos*stride];
+                a+=(next>>>24)-(old>>>24);
+                r+=((next>>>16)&255)-((old>>>16)&255);
+                g+=((next>>>8)&255)-((old>>>8)&255);
+                b+=(next&255)-(old&255);
+            }
+        }
+    }
     private static synchronized android.graphics.Bitmap preblur101(android.graphics.Bitmap frame,float radiusPx){
         if(frame==null || radiusPx<=1f)return frame;
         int key=Math.max(1,Math.round(radiusPx*10f));
         if(frame==cachedBlurFrame101 && key==cachedBlurRadius101 && cachedBlurOutput101!=null && !cachedBlurOutput101.isRecycled())return cachedBlurOutput101;
-        // Downsample moderately, then apply a true dense separable blur.
-        // Scaling preserves the full wallpaper coordinate system in BitmapShader.
-        int factor=radiusPx>36f?3:1;
-        int w=Math.max(2,frame.getWidth()/factor),h=Math.max(2,frame.getHeight()/factor);
-        android.graphics.Bitmap small=android.graphics.Bitmap.createScaledBitmap(frame,w,h,true);
-        int[] pixels=new int[w*h],tmp=new int[w*h],dst=new int[w*h];
-        small.getPixels(pixels,0,w,0,0,w,h);
-        int r=Math.max(1,Math.min(96,Math.round(radiusPx/factor*0.55f)));
-        for(int y=0;y<h;y++){
-            for(int x=0;x<w;x++){
-                int aa=0,rr=0,gg=0,bb=0,n=0;
-                for(int k=-r;k<=r;k++){
-                    int xx=Math.max(0,Math.min(w-1,x+k));int c=pixels[y*w+xx];
-                    aa+=c>>>24;rr+=(c>>>16)&255;gg+=(c>>>8)&255;bb+=c&255;n++;
-                }
-                tmp[y*w+x]=((aa/n)<<24)|((rr/n)<<16)|((gg/n)<<8)|(bb/n);
-            }
-        }
-        for(int y=0;y<h;y++){
-            for(int x=0;x<w;x++){
-                int aa=0,rr=0,gg=0,bb=0,n=0;
-                for(int k=-r;k<=r;k++){
-                    int yy=Math.max(0,Math.min(h-1,y+k));int c=tmp[yy*w+x];
-                    aa+=c>>>24;rr+=(c>>>16)&255;gg+=(c>>>8)&255;bb+=c&255;n++;
-                }
-                dst[y*w+x]=((aa/n)<<24)|((rr/n)<<16)|((gg/n)<<8)|(bb/n);
-            }
-        }
+        int w=frame.getWidth(),h=frame.getHeight();
+        int[] a=new int[w*h],b=new int[w*h];
+        frame.getPixels(a,0,w,0,0,w,h);
+        // Clamp only to prevent pathological CPU cost. Three box passes approximate Gaussian.
+        float sigma=Math.max(0.2f,Math.min(80f,radiusPx*0.55f));
+        int[] radii=gaussianBoxes104(sigma);
+        for(int r:radii){boxPass104(a,b,w,h,r,true);boxPass104(b,a,w,h,r,false);}
         android.graphics.Bitmap result=android.graphics.Bitmap.createBitmap(w,h,android.graphics.Bitmap.Config.ARGB_8888);
-        result.setPixels(dst,0,w,0,0,w,h);
-        if(small!=frame && small!=result)small.recycle();
-        // Avoid recycling the previous output: an in-flight draw may still reference it.
+        result.setPixels(a,0,w,0,0,w,h);
         cachedBlurFrame101=frame;cachedBlurRadius101=key;cachedBlurOutput101=result;
         return result;
     }
@@ -4816,7 +4825,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     0f,referenceScaleY*(float)frame.getHeight()/blurredFrame101.getHeight(),rect.top-top,0f,0f,1f});
                                                 blurredWallpaper101.setLocalMatrix(blurredMatrix101);
                                                 shader93.setInputShader("blurredWallpaper101",blurredWallpaper101);
-                                                int diagInterior103=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_diag_interior_103",1);
+                                                int diagInterior103=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_diag_interior_103",0);
                                                 int diagBlur103=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_diag_blur_103",0);
                                                 shader93.setFloatUniform("diagnosticInterior103",diagInterior103==0?0f:1f);
                                                 shader93.setFloatUniform("diagnosticBlur103",(float)Math.max(0,Math.min(2,diagBlur103)));
@@ -4831,7 +4840,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
-                                                if(edgeShaderLogs93++<60)log("FOLDER_DIAG_103 stage=DRAW interior="+diagInterior103+" blurDiag="+diagBlur103+" requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
+                                                if(edgeShaderLogs93++<60)log("FOLDER_DIAG_104 stage=DRAW interior="+diagInterior103+" blurDiag="+diagBlur103+" requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
                                                 if(edgeShaderLogs93++<60)log("FOLDER_BLUR_102 stage=ERROR "+e);

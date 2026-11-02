@@ -1,1 +1,1 @@
-V1.9.205.103 折痕与预模糊分层诊断版。基于102版。新增liquidglass_diag_interior_103和liquidglass_diag_blur_103两项可恢复的诊断设置；默认行为与102版一致。参见V1.9.205.103-测试说明.txt。
+V1.9.205.104 折痕与预模糊分层诊断版。基于102版。新增liquidglass_diag_interior_103和liquidglass_diag_blur_103两项可恢复的诊断设置；默认行为与102版一致。参见V1.9.205.104-测试说明.txt。
