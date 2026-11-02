@@ -2728,6 +2728,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         int n=LAYER_PROBE_80_COUNTS.getAndIncrement(mode);
         return prior!=mode || n<12 || n%120==0;
     }
+    private static int rightEdge86Logs=0;
     private static final String REFRACTION_AGSL =
         "uniform shader wallpaper;\n"+
         "uniform shader wallpaperClear201;\n"+
@@ -2754,6 +2755,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float sharedInteriorLens63;\n"+
         "uniform float edgeDiagnostic69;\n"+
         "uniform float validSampleDomain70;\n"+
+        "uniform float rightEdgeExperiment86;\n"+
         "uniform float compositeProbe157;\n"+
         "uniform float4 screenClip;\n"+
         "uniform float glassCornerRadius20513;\n"+
@@ -3108,6 +3110,25 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // folder may be partly offscreen while swiping; never sample a CLAMP
         // repeated dark boundary pixel outside the visible screen.
         " float2 rawSample69=samplingPoint;\n"+
+        // V86: diagnostic before legacy screen-domain clipping. Folder only.
+        // Mode 1 visualizes raw X overshoot, keeping the original lens active.
+        " if(rightEdgeExperiment86>0.5 && rightEdgeExperiment86<1.5 && folderContourMode20534>0.5){\n"+
+        "  float right86=max(0.0,samplingPoint.x-screenClip.z);\n"+
+        "  float left86=max(0.0,screenClip.x-samplingPoint.x);\n"+
+        "  float heat86=smoothstep(0.0,18.0,max(right86,left86));\n"+
+        "  if(heat86>0.001)return half4(half3(heat86,0.12,1.0-heat86),0.95);\n"+
+        " }\n"+
+        // Mode 2/3 keep the same AGSL lens and UI strength, but reduce only
+        // outward displacement near the rightmost valid wallpaper column.
+        // No change to glass bounds, radius, alpha, or Dock.
+        " if(rightEdgeExperiment86>1.5 && folderContourMode20534>0.5){\n"+
+        "  float room86=max(0.0,screenClip.z-p.x-0.5);\n"+
+        "  float outward86=max(0.0,samplingPoint.x-p.x);\n"+
+        "  float band86=rightEdgeExperiment86>2.5?32.0:12.0;\n"+
+        "  float fade86=smoothstep(0.0,band86,room86);\n"+
+        "  float allowed86=max(0.0,room86)*fade86;\n"+
+        "  samplingPoint.x=p.x+min(outward86,allowed86)+min(0.0,samplingPoint.x-p.x);\n"+
+        " }\n"+
         " float2 safe20513=clamp(samplingPoint,screenClip.xy,screenClip.zw);\n"+
         " float2 base20513=clamp(p,screenClip.xy,screenClip.zw);\n"+
         " float2 delta20513=abs(samplingPoint-safe20513);\n"+
@@ -4436,6 +4457,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     }catch(Throwable ignored70){}
                     state.continuousShader.setFloatUniform("validSampleDomain70",
                         (view.getBackground() instanceof DockBackground204)?0.0f:(validDomain70==2?2.0f:(validDomain70==1?1.0f:0.0f)));
+                    // V86 isolated right-edge diagnostic. 0 retains V85 AGSL.
+                    int edge86=0;
+                    if(!(view.getBackground() instanceof DockBackground204)){
+                        try{
+                            android.content.Context c86=launcherContext;
+                            if(c86!=null)edge86=android.provider.Settings.Global.getInt(
+                                c86.getContentResolver(),"liquidglass_right_edge_experiment_86",0);
+                        }catch(Throwable ignored86){}
+                    }
+                    edge86=Math.max(0,Math.min(3,edge86));
+                    state.continuousShader.setFloatUniform("rightEdgeExperiment86",(float)edge86);
+                    if(edge86!=0 && rightEdge86Logs++<35)log("RIGHT_EDGE_86 mode="+edge86+
+                        " left="+left+" top="+top+" screenW="+sw+" screenH="+sh+
+                        " viewSize="+view.getWidth()+"x"+view.getHeight());
                     final int composite157=compositeProbe157();
                     state.continuousShader.setFloatUniform("compositeProbe157",(float)composite157);
                     // V205.63 opt-in: 0=off, 1=folder only, 2=folder+Dock.
