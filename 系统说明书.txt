@@ -1,2 +1,5 @@
-ColorOS-LiquidGlass V1.9.205.76
+ColorOS-LiquidGlass V1.9.205.77
 本版基于75版稳定折射链路，仅新增BITMAP_BOUNDARY_76边界采样诊断。保留Dock几何；未修复右侧横向拉伸。
+
+
+V1.9.205.77 新增：liquidglass_final_sample_probe_77，0关闭，1最终采样坐标网格，2采样位移颜色图，3未折射基准网格。仅作用于文件夹，使用现有 AGSL 诊断分支，不改动核心 Shader 和 Dock 几何。

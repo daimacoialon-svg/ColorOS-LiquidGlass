@@ -4159,6 +4159,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     state.continuousShader.setFloatUniform("motionIsolation173",(float)isolation173);
                     traceMotionIsolation173(view,isolation173,left,top,System.identityHashCode(frame));
                     int samplingDiagnostic=currentSampleIsolationMode();
+                    // V205.77: opt-in final-coordinate visualization using ALREADY PRESENT
+                    // AGSL branches (16=final sampling grid, 17=displacement heatmap,
+                    // 18=unwarped reference grid). No Shader source changes.
+                    // Folder only; Dock and mode 0 retain their original rendering.
+                    int finalProbe77=0;
+                    final boolean dockProbe77=view.getBackground() instanceof DockBackground204;
+                    if(!dockProbe77){
+                        try{
+                            android.content.Context c77=launcherContext;
+                            if(c77!=null)finalProbe77=android.provider.Settings.Global.getInt(
+                                c77.getContentResolver(),"liquidglass_final_sample_probe_77",0);
+                        }catch(Throwable ignored77){}
+                    }
+                    if(finalProbe77>=1 && finalProbe77<=3){
+                        samplingDiagnostic=15+finalProbe77;
+                    }
                     state.continuousShader.setFloatUniform("sampleIsolation",(float)(probe156==2?1:samplingDiagnostic));
                     // Dock keeps the exact previous optical path, regardless of diagnostic mode.
                     state.continuousShader.setFloatUniform("folderContourMode20534",
