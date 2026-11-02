@@ -3946,38 +3946,51 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             clip82.addRoundRect(rect,contourRadius,contourRadius,android.graphics.Path.Direction.CW);
                             canvas.clipPath(clip82);
                             if(fusion82==2){
-                                // V83: drawBitmapMesh samples the same bitmap without BitmapShader.
-                                // The mesh is displaced in destination space using the container's
-                                // LOCAL edge distance, preserving live screen-to-bitmap alignment.
-                                // This is a folder-only optical experiment, NOT the old AGSL path.
-                                final int cols83=32, rows83=64;
-                                final float[] vertices83=new float[(cols83+1)*(rows83+1)*2];
-                                final float fw83=frame.getWidth(),fh83=frame.getHeight();
-                                final float glassL83=left, glassT83=top;
-                                final float glassR83=left+rect.width(),glassB83=top+rect.height();
-                                final float edge83=Math.max(12f,Math.min(48f,Math.min(rect.width(),rect.height())*.24f));
-                                // Keep displacement modest to minimize mesh folds at rounded corners.
-                                final float strength83=Math.min(7f,Math.max(1.5f,refractionPercent*.055f));
-                                for(int yy83=0;yy83<=rows83;yy83++){
-                                    float sy83=fh83*yy83/rows83;
-                                    float screenY83=sy83*referenceScaleY;
-                                    for(int xx83=0;xx83<=cols83;xx83++){
-                                        float sx83=fw83*xx83/cols83;
-                                        float screenX83=sx83*referenceScaleX;
-                                        float dx83=Math.min(screenX83-glassL83,glassR83-screenX83);
-                                        float dy83=Math.min(screenY83-glassT83,glassB83-screenY83);
-                                        float wx83=(dx83>=0f && dx83<edge83)?(1f-dx83/edge83):0f;
-                                        float wy83=(dy83>=0f && dy83<edge83)?(1f-dy83/edge83):0f;
-                                        wx83=wx83*wx83*(3f-2f*wx83);
-                                        wy83=wy83*wy83*(3f-2f*wy83);
-                                        float signX83=(screenX83<(glassL83+glassR83)*.5f)?1f:-1f;
-                                        float signY83=(screenY83<(glassT83+glassB83)*.5f)?1f:-1f;
-                                        int idx83=(yy83*(cols83+1)+xx83)*2;
-                                        vertices83[idx83]=screenX83-left+signX83*strength83*wx83;
-                                        vertices83[idx83+1]=screenY83-top+signY83*strength83*wy83;
+                                // V84: sample only the currently visible bitmap rectangle.
+                                // V83 warped a whole-screen mesh, which caused its last
+                                // triangles to stretch against the display edge.
+                                // This diagnostic path never reuses the AGSL BitmapShader.
+                                final int pad84=12;
+                                int cropL84=Math.max(0,sL82-pad84);
+                                int cropT84=Math.max(0,sT82-pad84);
+                                int cropR84=Math.min(frame.getWidth(),sR82+pad84);
+                                int cropB84=Math.min(frame.getHeight(),sB82+pad84);
+                                android.graphics.Bitmap local84=android.graphics.Bitmap.createBitmap(
+                                    frame,cropL84,cropT84,cropR84-cropL84,cropB84-cropT84);
+                                try{
+                                    final int cols84=16,rows84=16;
+                                    float[] mesh84=new float[(cols84+1)*(rows84+1)*2];
+                                    float localLeft84=rect.left+cropL84*referenceScaleX-left;
+                                    float localTop84=rect.top+cropT84*referenceScaleY-top;
+                                    float w84=local84.getWidth()*referenceScaleX;
+                                    float h84=local84.getHeight()*referenceScaleY;
+                                    float edge84=Math.max(8f,Math.min(40f,Math.min(rect.width(),rect.height())*.20f));
+                                    // Use the same live UI refraction strength; do not hardcode
+                                    // a separate visual setting. Clamp for mesh stability.
+                                    float strength84=Math.max(0f,Math.min(6f,refractionPercent*.045f));
+                                    for(int yy84=0;yy84<=rows84;yy84++){
+                                        float y84=localTop84+h84*yy84/rows84;
+                                        for(int xx84=0;xx84<=cols84;xx84++){
+                                            float x84=localLeft84+w84*xx84/cols84;
+                                            float dL84=x84-rect.left,dR84=rect.right-x84;
+                                            float dT84=y84-rect.top,dB84=rect.bottom-y84;
+                                            float dx84=Math.min(dL84,dR84),dy84=Math.min(dT84,dB84);
+                                            float wx84=(dx84>=0f && dx84<edge84)?1f-dx84/edge84:0f;
+                                            float wy84=(dy84>=0f && dy84<edge84)?1f-dy84/edge84:0f;
+                                            wx84=wx84*wx84*(3f-2f*wx84);
+                                            wy84=wy84*wy84*(3f-2f*wy84);
+                                            float offsetX84=(dL84<dR84?1f:-1f)*strength84*wx84;
+                                            float offsetY84=(dT84<dB84?1f:-1f)*strength84*wy84;
+                                            // Do not deform mesh vertices outside the actual
+                                            // folder: prevents off-screen edge pinning.
+                                            if(dx84<0f || dy84<0f){offsetX84=0f;offsetY84=0f;}
+                                            int idx84=(yy84*(cols84+1)+xx84)*2;
+                                            mesh84[idx84]=x84+offsetX84;
+                                            mesh84[idx84+1]=y84+offsetY84;
+                                        }
                                     }
-                                }
-                                canvas.drawBitmapMesh(frame,cols83,rows83,vertices83,0,null,0,cropPaint82);
+                                    canvas.drawBitmapMesh(local84,cols84,rows84,mesh84,0,null,0,cropPaint82);
+                                }finally{local84.recycle();}
                             }else{
                                 canvas.drawBitmap(frame,src82,dst82,cropPaint82);
                             }
