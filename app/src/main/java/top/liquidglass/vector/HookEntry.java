@@ -55,7 +55,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float d = glassSdf(p);\n"+
         "  float2 grad = float2(glassSdf(p+float2(1.0,0.0))-glassSdf(p-float2(1.0,0.0)),\n"+
         "                       glassSdf(p+float2(0.0,1.0))-glassSdf(p-float2(0.0,1.0)));\n"+
-        "  float2 n = grad/max(length(grad),0.0001);\n"+
+        // V102: medial-axis smoothing, preserve the V94 rim normals.
+        "  // deeper inside, blend adjacent edge normals to avoid diagonal Voronoi seams.\n"+
+        "  float2 hs=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n"+
+        "  float4 dist4=float4(p.x-bounds.x,bounds.z-p.x,p.y-bounds.y,bounds.w-p.y);\n"+
+        "  float softness=max(6.0,min(hs.x,hs.y)*0.20);\n"+
+        "  float4 w4=exp(-max(dist4,float4(0.0))/softness);\n"+
+        "  float2 smoothN=float2(w4.y-w4.x,w4.w-w4.z);\n"+
+        "  float2 nOriginal=grad/max(length(grad),0.0001);\n"+
+        "  float2 nSoft=smoothN/max(length(smoothN),0.0001);\n"+
+        "  float medialBlend=1.0-smoothstep(-35.0,-12.0,d);\n"+
+        "  float2 n=mix(nOriginal,nSoft,medialBlend);\n"+
         "  float nearEdge = smoothstep(-32.0,-10.0,d)*(1.0-smoothstep(-3.0,1.0,d));\n"+
         "  float interior = 0.075*(1.0-smoothstep(-45.0,-18.0,d));\n"+
         "  float profile = max(nearEdge,interior);\n"+
@@ -104,12 +114,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
         if(frame==cachedBlurFrame101 && key==cachedBlurRadius101 && cachedBlurOutput101!=null && !cachedBlurOutput101.isRecycled())return cachedBlurOutput101;
         // Downsample moderately, then apply a true dense separable blur.
         // Scaling preserves the full wallpaper coordinate system in BitmapShader.
-        int factor=radiusPx>18f?4:2;
+        int factor=radiusPx>36f?3:1;
         int w=Math.max(2,frame.getWidth()/factor),h=Math.max(2,frame.getHeight()/factor);
         android.graphics.Bitmap small=android.graphics.Bitmap.createScaledBitmap(frame,w,h,true);
         int[] pixels=new int[w*h],tmp=new int[w*h],dst=new int[w*h];
         small.getPixels(pixels,0,w,0,0,w,h);
-        int r=Math.max(1,Math.min(80,Math.round(radiusPx/factor*0.65f)));
+        int r=Math.max(1,Math.min(96,Math.round(radiusPx/factor*0.55f)));
         for(int y=0;y<h;y++){
             for(int x=0;x<w;x++){
                 int aa=0,rr=0,gg=0,bb=0,n=0;
@@ -4813,10 +4823,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
-                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_101 stage=DRAW requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
+                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_102 stage=DRAW requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
-                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_101 stage=ERROR "+e);
+                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_102 stage=ERROR "+e);
                                             }
                                         }
                                     }
