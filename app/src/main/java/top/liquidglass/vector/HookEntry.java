@@ -53,6 +53,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float interior107;\n"+
         "uniform float focus107;\n"+
         "uniform float reflection107;\n"+
+        "uniform float opticalProbe118;\n"+
 
         "float glassSdf(float2 p) {\n"+
         "  float2 halfSize = max((bounds.zw-bounds.xy)*0.5,float2(0.5));\n"+
@@ -95,11 +96,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
         "  float2 deltaLens=n*extra; // independent of legacy strength\n"+
         "  float2 delta=deltaLegacy+deltaLens;\n"+
+        "  if (opticalProbe118 > 0.5 && opticalProbe118 < 1.5) delta=float2(28.0,0.0);\n"+
         "  float2 samplePos = p+delta;\n"+
         "  samplePos=clamp(samplePos,validBounds.xy+float2(1.0),validBounds.zw-float2(1.0));\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
         "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
         "  half4 bent = wallpaper.eval(samplePos);\n"+
+        "  if (opticalProbe118 > 1.5) return half4(0.0,1.0,0.0,1.0);\n"+
         "  half4 optical = mix(base,bent,half(safe));\n"+
         "  float lightBand=pow(max(0.0,1.0-abs(d+4.0)/max(4.0,4.0+thickness107*8.0)),2.0);\n"+
         "  float light=reflection107*0.065*lightBand+focus107*0.035*lightBand*max(0.0,n.y*-0.7+n.x*-0.3);\n"+
@@ -4266,7 +4269,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             // Keep the master refraction switch authoritative; preserve the original legacy
             // value separately for diagnosis. No unsafe bypass of crop/path/hardware gates.
             final boolean legacyRefractionActive117=REFRACTION_ENABLED && refractionPercent>0;
-            final boolean opticalLensActive117=REFRACTION_ENABLED &&
+            final boolean opticalLensActive117=
                 (nonlinear107>0 || thickness107>0 || interior107>0 || focus107>0 || reflection107>0);
             final boolean refractionActive=legacyRefractionActive117 || opticalLensActive117;
             lensTrace116("LENS_GATE_117", "legacy="+legacyRefractionActive117+
@@ -4383,7 +4386,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     boolean independentLens115 = nonlinear107>0 || thickness107>0 || interior107>0;
                     boolean independentSurface115 = focus107>0 || reflection107>0;
                     boolean folderOptical115 = !(view.getBackground() instanceof DockBackground204);
-                    if(folderOptical115 && (lensDiag111>0 || independentLens115 || independentSurface115))
+                    int opticalProbeRoute118=0;
+                    try { opticalProbeRoute118=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_optical_probe_118",0); }catch(Throwable ignored118){}
+                    if(folderOptical115 && (lensDiag111>0 || independentLens115 || independentSurface115 || opticalProbeRoute118>0))
                         sourceIsolation90=3;
                     lensTrace116("ROUTE_REACHED", "mode="+sourceIsolation90+" legacy="+refractionPercent+" lens="+independentLens115);
                     if(lensGateLogs115++<120)log("LENS_GATE_115 stage=ROUTE legacy="+refractionPercent+
@@ -4897,7 +4902,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                         // The folder geometry is always the full local rect.
                                         // Offscreen sampling blends to the unwarped wallpaper,
                                         // rather than stretching CLAMP's last pixel or dropping strips.
-                                        if(sourceIsolationMode90==3 && (refractionPercent>0.01f || nonlinear107>0 || thickness107>0 || interior107>0 || focus107>0 || reflection107>0 || (customBlurMode==1 && folderMicroBlurDp95>0f))){
+                                        if(sourceIsolationMode90==3 && (refractionPercent>0.01f || nonlinear107>0 || thickness107>0 || interior107>0 || focus107>0 || reflection107>0 || opticalProbeRoute118>0 || (customBlurMode==1 && folderMicroBlurDp95>0f))){
                                             try{
                                                 android.graphics.BitmapShader wallpaper93=new android.graphics.BitmapShader(
                                                     frame,android.graphics.Shader.TileMode.DECAL,
@@ -4933,6 +4938,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 shader93.setFloatUniform("interior107",interior107/100f);
                                                 shader93.setFloatUniform("focus107",focus107/100f);
                                                 shader93.setFloatUniform("reflection107",reflection107/100f);
+                                                int opticalProbe118=0;
+                                                try { opticalProbe118=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_optical_probe_118",0); }catch(Throwable ignored118){}
+                                                opticalProbe118=Math.max(0,Math.min(2,opticalProbe118));
+                                                shader93.setFloatUniform("opticalProbe118",(float)opticalProbe118);
+                                                if(lensPipelineLogs111++<160)log("OPTICAL_UV_118 stage=UNIFORMS probe="+opticalProbe118+" legacy="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107);
                                                 shader93.setFloatUniform("blurMix101",blend101);
                                                 shader93.setFloatUniform("bounds",rect.left,rect.top,rect.right,rect.bottom);
                                                 shader93.setFloatUniform("validBounds",rect.left-left,rect.top-top,
