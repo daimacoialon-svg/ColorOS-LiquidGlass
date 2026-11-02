@@ -2709,7 +2709,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
         if(STABLE_SHEEN_LOGS_179[mode]++>=80)return;
         log("STABLE_SHEEN_179 mode="+mode+" view="+System.identityHashCode(view)+" shaderAlpha=1.0");
     }
-    private static final java.util.concurrent.atomic.AtomicInteger LAYER_PROBE_79_LOGS = new java.util.concurrent.atomic.AtomicInteger();
+    // V205.80: independent per-mode counters; do not exhaust diagnostics in mode 1.
+    private static final java.util.concurrent.atomic.AtomicIntegerArray LAYER_PROBE_80_COUNTS = new java.util.concurrent.atomic.AtomicIntegerArray(4);
+    private static final java.util.concurrent.atomic.AtomicInteger LAYER_PROBE_80_LAST = new java.util.concurrent.atomic.AtomicInteger(-1);
+    private static boolean shouldLogLayer80(int mode){
+        if(mode<0 || mode>3)return false;
+        int prior=LAYER_PROBE_80_LAST.getAndSet(mode);
+        int n=LAYER_PROBE_80_COUNTS.getAndIncrement(mode);
+        return prior!=mode || n<12 || n%120==0;
+    }
     private static final String REFRACTION_AGSL =
         "uniform shader wallpaper;\n"+
         "uniform shader wallpaperClear201;\n"+
@@ -4087,6 +4095,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                 c79.getContentResolver(),"liquidglass_layer_probe_79",0);
                         }catch(Throwable ignored79){}
                     }
+                    if(layerProbe79==0 && shouldLogLayer80(0)){
+                        log("LAYER_PROBE_80 requested=0 actual=DEFAULT_AGSL folder=true");
+                    }
                     if(layerProbe79==1 || layerProbe79==2){
                         android.graphics.Shader source79=layerProbe79==1?state.shader:
                             (blurredInput195 && state.cachedBlurShader!=null?state.cachedBlurShader:state.shader);
@@ -4094,8 +4105,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         paint79.setShader(source79);
                         paint79.setAlpha(255);
                         canvas.drawRect(rect,paint79);
-                        if(LAYER_PROBE_79_LOGS.getAndIncrement()<90){
-                            log("LAYER_PROBE_79 requested="+layerProbe79+
+                        if(shouldLogLayer80(layerProbe79)){
+                            log("LAYER_PROBE_80 requested="+layerProbe79+
                                 " actual="+(layerProbe79==1?"CLEAR_BITMAP":(source79==state.shader?"CLEAR_FALLBACK":"BLURRED_BITMAP"))+
                                 " folder=true frame="+frame.getWidth()+"x"+frame.getHeight()+
                                 " rect="+left+","+top+","+right+","+bottom+
@@ -4104,8 +4115,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         }
                         return; // outer finally restores Canvas clipping
                     }
-                    if(layerProbe79==3 && LAYER_PROBE_79_LOGS.getAndIncrement()<90){
-                        log("LAYER_PROBE_79 requested=3 actual=AGSL_COMPOSITE folder=true");
+                    if(layerProbe79==3 && shouldLogLayer80(3)){
+                        log("LAYER_PROBE_80 requested=3 actual=AGSL_COMPOSITE folder=true");
                     }
                     state.continuousShader.setInputShader("wallpaper",opticalInput195);
                     // V201: clear mode restores original wallpaper detail at the SAME refracted coordinate.
