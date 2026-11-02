@@ -31,6 +31,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public final class HookEntry implements IXposedHookLoadPackage {
     private static final String TAG = "ColorOSLiquidGlass";
     private static int edgeShaderLogs93=0;
+    private static int lensPipelineLogs111=0, lensProofLogs111=0;
     // Independent AGSL path: local geometry, screen-aligned bitmap coordinates.
     // Both the base and warped samples come from the same DECAL bitmap source.
     // V205.94: one continuous rounded-rectangle SDF lens, not independent strips.
@@ -4338,6 +4339,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         }catch(Throwable ignored90){}
                     }
                     sourceIsolation90=Math.max(0,Math.min(3,sourceIsolation90));
+                    // V111 opt-in diagnostic: 0=normal, 1=force independent lens draw,
+                    // 2=force lens draw plus unmistakable magenta outline proof.
+                    int lensDiag111=0;
+                    try { lensDiag111=android.provider.Settings.Global.getInt(
+                        view.getContext().getContentResolver(),"liquidglass_lens_diagnostic_111",0);
+                    }catch(Throwable ignored111){}
+                    lensDiag111=Math.max(0,Math.min(2,lensDiag111));
+                    int originalIsolation111=sourceIsolation90;
+                    if(lensDiag111>0 && !(view.getBackground() instanceof DockBackground204)) sourceIsolation90=3;
+                    if(lensPipelineLogs111++<160)log("LENS_PIPELINE_111 stage=CONFIG diag="+lensDiag111+
+                        " originalMode="+originalIsolation111+" effectiveMode="+sourceIsolation90+
+                        " legacy="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+
+                        ","+focus107+","+reflection107+" blurMode="+customBlurMode);
+
                     android.graphics.Shader opticalInput195=state.shader;
                     boolean blurredInput195=false;
                     if(customBlurMode==1 && customBlurDp>0 && sourceIsolation90!=3){
@@ -4887,9 +4902,21 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
+                                                if(lensPipelineLogs111++<160)log("LENS_PIPELINE_111 stage=SHADER_DRAW mode="+sourceIsolationMode90+
+                                                    " legacy="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+
+                                                    ","+focus107+","+reflection107+" rect="+rect.toShortString());
+                                                if(lensDiag111==2){
+                                                    Paint proof111=new Paint(Paint.ANTI_ALIAS_FLAG);
+                                                    proof111.setStyle(Paint.Style.STROKE);
+                                                    proof111.setStrokeWidth(6f*view.getResources().getDisplayMetrics().density);
+                                                    proof111.setColor(Color.MAGENTA);
+                                                    canvas.drawRoundRect(rect,contourRadius,contourRadius,proof111);
+                                                    if(lensProofLogs111++<40)log("LENS_PIPELINE_111 stage=MAGENTA_PROOF_DRAW");
+                                                }
                                                 if(edgeShaderLogs93++<60)log("FOLDER_DIAG_104 stage=DRAW interior="+diagInterior103+" blurDiag="+diagBlur103+" requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+" lens110="+nonlinear107+","+thickness107+","+interior107+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
+                                                if(lensPipelineLogs111++<160)log("LENS_PIPELINE_111 stage=SHADER_ERROR "+e);
                                                 if(edgeShaderLogs93++<60)log("FOLDER_BLUR_102 stage=ERROR "+e);
                                             }
                                         }
