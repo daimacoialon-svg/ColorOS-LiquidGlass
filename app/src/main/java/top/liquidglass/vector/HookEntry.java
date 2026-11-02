@@ -88,7 +88,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float innerProfile=smoothstep(0.0,0.42,t)*(1.0-smoothstep(0.55,1.0,t));\n"+
         "  float gain106=1.0+lensRimEnhance106*0.28*rimCore106;\n"+
         "  float extra=nonlinear107*13.0*nonlinearProfile+thickness107*7.0*thicknessProfile+interior107*2.0*innerProfile;\n"+
-        "  float2 delta = n*strength*(17.0*profile*gain106+extra);\n"+
+        "  // V108: suppress the medial-axis discontinuity for the new optical terms.\n"+
+        "  // SDF edge normals are reliable near the rim, not at interior equidistant seams.\n"+
+        "  float safeRim=smoothstep(-34.0,-22.0,d);\n"+
+        "  float2 center=(bounds.xy+bounds.zw)*0.5;\n"+
+        "  float2 radial=(p-center)/max(hs,float2(1.0));\n"+
+        "  float radialLen=length(radial);\n"+
+        "  float2 radialN=radial/max(radialLen,0.0001);\n"+
+        "  float2 lensN=normalize(mix(radialN,n,safeRim)+float2(0.00001));\n"+
+        "  float2 delta = n*strength*(17.0*profile*gain106)+lensN*strength*extra;\n"+
         "  float2 samplePos = p+delta;\n"+
         "  samplePos=clamp(samplePos,validBounds.xy+float2(1.0),validBounds.zw-float2(1.0));\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
