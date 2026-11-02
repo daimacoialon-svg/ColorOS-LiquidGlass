@@ -35,6 +35,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // Both the base and warped samples come from the same DECAL bitmap source.
     // V205.94: one continuous rounded-rectangle SDF lens, not independent strips.
     // The outward normal is the local SDF gradient, not the center-to-pixel vector.
+    private static volatile int nonlinear107=65,thickness107=55,interior107=20,focus107=45,reflection107=30;
     private static final String EDGE_SHADER_93 =
         "uniform shader wallpaper;\n"+
         "uniform float4 bounds;\n"+
@@ -46,7 +47,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float blurMix101;\n"+
         "uniform float diagnosticInterior103;\n"+
         "uniform float diagnosticBlur103;\n"+
-        "uniform float lensRimEnhance106;\n"+
+        "uniform float lensRimEnhance106;\n"+        "uniform float nonlinear107;\n"+
+        "uniform float thickness107;\n"+
+        "uniform float interior107;\n"+
+        "uniform float focus107;\n"+
+        "uniform float reflection107;\n"+
+
         "float glassSdf(float2 p) {\n"+
         "  float2 halfSize = max((bounds.zw-bounds.xy)*0.5,float2(0.5));\n"+
         "  float r = clamp(radius,0.0,min(halfSize.x,halfSize.y));\n"+
@@ -75,13 +81,23 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // V106: opt-in rim-only convex lens enhancement. The extra term vanishes
         // away from the edge band, avoiding the medial-axis seams fixed in V104.
         "  float rimCore106=smoothstep(-24.0,-13.0,d)*(1.0-smoothstep(-8.0,-2.0,d));\n"+
+        "  float t=clamp((-d)/max(12.0,min(hs.x,hs.y)*0.48),0.0,1.0);\n"+
+        "  float curve=sin(3.14159265*t);\n"+
+        "  float nonlinearProfile=pow(max(curve,0.0),1.0+1.4*(1.0-nonlinear107));\n"+
+        "  float thicknessProfile=pow(max(curve,0.0),1.8);\n"+
+        "  float innerProfile=smoothstep(0.0,0.42,t)*(1.0-smoothstep(0.55,1.0,t));\n"+
         "  float gain106=1.0+lensRimEnhance106*0.28*rimCore106;\n"+
-        "  float2 delta = n*(17.0*strength*profile*gain106);\n"+
+        "  float extra=nonlinear107*13.0*nonlinearProfile+thickness107*7.0*thicknessProfile+interior107*2.0*innerProfile;\n"+
+        "  float2 delta = n*strength*(17.0*profile*gain106+extra);\n"+
         "  float2 samplePos = p+delta;\n"+
+        "  samplePos=clamp(samplePos,validBounds.xy+float2(1.0),validBounds.zw-float2(1.0));\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
         "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
         "  half4 bent = wallpaper.eval(samplePos);\n"+
         "  half4 optical = mix(base,bent,half(safe));\n"+
+        "  float lightBand=pow(max(0.0,1.0-abs(d+4.0)/max(4.0,4.0+thickness107*8.0)),2.0);\n"+
+        "  float light=reflection107*0.065*lightBand+focus107*0.035*lightBand*max(0.0,n.y*-0.7+n.x*-0.3);\n"+
+        "  optical.rgb=clamp(optical.rgb+half3(light),half3(0.0),half3(1.0));\n"+
         // V99: 0dp must be bit-for-bit the V94 optical field; no blur taps.
         "  if (diagnosticBlur103 > 1.5) return optical;\n"+
         "  if (diagnosticBlur103 > 0.5) return blurredWallpaper101.eval(p);\n"+
@@ -431,6 +447,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 int ci=c.getColumnIndex("custom_blur_dp");if(ci>=0)customBlurDp=clampInt(c.getInt(ci),0,40);
                 ci=c.getColumnIndex("custom_blur_tenths_95");folderMicroBlurDp95=ci>=0 ? clampInt(c.getInt(ci),0,400)/10f : customBlurDp;
                 ci=c.getColumnIndex("refraction_percent");if(ci>=0)refractionPercent=clampInt(c.getInt(ci),0,100);
+                ci=c.getColumnIndex("nonlinear_107");if(ci>=0)nonlinear107=clampInt(c.getInt(ci),0,100);
+                ci=c.getColumnIndex("thickness_107");if(ci>=0)thickness107=clampInt(c.getInt(ci),0,100);
+                ci=c.getColumnIndex("interior_107");if(ci>=0)interior107=clampInt(c.getInt(ci),0,100);
+                ci=c.getColumnIndex("focus_107");if(ci>=0)focus107=clampInt(c.getInt(ci),0,100);
+                ci=c.getColumnIndex("reflection_107");if(ci>=0)reflection107=clampInt(c.getInt(ci),0,100);
                 ci=c.getColumnIndex("glass_tint_opacity");if(ci>=0)glassTintOpacity=clampInt(c.getInt(ci),0,100);
                 ci=c.getColumnIndex("custom_blur_mode");if(ci>=0)customBlurMode=clampInt(c.getInt(ci),0,2);
                 ci=c.getColumnIndex("icon_optics_204");iconOptics204=ci>=0&&c.getInt(ci)==1;
@@ -4845,6 +4866,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 // 0=V104/V105 optical baseline; 1=standard; 2=enhanced.
                                                 int rimLevel106=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_lens_rim_106",0);
                                                 shader93.setFloatUniform("lensRimEnhance106",(float)Math.max(0,Math.min(2,rimLevel106)));
+                                                shader93.setFloatUniform("nonlinear107",nonlinear107/100f);
+                                                shader93.setFloatUniform("thickness107",thickness107/100f);
+                                                shader93.setFloatUniform("interior107",interior107/100f);
+                                                shader93.setFloatUniform("focus107",focus107/100f);
+                                                shader93.setFloatUniform("reflection107",reflection107/100f);
                                                 shader93.setFloatUniform("blurMix101",blend101);
                                                 shader93.setFloatUniform("bounds",rect.left,rect.top,rect.right,rect.bottom);
                                                 shader93.setFloatUniform("validBounds",rect.left-left,rect.top-top,

@@ -88,7 +88,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.100  ·  文件夹宽半径模糊实验版",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.107  ·  连续透镜光学实验版",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("玻璃效果","独立壁纸模糊、折射、底色和高光。");
         toggle("启用桌面文件夹玻璃", "enabled",false);
         TextView presetInfo=text("玻璃预设仅在手动点击时应用；文件夹与 Dock 共用玻璃渲染参数，不改变功能开关。",12,false);current.addView(presetInfo);
@@ -99,8 +99,9 @@ public final class MainActivity extends Activity {
                 .putBoolean("directional_light",true).putBoolean("native_alpha_probe",false).putBoolean("real_refraction",true)
                 .putInt("probe_mode",0).commit();recreate();
         });
-        action("恢复液态玻璃推荐参数 (3dp / 35% / 6% / 22%)",()->{
+        action("恢复液态玻璃推荐参数（含透镜光学）",()->{
             prefs.edit().putInt("custom_blur_dp",3).putInt("refraction_percent",35)
+                .putInt("nonlinear_107",65).putInt("thickness_107",55).putInt("interior_107",20).putInt("focus_107",45).putInt("reflection_107",30)
                 .putInt("glass_tint_opacity",6).putInt("alpha",0).putInt("tint",0).putInt("tint_strength",0).putInt("highlight_strength",22)
                 .putInt("custom_blur_mode",1).putBoolean("real_refraction",true)
                 .putBoolean("highlight",false).putBoolean("enabled",true).commit();recreate();
@@ -128,6 +129,13 @@ public final class MainActivity extends Activity {
         toggle("自适应液态玻璃 Dock（预览）","dock_glass_204",false);
         TextView dockInfo=text("Dock 保持既有 92% 宽度及胶囊形状，与桌面文件夹共用壁纸采样、折射、模糊和表面光学参数；图标轮廓保留 V1.9.205.11。",12,false);current.addView(dockInfo);
 
+        section("透镜光学实验 V107","连续非线性边缘折射；调节后观察文件夹和 Dock。推荐参数仍需真机验证。");
+        slider("非线性边缘折射 (%)","nonlinear_107",65,0,100);
+        slider("玻璃光学厚度 (%)","thickness_107",55,0,100);
+        slider("内部透镜强度 (%)","interior_107",20,0,100);
+        slider("边缘光学聚焦 (%)","focus_107",45,0,100);
+        slider("表面反射 (%)","reflection_107",30,0,100);
+        section("玻璃效果参数","壁纸模糊、折射和底色。");
         slider("玻璃底色不透明度 (%)","glass_tint_opacity",18,0,100);
         microBlurSlider95();
         slider("二维折射强度 (%)","refraction_percent",35,0,100);
