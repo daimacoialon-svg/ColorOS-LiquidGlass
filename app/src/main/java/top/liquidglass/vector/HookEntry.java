@@ -81,22 +81,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // V106: opt-in rim-only convex lens enhancement. The extra term vanishes
         // away from the edge band, avoiding the medial-axis seams fixed in V104.
         "  float rimCore106=smoothstep(-24.0,-13.0,d)*(1.0-smoothstep(-8.0,-2.0,d));\n"+
-        "  float t=clamp((-d)/max(12.0,min(hs.x,hs.y)*0.48),0.0,1.0);\n"+
-        "  float curve=sin(3.14159265*t);\n"+
-        "  float nonlinearProfile=pow(max(curve,0.0),1.0+1.4*(1.0-nonlinear107));\n"+
-        "  float thicknessProfile=pow(max(curve,0.0),1.8);\n"+
-        "  float innerProfile=smoothstep(0.0,0.42,t)*(1.0-smoothstep(0.55,1.0,t));\n"+
+        // V109: all experimental displacement stays in the reliable outer SDF rim.
+        // The interior medial axis is never sampled for optical normals.
+        "  float rimDepth=clamp(-d,0.0,20.0);\n"+
+        "  float rimWindow=smoothstep(0.0,3.0,rimDepth)*(1.0-smoothstep(13.0,20.0,rimDepth));\n"+
+        "  float phase=clamp(rimDepth/20.0,0.0,1.0);\n"+
+        "  float nonlinearProfile=pow(max(sin(3.14159265*phase),0.0),1.5)*rimWindow;\n"+
+        "  float thicknessProfile=pow(max(sin(3.14159265*phase),0.0),2.0)*rimWindow;\n"+
+        "  float innerProfile=smoothstep(4.0,9.0,rimDepth)*(1.0-smoothstep(13.0,20.0,rimDepth));\n"+
         "  float gain106=1.0+lensRimEnhance106*0.28*rimCore106;\n"+
-        "  float extra=nonlinear107*13.0*nonlinearProfile+thickness107*7.0*thicknessProfile+interior107*2.0*innerProfile;\n"+
-        "  // V108: suppress the medial-axis discontinuity for the new optical terms.\n"+
-        "  // SDF edge normals are reliable near the rim, not at interior equidistant seams.\n"+
-        "  float safeRim=smoothstep(-34.0,-22.0,d);\n"+
-        "  float2 center=(bounds.xy+bounds.zw)*0.5;\n"+
-        "  float2 radial=(p-center)/max(hs,float2(1.0));\n"+
-        "  float radialLen=length(radial);\n"+
-        "  float2 radialN=radial/max(radialLen,0.0001);\n"+
-        "  float2 lensN=normalize(mix(radialN,n,safeRim)+float2(0.00001));\n"+
-        "  float2 delta = n*strength*(17.0*profile*gain106)+lensN*strength*extra;\n"+
+        "  float extra=(nonlinear107*23.0*nonlinearProfile+thickness107*13.0*thicknessProfile+interior107*7.0*innerProfile)*rimWindow;\n"+
+        "  float2 delta=n*strength*(17.0*profile*gain106+extra);\n"+
         "  float2 samplePos = p+delta;\n"+
         "  samplePos=clamp(samplePos,validBounds.xy+float2(1.0),validBounds.zw-float2(1.0));\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
