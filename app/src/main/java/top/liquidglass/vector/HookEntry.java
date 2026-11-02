@@ -5117,7 +5117,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             "liquidglass_lens_diagnostic_111",0); }
         catch(Throwable e) { return 0; }
     }
-    private static void drawOuterProof113(View v, Canvas canvas, RectF rect, float radius) {
+    private static void drawOuterProof113(View v, Canvas canvas, RectF localRect, float radius) {
         if(lensDiagnostic113(v)!=2)return;
         Paint proof=new Paint(Paint.ANTI_ALIAS_FLAG);
         proof.setStyle(Paint.Style.STROKE);
@@ -5125,13 +5125,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         proof.setStrokeWidth(4f*density);
         proof.setColor(Color.MAGENTA);
         // Inset the stroke so that clipping to the native folder outline does not erase it.
-        RectF visible=new RectF(rect);
+        RectF visible=new RectF(localRect);
         float inset=2.5f*density;
         visible.inset(inset,inset);
         if(visible.width()>0 && visible.height()>0) {
             canvas.drawRoundRect(visible,Math.max(0,radius-inset),Math.max(0,radius-inset),proof);
             if(outerProofLogs113++<80)log("LENS_OUTER_113 stage=PROOF_DRAW legacy="+refractionPercent+
-                " diag=2 edgePass=true rect="+visible.toShortString());
+                " diag=2 edgePass=true space=LOCAL rect="+visible.toShortString());
         }
     }
     private static int glass123GateLogs=0;
@@ -5232,8 +5232,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     envelope=1.0f; // keep the native outline static; motion sheen lives in AGSL only
                 }
                 if(edgeOnly || refractionPathMode169()!=2)drawUnifiedMaterial(canvas,mask,edgeOnly,envelope);
-                // Draw on the final folder edge pass, AFTER the surface and material layers.
-                if(edgeOnly)drawOuterProof113(v,canvas,rect,radius);
+                // V114: canvas has already been translated to rect.left/top.
+                // The diagnostic must use the SAME local geometry as blurShapeMask and
+                // drawUnifiedMaterial, rather than adding the folder origin twice.
+                if(edgeOnly){
+                    RectF localOutline114=new RectF(0f,0f,w,h);
+                    drawOuterProof113(v,canvas,localOutline114,radius);
+                }
                 if(folderFusionLogs++<16)log("UNIFIED_MATERIAL_DRAW phase="+(edgeOnly?"edge":"surface")+
                     " rect="+rect+" radius="+radius+" nativeOutline="+nativeOutline+
                     " geometryInsetPx=0 maskSource=corner-only-synthetic-mask cornerDeltaPx="+BLUR_CORNER_RADIUS_DELTA_PX+" alphaMask=true");
