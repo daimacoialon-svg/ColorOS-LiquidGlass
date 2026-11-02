@@ -112,6 +112,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static android.graphics.Bitmap cachedBlurFrame101;
     private static android.graphics.Bitmap cachedBlurOutput101;
     private static int cachedBlurRadius101=-1;
+    // V105: reuse pixel scratch arrays across radius changes; protected by preblur101 synchronization.
+    private static int[] blurScratchA105, blurScratchB105;
     private static int[] gaussianBoxes104(float sigma){
         double ideal=Math.sqrt(1.0+4.0*sigma*sigma/3.0);
         int lower=Math.max(1,(int)Math.floor(ideal));if((lower&1)==0)lower--;
@@ -149,7 +151,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
         int key=Math.max(1,Math.round(radiusPx*10f));
         if(frame==cachedBlurFrame101 && key==cachedBlurRadius101 && cachedBlurOutput101!=null && !cachedBlurOutput101.isRecycled())return cachedBlurOutput101;
         int w=frame.getWidth(),h=frame.getHeight();
-        int[] a=new int[w*h],b=new int[w*h];
+        int pixelCount=w*h;
+        if(blurScratchA105==null || blurScratchA105.length!=pixelCount){
+            blurScratchA105=new int[pixelCount];
+            blurScratchB105=new int[pixelCount];
+        }
+        int[] a=blurScratchA105,b=blurScratchB105;
         frame.getPixels(a,0,w,0,0,w,h);
         // Clamp only to prevent pathological CPU cost. Three box passes approximate Gaussian.
         float sigma=Math.max(0.2f,Math.min(80f,radiusPx*0.55f));
@@ -157,6 +164,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         for(int r:radii){boxPass104(a,b,w,h,r,true);boxPass104(b,a,w,h,r,false);}
         android.graphics.Bitmap result=android.graphics.Bitmap.createBitmap(w,h,android.graphics.Bitmap.Config.ARGB_8888);
         result.setPixels(a,0,w,0,0,w,h);
+        // Drop references to superseded output; do not recycle because an in-flight draw may still sample it.
         cachedBlurFrame101=frame;cachedBlurRadius101=key;cachedBlurOutput101=result;
         return result;
     }
