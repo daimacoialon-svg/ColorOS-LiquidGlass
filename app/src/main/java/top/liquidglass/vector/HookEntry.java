@@ -2710,6 +2710,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         log("STABLE_SHEEN_179 mode="+mode+" view="+System.identityHashCode(view)+" shaderAlpha=1.0");
     }
     // V205.80: independent per-mode counters; do not exhaust diagnostics in mode 1.
+    private static final java.util.concurrent.atomic.AtomicInteger DIRECT_FUSION_82_LOGS = new java.util.concurrent.atomic.AtomicInteger();
     private static final java.util.concurrent.atomic.AtomicIntegerArray MAPPING_PROBE_81_COUNTS =
         new java.util.concurrent.atomic.AtomicIntegerArray(4);
     private static final java.util.concurrent.atomic.AtomicInteger MAPPING_PROBE_81_LAST =
@@ -3912,6 +3913,51 @@ public final class HookEntry implements IXposedHookLoadPackage {
             if(GLASS_PIPELINE_DIAGNOSTICS.getAndIncrement()<32)log("GLASS119_PIPELINE stage=DRAW_ENTER mode="+customBlurMode+" radiusDp="+customBlurDp+" refractPercent="+refractionPercent+" tintPercent="+glassTintOpacity+" frame="+frame.getWidth()+"x"+frame.getHeight()+" hardware="+canvas.isHardwareAccelerated());
             // V1.9.70: one hardware-accelerated draw with continuous per-pixel
             // displacement. No per-strip matrix mutation or 48 draw commands.
+            // V1.9.205.82: opt-in direct bitmap crop, preserving the normal
+            // post-composite tint / rim pipeline. Folder only; Dock unchanged.
+            int fusion82=0;
+            if(!(view.getBackground() instanceof DockBackground204)){
+                try { fusion82=android.provider.Settings.Global.getInt(
+                    view.getContext().getContentResolver(),"liquidglass_direct_fusion_82",0); }
+                catch(Throwable ignored82){}
+            }
+            boolean directCropDrawn82=false;
+            if(fusion82==1){
+                try {
+                    float vL82=Math.max(0f,left),vT82=Math.max(0f,top);
+                    float vR82=Math.min((float)sw,left+rect.width());
+                    float vB82=Math.min((float)sh,top+rect.height());
+                    if(vR82>vL82 && vB82>vT82 && referenceScaleX>0f && referenceScaleY>0f){
+                        int sL82=Math.max(0,Math.min(frame.getWidth(),(int)Math.floor(vL82/referenceScaleX)));
+                        int sT82=Math.max(0,Math.min(frame.getHeight(),(int)Math.floor(vT82/referenceScaleY)));
+                        int sR82=Math.max(sL82,Math.min(frame.getWidth(),(int)Math.ceil(vR82/referenceScaleX)));
+                        int sB82=Math.max(sT82,Math.min(frame.getHeight(),(int)Math.ceil(vB82/referenceScaleY)));
+                        if(sR82>sL82 && sB82>sT82){
+                            android.graphics.Paint cropPaint82=new android.graphics.Paint(
+                                android.graphics.Paint.ANTI_ALIAS_FLAG|android.graphics.Paint.FILTER_BITMAP_FLAG);
+                            android.graphics.Rect src82=new android.graphics.Rect(sL82,sT82,sR82,sB82);
+                            android.graphics.RectF dst82=new android.graphics.RectF(
+                                rect.left+sL82*referenceScaleX-left,
+                                rect.top+sT82*referenceScaleY-top,
+                                rect.left+sR82*referenceScaleX-left,
+                                rect.top+sB82*referenceScaleY-top);
+                            int save82=canvas.save();
+                            android.graphics.Path clip82=new android.graphics.Path();
+                            clip82.addRoundRect(rect,contourRadius,contourRadius,android.graphics.Path.Direction.CW);
+                            canvas.clipPath(clip82);
+                            canvas.drawBitmap(frame,src82,dst82,cropPaint82);
+                            canvas.restoreToCount(save82);
+                            directCropDrawn82=true;
+                        }
+                    }
+                }catch(Throwable e82){
+                    if(DIRECT_FUSION_82_LOGS.getAndIncrement()<8)
+                        log("DIRECT_FUSION_82 ERROR "+e82.getClass().getSimpleName());
+                }
+                if(DIRECT_FUSION_82_LOGS.getAndIncrement()<24)
+                    log("DIRECT_FUSION_82 mode="+fusion82+" drawn="+directCropDrawn82+
+                        " frame="+frame.getWidth()+"x"+frame.getHeight()+" left="+left+" top="+top);
+            }
             boolean continuousDrawn=false;
             int opticalAb=opticalAb133(); // 0: stable refractive AGSL; 1: legacy comparison; 2: no AGSL
             int probe141=opticalProbe141();
@@ -3957,7 +4003,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if(GLASS_PIPELINE_DIAGNOSTICS.getAndIncrement()<48)log("GLASS126_BLUR_DRAWN enabled="+REFRACTION_ENABLED+" radiusDp="+customBlurDp);
                 }else if(blurHitLogs142++<24){log("BLUR_DRAW_142 WAIT radius="+customBlurDp+" frame="+System.identityHashCode(frame)+" pending="+BLUR_PENDING);}
             }
-            if(opticalAb!=2 && probe141!=1 && !(probe141==3 && Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && !(probe141==4 && !Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && !(probe141==5 && Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && refractionActive && pathMode169!=1 && canvas.isHardwareAccelerated() && !state.continuousUnavailable && !Boolean.TRUE.equals(AGSL_SUBMITTED_144.get())){
+            if(!directCropDrawn82 && opticalAb!=2 && probe141!=1 && !(probe141==3 && Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && !(probe141==4 && !Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && !(probe141==5 && Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get())) && refractionActive && pathMode169!=1 && canvas.isHardwareAccelerated() && !state.continuousUnavailable && !Boolean.TRUE.equals(AGSL_SUBMITTED_144.get())){
                 try {
                     if(state.continuousShader==null){
                         state.continuousShader=new android.graphics.RuntimeShader(REFRACTION_AGSL);
@@ -4091,7 +4137,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             }
                         }catch(Throwable e76){if(SAMPLE_DOMAIN_76_COUNT<5)log("BITMAP_BOUNDARY_76_ERROR "+e76.getClass().getSimpleName());}
                     }
-                    // V1.9.205.81: folder-only independent source mapping probes.
+                    // V1.9.205.82: folder-only independent source mapping probes.
                     // Mode 0: unchanged V80 path; 1: existing shader matrix;
                     // 2: fresh screen-space matrix; 3: direct bitmap crop without BitmapShader.
                     int mappingProbe81=0;
@@ -4470,7 +4516,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             state.samplePaint.setAlpha(255);
             // Independent background blur and tint: always visible with refraction OFF.
             // With refraction ON, retain some optical detail beneath the blur.
-            if(customBlurMode==1 && customBlurDp>0 && !continuousDrawn){
+            if(customBlurMode==1 && customBlurDp>0 && !continuousDrawn && !directCropDrawn82){
                 android.graphics.Bitmap blurred=blurredWallpaper(frame,dm.density,view);
                 if(blurred!=null){
                     if(blurHitLogs142++<24)log("BLUR_DRAW_142 READY radius="+customBlurDp+" afterOEM="+Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get()));
