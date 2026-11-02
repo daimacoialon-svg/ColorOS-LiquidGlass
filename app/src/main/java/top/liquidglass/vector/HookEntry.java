@@ -41,6 +41,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float4 validBounds;\n"+
         "uniform float radius;\n"+
         "uniform float strength;\n"+
+        "uniform float blurPx95;\n"+
         "float glassSdf(float2 p) {\n"+
         "  float2 halfSize = max((bounds.zw-bounds.xy)*0.5,float2(0.5));\n"+
         "  float r = clamp(radius,0.0,min(halfSize.x,halfSize.y));\n"+
@@ -61,7 +62,24 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
         "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
         "  half4 bent = wallpaper.eval(samplePos);\n"+
-        "  return mix(base,bent,half(safe));\n"+
+        "  half4 optical = mix(base,bent,half(safe));\n"+
+        // Subpixel gaussian: at 0.2/0.3/0.4dp sample offsets remain fractional.
+        // The original V94 SDF, normal, edge profile and displacement are untouched.
+        "  float sigma = clamp(blurPx95,0.0,10.0);\n"+
+        "  float2 tap = float2(max(0.01,sigma),0.0);\n"+
+        "  half4 softened = wallpaper.eval(p)*half(0.375);\n"+
+        "  softened += wallpaper.eval(p+tap)*half(0.15625);\n"+
+        "  softened += wallpaper.eval(p-tap)*half(0.15625);\n"+
+        "  softened += wallpaper.eval(p+tap.yx)*half(0.15625);\n"+
+        "  softened += wallpaper.eval(p-tap.yx)*half(0.15625);\n"+
+        "  float blurMix = smoothstep(0.0,0.85,sigma);\n"+
+        "  half4 bentSoft = wallpaper.eval(samplePos)*half(0.375);\n"+
+        "  bentSoft += wallpaper.eval(samplePos+tap)*half(0.15625);\n"+
+        "  bentSoft += wallpaper.eval(samplePos-tap)*half(0.15625);\n"+
+        "  bentSoft += wallpaper.eval(samplePos+tap.yx)*half(0.15625);\n"+
+        "  bentSoft += wallpaper.eval(samplePos-tap.yx)*half(0.15625);\n"+
+        "  half4 softOptical = mix(softened,bentSoft,half(safe));\n"+
+        "  return mix(optical,softOptical,half(blurMix));\n"+
         "}\n";
 
     private static final Uri CONFIG = Uri.parse("content://top.liquidglass.vector.config/settings");
@@ -107,6 +125,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // the background corner radius and is not a verified blur-strength API.
     private static volatile int blurRadiusPercent = 100; // legacy config ignored
     private static volatile int customBlurDp=14, refractionPercent=35, glassTintOpacity=18, customBlurMode=1;
+    private static volatile float folderMicroBlurDp95=14f; // independent float for V94 optical mode 3
     private static int opticalPipelineLogs195=0;
     private static volatile boolean iconOptics204=false, dockGlass204=false;
     private static volatile boolean clearRefraction=false; // false: frosted glass, true: clear refraction
@@ -257,7 +276,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             probeMode=x[7];highlightWidth=x[8];directionalLight=x[9]==1;
             nativeBlurExperiment=0;blurRadiusPercent=x[11];
             nativeAlphaProbe=false;wallpaperCompare=x[13]==1;REFRACTION_ENABLED=x[14]==1;
-            if(v.length>=20){customBlurDp=clampInt(Integer.parseInt(v[16]),0,40);refractionPercent=clampInt(Integer.parseInt(v[17]),0,100);glassTintOpacity=clampInt(Integer.parseInt(v[18]),0,100);customBlurMode=clampInt(Integer.parseInt(v[19]),0,2);}
+            if(v.length>=20){customBlurDp=clampInt(Integer.parseInt(v[16]),0,40);folderMicroBlurDp95=customBlurDp;refractionPercent=clampInt(Integer.parseInt(v[17]),0,100);glassTintOpacity=clampInt(Integer.parseInt(v[18]),0,100);customBlurMode=clampInt(Integer.parseInt(v[19]),0,2);}
             if(v.length>=21)clearRefraction="1".equals(v[20]);
             // V196: launcher reads root-published snapshot, not the APK ContentProvider.
             if(v.length<25 && !raw.equals(lastBootSnapshot))log("SURFACE_SNAPSHOT_197_MISSING count="+v.length+" expected=25");
@@ -318,6 +337,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 int alphaProbeIndex=c.getColumnIndex("native_alpha_probe");
                 nativeAlphaProbe=alphaProbeIndex>=0 && c.getInt(alphaProbeIndex)==1;
                 int ci=c.getColumnIndex("custom_blur_dp");if(ci>=0)customBlurDp=clampInt(c.getInt(ci),0,40);
+                ci=c.getColumnIndex("custom_blur_tenths_95");folderMicroBlurDp95=ci>=0 ? clampInt(c.getInt(ci),0,400)/10f : customBlurDp;
                 ci=c.getColumnIndex("refraction_percent");if(ci>=0)refractionPercent=clampInt(c.getInt(ci),0,100);
                 ci=c.getColumnIndex("glass_tint_opacity");if(ci>=0)glassTintOpacity=clampInt(c.getInt(ci),0,100);
                 ci=c.getColumnIndex("custom_blur_mode");if(ci>=0)customBlurMode=clampInt(c.getInt(ci),0,2);
@@ -4689,7 +4709,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                         // The folder geometry is always the full local rect.
                                         // Offscreen sampling blends to the unwarped wallpaper,
                                         // rather than stretching CLAMP's last pixel or dropping strips.
-                                        if(sourceIsolationMode90==3 && refractionPercent>0.01f){
+                                        if(sourceIsolationMode90==3 && (refractionPercent>0.01f || (customBlurMode==1 && folderMicroBlurDp95>0f))){
                                             try{
                                                 android.graphics.BitmapShader wallpaper93=new android.graphics.BitmapShader(
                                                     frame,android.graphics.Shader.TileMode.DECAL,
@@ -4706,6 +4726,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     rect.top-top+frame.getHeight()*referenceScaleY);
                                                 shader93.setFloatUniform("radius",contourRadius);
                                                 shader93.setFloatUniform("strength",Math.min(1.0f,Math.max(0f,refractionPercent)/100f));
+                                                shader93.setFloatUniform("blurPx95",(customBlurMode==1 ? Math.max(0f,folderMicroBlurDp95) : 0f)*view.getResources().getDisplayMetrics().density);
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);

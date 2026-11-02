@@ -65,6 +65,20 @@ public final class MainActivity extends Activity {
             public void onStopTrackingTouch(SeekBar b){prefs.edit().putInt(key,b.getProgress()+min).commit();getContentResolver().notifyChange(GlassConfigProvider.URI,null);}
         });
     }
+    // V95: decimal dp is persisted as tenths to avoid SharedPreferences float/int migration issues.
+    private void microBlurSlider95(){
+        final String key="custom_blur_tenths_95";
+        int legacy=prefs.getInt("custom_blur_dp",3);
+        int initial=Math.max(0,Math.min(400,prefs.getInt(key,legacy*10)));
+        TextView caption=text("",13,false);current.addView(caption);
+        SeekBar bar=new SeekBar(this);bar.setMax(400);bar.setProgress(initial);current.addView(bar);
+        Runnable update=()->caption.setText(String.format(java.util.Locale.US,"桌面文件夹背景模糊半径  ·  %.1f dp",bar.getProgress()/10f));update.run();
+        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){prefs.edit().putInt(key,progress).apply();getContentResolver().notifyChange(GlassConfigProvider.URI,null);}}
+            public void onStartTrackingTouch(SeekBar b){}
+            public void onStopTrackingTouch(SeekBar b){prefs.edit().putInt(key,b.getProgress()).commit();getContentResolver().notifyChange(GlassConfigProvider.URI,null);}
+        });
+    }
     private void action(String label,Runnable run){
         Button b=new Button(this);b.setAllCaps(false);b.setText(label);b.setTextColor(blue);b.setOnClickListener(v->run.run());current.addView(b,new LinearLayout.LayoutParams(-1,dp(52)));
     }
@@ -74,7 +88,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.70  ·  边界采样诊断版",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.95  ·  文件夹微模糊修正版",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("玻璃效果","独立壁纸模糊、折射、底色和高光。");
         toggle("启用桌面文件夹玻璃", "enabled",false);
         TextView presetInfo=text("玻璃预设仅在手动点击时应用；文件夹与 Dock 共用玻璃渲染参数，不改变功能开关。",12,false);current.addView(presetInfo);
@@ -115,7 +129,7 @@ public final class MainActivity extends Activity {
         TextView dockInfo=text("Dock 保持既有 92% 宽度及胶囊形状，与桌面文件夹共用壁纸采样、折射、模糊和表面光学参数；图标轮廓保留 V1.9.205.11。",12,false);current.addView(dockInfo);
 
         slider("玻璃底色不透明度 (%)","glass_tint_opacity",18,0,100);
-        slider("玻璃背景模糊半径 (dp，可独立调整)","custom_blur_dp",3,0,40);
+        microBlurSlider95();
         slider("二维折射强度 (%)","refraction_percent",35,0,100);
         TextView modeLabel=text("背景模糊模式",13,false);current.addView(modeLabel);
         Spinner blurMode=new Spinner(this);
