@@ -92,7 +92,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float thicknessProfile=pow(max(sin(3.14159265*phase),0.0),2.0)*rimWindow;\n"+
         "  float innerProfile=smoothstep(4.0,9.0,rimDepth)*(1.0-smoothstep(13.0,20.0,rimDepth));\n"+
         "  float gain106=1.0+lensRimEnhance106*0.28*rimCore106;\n"+
-        "  float extra=(nonlinear107*23.0*nonlinearProfile+thickness107*13.0*thicknessProfile+interior107*7.0*innerProfile)*rimWindow;\n"+
+        "  float extra=(nonlinear107*34.0*nonlinearProfile+thickness107*20.0*thicknessProfile+interior107*12.0*innerProfile);\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
         "  float2 deltaLens=n*extra; // independent of legacy strength\n"+
         "  float2 delta=deltaLegacy+deltaLens;\n"+
@@ -4397,7 +4397,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         " effective="+sourceIsolation90+" folder="+folderOptical115);
                     if(lensPipelineLogs111++<160)log("LENS_PIPELINE_111 stage=CONFIG diag="+lensDiag111+
                         " originalMode="+originalIsolation111+" effectiveMode="+sourceIsolation90+
-                        " legacy="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+
+                        " legacy="+refractionPercent+" legacySwitch="+REFRACTION_ENABLED+" lens="+nonlinear107+","+thickness107+","+interior107+
                         ","+focus107+","+reflection107+" blurMode="+customBlurMode);
 
                     android.graphics.Shader opticalInput195=state.shader;
@@ -4942,14 +4942,14 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 try { opticalProbe118=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_optical_probe_118",0); }catch(Throwable ignored118){}
                                                 opticalProbe118=Math.max(0,Math.min(2,opticalProbe118));
                                                 shader93.setFloatUniform("opticalProbe118",(float)opticalProbe118);
-                                                if(lensPipelineLogs111++<160)log("OPTICAL_UV_118 stage=UNIFORMS probe="+opticalProbe118+" legacy="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107);
+                                                if(lensPipelineLogs111++<160)log("OPTICAL_UV_119 stage=UNIFORMS probe="+opticalProbe118+" legacy="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107);
                                                 shader93.setFloatUniform("blurMix101",blend101);
                                                 shader93.setFloatUniform("bounds",rect.left,rect.top,rect.right,rect.bottom);
                                                 shader93.setFloatUniform("validBounds",rect.left-left,rect.top-top,
                                                     rect.left-left+frame.getWidth()*referenceScaleX,
                                                     rect.top-top+frame.getHeight()*referenceScaleY);
                                                 shader93.setFloatUniform("radius",contourRadius);
-                                                shader93.setFloatUniform("strength",Math.min(1.0f,Math.max(0f,refractionPercent)/100f));
+                                                shader93.setFloatUniform("strength",REFRACTION_ENABLED ? Math.min(1.0f,Math.max(0f,refractionPercent)/100f) : 0f);
                                                 shader93.setFloatUniform("blurPx95",blend101>0f ? 0f : requestedBlurPx101);
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
