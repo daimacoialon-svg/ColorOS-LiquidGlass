@@ -3581,6 +3581,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
 
     // V1.9.172: bounded per-frame motion/optical-chain telemetry. Diagnostic only.
     private static final java.util.WeakHashMap<View,float[]> MOTION_LAST_172=new java.util.WeakHashMap<>();
+    private static int SAMPLE_DOMAIN_75_COUNT=0;
+    private static long SAMPLE_DOMAIN_75_AT=0L;
     private static int COORD_DOMAIN_74_COUNT=0;
     private static long COORD_DOMAIN_74_AT=0L;
     private static int motionCount172=0;
@@ -3978,6 +3980,45 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             opticalInput195=state.cachedBlurShader;
                             blurredInput195=true;
                         }
+                    }
+                    // V205.75: Java-only sampling-domain estimate. The AGSL displacement
+                    // is deliberately NOT simulated here; this measures the base
+                    // BitmapShader transform and distance to the bitmap edge.
+                    // No shader source, uniforms, matrix, Canvas, or Dock changes.
+                    if(!(view.getBackground() instanceof DockBackground204) &&
+                            (left<0f || right>sw || top<0f || bottom>sh) &&
+                            SAMPLE_DOMAIN_75_COUNT<180 &&
+                            android.os.SystemClock.uptimeMillis()-SAMPLE_DOMAIN_75_AT>=85L){
+                        SAMPLE_DOMAIN_75_AT=android.os.SystemClock.uptimeMillis();
+                        SAMPLE_DOMAIN_75_COUNT++;
+                        try{
+                            float vl=Math.max(0f,left),vr=Math.min((float)sw,right);
+                            float vt=Math.max(0f,top),vb=Math.min((float)sh,bottom);
+                            if(vl<vr && vt<vb){
+                                // BitmapShader local matrix maps bitmap pixels to
+                                // view-local canvas coordinates. Inverse mapping:
+                                // bitmapX=(localX+shaderLeft)/referenceScaleX.
+                                float srcL=vl/referenceScaleX;
+                                float srcR=vr/referenceScaleX;
+                                float srcT=vt/referenceScaleY;
+                                float srcB=vb/referenceScaleY;
+                                float localL=vl-shaderLeft,localR=vr-shaderLeft;
+                                float localT=vt-shaderTop,localB=vb-shaderTop;
+                                float srcFromLocalL=(localL+shaderLeft)/referenceScaleX;
+                                float srcFromLocalR=(localR+shaderLeft)/referenceScaleX;
+                                float deltaAnchorX=shaderLeft-left;
+                                log("SAMPLE_DOMAIN_75 id="+System.identityHashCode(view)+
+                                    " screen="+sw+"x"+sh+" bitmap="+frame.getWidth()+"x"+frame.getHeight()+
+                                    " visible="+vl+","+vt+","+vr+","+vb+
+                                    " originLive="+left+","+top+" originShader="+shaderLeft+","+shaderTop+
+                                    " anchorDeltaX="+deltaAnchorX+" mode160="+sampleMode160+
+                                    " baseBitmapRange="+srcL+","+srcT+","+srcR+","+srcB+
+                                    " inverseCheckX="+srcFromLocalL+","+srcFromLocalR+
+                                    " rightMarginPx="+(frame.getWidth()-srcR)+
+                                    " outsideRight="+Math.max(0f,right-sw)+
+                                    " note=base_only_AGSL_displacement_not_measured");
+                            }
+                        }catch(Throwable e75){if(SAMPLE_DOMAIN_75_COUNT<6)log("SAMPLE_DOMAIN_75_ERROR "+e75.getClass().getSimpleName());}
                     }
                     state.shaderMatrix.postTranslate(-shaderLeft,-shaderTop);
                     state.shader.setLocalMatrix(state.shaderMatrix);
