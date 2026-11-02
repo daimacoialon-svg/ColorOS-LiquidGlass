@@ -30,6 +30,32 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public final class HookEntry implements IXposedHookLoadPackage {
     private static final String TAG = "ColorOSLiquidGlass";
+    private static int edgeShaderLogs93=0;
+    // Independent AGSL path: local geometry, screen-aligned bitmap coordinates.
+    // Both the base and warped samples come from the same DECAL bitmap source.
+    private static final String EDGE_SHADER_93 =
+        "uniform shader wallpaper;\n"+
+        "uniform float4 bounds;\n"+
+        "uniform float4 validBounds;\n"+
+        "uniform float radius;\n"+
+        "uniform float strength;\n"+
+        "half4 main(float2 p) {\n"+
+        "  half4 base = wallpaper.eval(p);\n"+
+        "  float2 size = max(bounds.zw-bounds.xy, float2(1.0));\n"+
+        "  float2 center = (bounds.xy+bounds.zw)*0.5;\n"+
+        "  float2 q = abs(p-center)-(size*0.5-min(radius,min(size.x,size.y)*0.5));\n"+
+        "  float2 outside = max(q,float2(0.0));\n"+
+        "  float sdf = length(outside)+min(max(q.x,q.y),0.0)-min(radius,min(size.x,size.y)*0.5);\n"+
+        "  float edge = 1.0-smoothstep(-25.0,-1.0,sdf);\n"+
+        "  float2 normal = (p-center)/max(length(p-center),0.001);\n"+
+        "  float2 delta = normal * (8.0*strength*edge*edge);\n"+
+        "  float2 samplePos = p+delta;\n"+
+        "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
+        "  float valid = smoothstep(0.0,5.0,min(room.x,room.y));\n"+
+        "  half4 refracted = wallpaper.eval(samplePos);\n"+
+        "  return mix(base,refracted,half(valid*edge));\n"+
+        "}\n";
+
     private static final Uri CONFIG = Uri.parse("content://top.liquidglass.vector.config/settings");
     private static volatile long lastRead = 0;
     private static volatile long CONFIG_READY_AT_146 = 0L;
@@ -4650,83 +4676,36 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 rect.left+sr90*referenceScaleX-left,
                                                 rect.top+sb90*referenceScaleY-top),paint90);
                                         drawn90=true;
-                                        // V205.92 opt-in: preserve proven direct-crop base and
-                                        // add a clipped, locally displaced edge-only sampling pass.
-                                        // Unlike BitmapShader(CLAMP), every tile is bounded to
-                                        // valid wallpaper pixels. The displacement is controlled
-                                        // by the existing UI refractionPercent.
+                                        // V205.93: continuous per-pixel sampling over the same
+                                        // screen-aligned Bitmap that the proven direct-crop uses.
+                                        // The folder geometry is always the full local rect.
+                                        // Offscreen sampling blends to the unwarped wallpaper,
+                                        // rather than stretching CLAMP's last pixel or dropping strips.
                                         if(sourceIsolationMode90==3 && refractionPercent>0.01f){
-                                            // V205.92: Preserve full container geometry. Clip only
-                                            // each individual source/destination overlap, never
-                                            // discard an entire strip because 1px is outside.
-                                            final float edge92=24f;
-                                            final float shift92=7f*Math.min(1.5f,Math.max(0f,refractionPercent)/100f);
-                                            final float step92=1.5f;
-                                            final float validRight92=Math.min((float)sw,frame.getWidth()*referenceScaleX);
-                                            final float validBottom92=Math.min((float)sh,frame.getHeight()*referenceScaleY);
-                                            final int save92=canvas.save();
                                             try{
-                                                android.graphics.Path path92=new android.graphics.Path();
-                                                path92.addRoundRect(rect,contourRadius,contourRadius,android.graphics.Path.Direction.CW);
-                                                canvas.clipPath(path92);
-                                                Paint paint92=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
-                                                // RectF bitmap overload accepts a source Rect only;
-                                                // sample from the nearest valid bitmap pixel and
-                                                // avoid the old full-strip continue() discontinuity.
-                                                float y0s92=Math.max(0f,top+rect.top);
-                                                float y1s92=Math.min(validBottom92,top+rect.bottom);
-                                                if(y1s92>y0s92){
-                                                    int sy092=Math.max(0,Math.min(frame.getHeight()-1,(int)Math.floor(y0s92/referenceScaleY)));
-                                                    int sy192=Math.min(frame.getHeight(),Math.max(sy092+1,(int)Math.ceil(y1s92/referenceScaleY)));
-                                                    float dy092=rect.top+(sy092*referenceScaleY-top);
-                                                    float dy192=rect.top+(sy192*referenceScaleY-top);
-                                                    for(float x92=rect.left;x92<rect.right;x92+=step92){
-                                                        float xe92=Math.min(rect.right,x92+step92);
-                                                        float center92=(x92+xe92)*0.5f;
-                                                        float dLeft92=center92-rect.left;
-                                                        float dRight92=rect.right-center92;
-                                                        float d92=Math.min(dLeft92,dRight92);
-                                                        if(d92>=edge92)continue;
-                                                        float u92=Math.max(0f,1f-d92/edge92);
-                                                        float eased92=u92*u92*(3f-2f*u92);
-                                                        float sign92=dLeft92<dRight92?1f:-1f;
-                                                        float screenCenter92=left+center92;
-                                                        // Fade displacement only where its required
-                                                        // source pixel is unavailable; no whole-strip
-                                                        // drop and no repeated CLAMP border column.
-                                                        float intended92=sign92*shift92*eased92;
-                                                        float margin92=3f;
-                                                        float room92=intended92>=0f?
-                                                            validRight92-(screenCenter92+step92*0.5f):
-                                                            screenCenter92-step92*0.5f;
-                                                        float fade92=Math.max(0f,Math.min(1f,(room92-Math.abs(intended92)+margin92)/margin92));
-                                                        fade92=fade92*fade92*(3f-2f*fade92);
-                                                        float offset92=intended92*fade92;
-                                                        float sl92=left+x92+offset92;
-                                                        float sr92=left+xe92+offset92;
-                                                        float clippedL92=Math.max(0f,sl92);
-                                                        float clippedR92=Math.min(validRight92,sr92);
-                                                        if(clippedR92<=clippedL92)continue;
-                                                        int sx092=Math.max(0,Math.min(frame.getWidth()-1,(int)Math.floor(clippedL92/referenceScaleX)));
-                                                        int sx192=Math.min(frame.getWidth(),Math.max(sx092+1,(int)Math.ceil(clippedR92/referenceScaleX)));
-                                                        float dx092=x92+(sx092*referenceScaleX-sl92);
-                                                        float dx192=x92+(sx192*referenceScaleX-sl92);
-                                                        // Restrict the target to the visible segment;
-                                                        // never stretch the remaining pixels across
-                                                        // an invalid offscreen region.
-                                                        float targetL92=Math.max(x92,Math.max(-left,dx092));
-                                                        float targetR92=Math.min(xe92,Math.min(validRight92-left,dx192));
-                                                        if(targetR92<=targetL92)continue;
-                                                        int clip92=canvas.save();
-                                                        try{
-                                                            canvas.clipRect(targetL92,rect.top,targetR92,rect.bottom);
-                                                            paint92.setAlpha(235);
-                                                            canvas.drawBitmap(frame,new android.graphics.Rect(sx092,sy092,sx192,sy192),
-                                                                new RectF(dx092,dy092,dx192,dy192),paint92);
-                                                        }finally{canvas.restoreToCount(clip92);}
-                                                    }
-                                                }
-                                            }finally{canvas.restoreToCount(save92);}
+                                                android.graphics.BitmapShader wallpaper93=new android.graphics.BitmapShader(
+                                                    frame,android.graphics.Shader.TileMode.DECAL,
+                                                    android.graphics.Shader.TileMode.DECAL);
+                                                Matrix matrix93=new Matrix();
+                                                matrix93.setValues(new float[]{referenceScaleX,0f,rect.left-left,
+                                                    0f,referenceScaleY,rect.top-top,0f,0f,1f});
+                                                wallpaper93.setLocalMatrix(matrix93);
+                                                android.graphics.RuntimeShader shader93=new android.graphics.RuntimeShader(EDGE_SHADER_93);
+                                                shader93.setInputShader("wallpaper",wallpaper93);
+                                                shader93.setFloatUniform("bounds",rect.left,rect.top,rect.right,rect.bottom);
+                                                shader93.setFloatUniform("validBounds",rect.left-left,rect.top-top,
+                                                    rect.left-left+frame.getWidth()*referenceScaleX,
+                                                    rect.top-top+frame.getHeight()*referenceScaleY);
+                                                shader93.setFloatUniform("radius",contourRadius);
+                                                shader93.setFloatUniform("strength",Math.min(1.5f,Math.max(0f,refractionPercent)/100f));
+                                                Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+                                                paint93.setShader(shader93);
+                                                canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
+                                                if(edgeShaderLogs93++<60)log("EDGE_SHADER_93 stage=DRAW strength="+refractionPercent+
+                                                    " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
+                                            }catch(Throwable e){
+                                                if(edgeShaderLogs93++<60)log("EDGE_SHADER_93 stage=ERROR "+e);
+                                            }
                                         }
                                     }
                                 }
