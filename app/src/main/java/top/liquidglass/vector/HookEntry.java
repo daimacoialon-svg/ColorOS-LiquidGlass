@@ -2731,6 +2731,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static int rightEdge86Logs=0;
     // V205.89 bounded diagnostics; counters reset on launcher process restart.
     private static int executionProofLogs89=0;
+    private static int sourceIsolationLogs90=0, sourceIsolationDrawLogs90=0;
     private static int executionProofDrawLogs89=0;
 
     private static final String REFRACTION_AGSL =
@@ -4527,6 +4528,28 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             " view="+System.identityHashCode(view)+" dock="+isDock89+
                             " rect="+rect.toShortString()+" left="+left+" top="+top);
                     }
+                    // V205.90: confirmed final draw-site isolation, folder only.
+                    // 0=original AGSL; 1=AGSL unwarped wallpaper.eval(p) via V87
+                    // uniform; 2=direct screen-aligned bitmap crop at SAME draw call.
+                    int sourceIsolation90=0;
+                    if(!isDock89){
+                        try{
+                            android.content.Context c90=launcherContext;
+                            if(c90!=null)sourceIsolation90=android.provider.Settings.Global.getInt(
+                                c90.getContentResolver(),"liquidglass_source_isolation_90",0);
+                        }catch(Throwable ignored90){}
+                    }
+                    sourceIsolation90=Math.max(0,Math.min(2,sourceIsolation90));
+                    final int sourceIsolationMode90=sourceIsolation90;
+                    if(sourceIsolationMode90==1){
+                        // Force the existing V87 shader branch at the verified draw site,
+                        // rather than trusting a separate upstream settings experiment.
+                        state.continuousShader.setFloatUniform("textureInputExperiment87",1.0f);
+                    }
+                    if(sourceIsolationMode90!=0 && sourceIsolationLogs90++<90)
+                        log("SOURCE_ISOLATION_90 stage=SETUP mode="+sourceIsolationMode90+
+                            " folder="+(!isDock89)+" left="+left+" top="+top+
+                            " rect="+rect.toShortString()+" screen="+sw+"x"+sh);
                     final int composite157=compositeProbe157();
                     state.continuousShader.setFloatUniform("compositeProbe157",(float)composite157);
                     // V205.63 opt-in: 0=off, 1=folder only, 2=folder+Dock.
@@ -4606,7 +4629,33 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             }
                             // V205.89 proof is injected at the real final AGSL draw call.
                             // Paint is created independently so no RuntimeShader can hide it.
-                            if(executionProofMode89==1){
+                            if(sourceIsolationMode90==2){
+                                // Clip to the visible bitmap domain. Unlike BitmapShader
+                                // CLAMP, the source/destination rectangles cannot repeat
+                                // the last wallpaper column beyond the display edge.
+                                float vl90=Math.max(0f,left), vt90=Math.max(0f,top);
+                                float vr90=Math.min((float)sw,left+rect.width());
+                                float vb90=Math.min((float)sh,top+rect.height());
+                                boolean drawn90=false;
+                                if(vr90>vl90 && vb90>vt90 && referenceScaleX>0f && referenceScaleY>0f){
+                                    int sl90=Math.max(0,Math.min(frame.getWidth(),(int)Math.floor(vl90/referenceScaleX)));
+                                    int st90=Math.max(0,Math.min(frame.getHeight(),(int)Math.floor(vt90/referenceScaleY)));
+                                    int sr90=Math.max(sl90,Math.min(frame.getWidth(),(int)Math.ceil(vr90/referenceScaleX)));
+                                    int sb90=Math.max(st90,Math.min(frame.getHeight(),(int)Math.ceil(vb90/referenceScaleY)));
+                                    if(sr90>sl90 && sb90>st90){
+                                        Paint paint90=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+                                        canvas.drawBitmap(frame,new android.graphics.Rect(sl90,st90,sr90,sb90),
+                                            new RectF(rect.left+sl90*referenceScaleX-left,
+                                                rect.top+st90*referenceScaleY-top,
+                                                rect.left+sr90*referenceScaleX-left,
+                                                rect.top+sb90*referenceScaleY-top),paint90);
+                                        drawn90=true;
+                                    }
+                                }
+                                if(sourceIsolationDrawLogs90++<90)
+                                    log("SOURCE_ISOLATION_90 stage=DIRECT_BITMAP mode=2 drawn="+drawn90+
+                                        " view="+System.identityHashCode(view));
+                            }else if(executionProofMode89==1){
                                 Paint proof89=new Paint(Paint.ANTI_ALIAS_FLAG);
                                 proof89.setColor(Color.rgb(0,255,0));
                                 proof89.setAlpha(255);
@@ -4616,6 +4665,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                         System.identityHashCode(view));
                             }else{
                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,state.samplePaint);
+                                if(sourceIsolationMode90==1 && sourceIsolationDrawLogs90++<90)
+                                    log("SOURCE_ISOLATION_90 stage=AGSL_RAW mode=1 view="+
+                                        System.identityHashCode(view));
                                 if(executionProofMode89==2){
                                     Paint proof89=new Paint(Paint.ANTI_ALIAS_FLAG);
                                     proof89.setColor(Color.rgb(255,0,255));
