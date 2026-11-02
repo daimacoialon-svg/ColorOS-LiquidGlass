@@ -2729,6 +2729,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
         return prior!=mode || n<12 || n%120==0;
     }
     private static int rightEdge86Logs=0;
+    // V205.89 bounded diagnostics; counters reset on launcher process restart.
+    private static int executionProofLogs89=0;
+    private static int executionProofDrawLogs89=0;
+
     private static final String REFRACTION_AGSL =
         "uniform shader wallpaper;\n"+
         "uniform shader wallpaperClear201;\n"+
@@ -4503,6 +4507,26 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if(edge86!=0 && rightEdge86Logs++<35)log("RIGHT_EDGE_86 mode="+edge86+
                         " left="+left+" top="+top+" screenW="+sw+" screenH="+sh+
                         " viewSize="+view.getWidth()+"x"+view.getHeight());
+                    // V205.89: Java-side execution proof. This does not depend on AGSL
+                    // compilation, uniform propagation, or texture sampling.
+                    // Folder only: 0=baseline, 1=replace final AGSL draw with opaque green,
+                    // 2=draw original AGSL then opaque magenta over the same geometry.
+                    int executionProof89=0;
+                    final boolean isDock89=view.getBackground() instanceof DockBackground204;
+                    if(!isDock89){
+                        try{
+                            android.content.Context c89=launcherContext;
+                            if(c89!=null)executionProof89=android.provider.Settings.Global.getInt(
+                                c89.getContentResolver(),"liquidglass_execution_proof_89",0);
+                        }catch(Throwable ignored89){}
+                    }
+                    executionProof89=Math.max(0,Math.min(2,executionProof89));
+                    final int executionProofMode89=executionProof89;
+                    if(executionProofMode89!=0 && executionProofLogs89++<100){
+                        log("EXECUTION_PROOF_89 stage=UNIFORM_SETUP mode="+executionProofMode89+
+                            " view="+System.identityHashCode(view)+" dock="+isDock89+
+                            " rect="+rect.toShortString()+" left="+left+" top="+top);
+                    }
                     final int composite157=compositeProbe157();
                     state.continuousShader.setFloatUniform("compositeProbe157",(float)composite157);
                     // V205.63 opt-in: 0=off, 1=folder only, 2=folder+Dock.
@@ -4580,7 +4604,28 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                 base177.setColor(Color.rgb(100,100,100));
                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,base177);
                             }
-                            canvas.drawRoundRect(rect,contourRadius,contourRadius,state.samplePaint);
+                            // V205.89 proof is injected at the real final AGSL draw call.
+                            // Paint is created independently so no RuntimeShader can hide it.
+                            if(executionProofMode89==1){
+                                Paint proof89=new Paint(Paint.ANTI_ALIAS_FLAG);
+                                proof89.setColor(Color.rgb(0,255,0));
+                                proof89.setAlpha(255);
+                                canvas.drawRoundRect(rect,contourRadius,contourRadius,proof89);
+                                if(executionProofDrawLogs89++<100)
+                                    log("EXECUTION_PROOF_89 stage=GREEN_REPLACED_AGSL mode=1 view="+
+                                        System.identityHashCode(view));
+                            }else{
+                                canvas.drawRoundRect(rect,contourRadius,contourRadius,state.samplePaint);
+                                if(executionProofMode89==2){
+                                    Paint proof89=new Paint(Paint.ANTI_ALIAS_FLAG);
+                                    proof89.setColor(Color.rgb(255,0,255));
+                                    proof89.setAlpha(255);
+                                    canvas.drawRoundRect(rect,contourRadius,contourRadius,proof89);
+                                    if(executionProofDrawLogs89++<100)
+                                        log("EXECUTION_PROOF_89 stage=MAGENTA_OVER_AGSL mode=2 view="+
+                                            System.identityHashCode(view));
+                                }
+                            }
                         }finally{
                             if(localLayer177>=0)canvas.restoreToCount(localLayer177);
                         }
