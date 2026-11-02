@@ -3581,6 +3581,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
 
     // V1.9.172: bounded per-frame motion/optical-chain telemetry. Diagnostic only.
     private static final java.util.WeakHashMap<View,float[]> MOTION_LAST_172=new java.util.WeakHashMap<>();
+    private static int COORD_DOMAIN_74_COUNT=0;
+    private static long COORD_DOMAIN_74_AT=0L;
     private static int motionCount172=0;
     private static long motionAt172=0L;
     private static void traceMotionOptics172(View view, Canvas canvas, RectF rect,
@@ -3814,6 +3816,45 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 " bitmap="+frame.getWidth()+"x"+frame.getHeight()+
                 " viewRect="+left+","+top+","+(left+rect.width())+","+(top+rect.height())+
                 " bitmapScale="+referenceScaleX+","+referenceScaleY);
+        }
+        // V1.9.205.74: read-only coordinate-domain trace. No Shader or Canvas mutation.
+        // Log only edge crossings, bounded to protect launcher frame time.
+        if((left<0f || right>sw || top<0f || bottom>sh) &&
+                COORD_DOMAIN_74_COUNT<160 &&
+                android.os.SystemClock.uptimeMillis()-COORD_DOMAIN_74_AT>=90L){
+            COORD_DOMAIN_74_AT=android.os.SystemClock.uptimeMillis();
+            COORD_DOMAIN_74_COUNT++;
+            try{
+                int[] loc74=new int[2];view.getLocationOnScreen(loc74);
+                android.graphics.Matrix m74=new android.graphics.Matrix();
+                canvas.getMatrix(m74);
+                float[] mv74=new float[9];m74.getValues(mv74);
+                StringBuilder parents74=new StringBuilder();
+                android.view.ViewParent par74=view.getParent();
+                for(int depth74=0;depth74<5 && par74 instanceof View;depth74++){
+                    View pv74=(View)par74;
+                    if(depth74>0)parents74.append('>');
+                    parents74.append(pv74.getClass().getSimpleName())
+                        .append('(').append(pv74.getLeft()).append(',').append(pv74.getTop())
+                        .append(" scroll=").append(pv74.getScrollX()).append(',').append(pv74.getScrollY())
+                        .append(" trans=").append(pv74.getTranslationX()).append(',').append(pv74.getTranslationY())
+                        .append(')');
+                    par74=pv74.getParent();
+                }
+                float visL74=Math.max(0f,left),visR74=Math.min(sw,right);
+                float visT74=Math.max(0f,top),visB74=Math.min(sh,bottom);
+                log("COORD_DOMAIN_74 id="+System.identityHashCode(view)+
+                    " screen="+sw+"x"+sh+" bitmap="+frame.getWidth()+"x"+frame.getHeight()+
+                    " rect="+left+","+top+","+right+","+bottom+
+                    " visible="+visL74+","+visT74+","+visR74+","+visB74+
+                    " outsideRight="+Math.max(0f,right-sw)+
+                    " location="+loc74[0]+","+loc74[1]+
+                    " viewLocal="+view.getLeft()+","+view.getTop()+
+                    " viewTrans="+view.getTranslationX()+","+view.getTranslationY()+
+                    " canvas="+mv74[0]+","+mv74[1]+","+mv74[2]+","+mv74[3]+","+mv74[4]+","+mv74[5]+
+                    " bitmapScale="+referenceScaleX+","+referenceScaleY+
+                    " parents="+parents74);
+            }catch(Throwable err74){if(COORD_DOMAIN_74_COUNT<5)log("COORD_DOMAIN_74_ERROR "+err74.getClass().getSimpleName());}
         }
         if(right<=0f || bottom<=0f || left>=sw || top>=sh)return;
         if(state.source!=frame){
