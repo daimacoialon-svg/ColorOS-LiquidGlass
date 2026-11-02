@@ -2709,6 +2709,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         if(STABLE_SHEEN_LOGS_179[mode]++>=80)return;
         log("STABLE_SHEEN_179 mode="+mode+" view="+System.identityHashCode(view)+" shaderAlpha=1.0");
     }
+    private static final java.util.concurrent.atomic.AtomicInteger LAYER_PROBE_79_LOGS = new java.util.concurrent.atomic.AtomicInteger();
     private static final String REFRACTION_AGSL =
         "uniform shader wallpaper;\n"+
         "uniform shader wallpaperClear201;\n"+
@@ -4075,6 +4076,37 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     }
                     state.shaderMatrix.postTranslate(-shaderLeft,-shaderTop);
                     state.shader.setLocalMatrix(state.shaderMatrix);
+                    // V205.79: folder-only layer isolation; bypass AGSL entirely for
+                    // modes 1/2. Mode 0 preserves the V78 rendering path exactly.
+                    // Read per draw to avoid stale Settings values; Dock is excluded.
+                    int layerProbe79=0;
+                    if(!(view.getBackground() instanceof DockBackground204)){
+                        try{
+                            android.content.Context c79=launcherContext;
+                            if(c79!=null)layerProbe79=android.provider.Settings.Global.getInt(
+                                c79.getContentResolver(),"liquidglass_layer_probe_79",0);
+                        }catch(Throwable ignored79){}
+                    }
+                    if(layerProbe79==1 || layerProbe79==2){
+                        android.graphics.Shader source79=layerProbe79==1?state.shader:
+                            (blurredInput195 && state.cachedBlurShader!=null?state.cachedBlurShader:state.shader);
+                        android.graphics.Paint paint79=new android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG|android.graphics.Paint.FILTER_BITMAP_FLAG);
+                        paint79.setShader(source79);
+                        paint79.setAlpha(255);
+                        canvas.drawRect(rect,paint79);
+                        if(LAYER_PROBE_79_LOGS.getAndIncrement()<90){
+                            log("LAYER_PROBE_79 requested="+layerProbe79+
+                                " actual="+(layerProbe79==1?"CLEAR_BITMAP":(source79==state.shader?"CLEAR_FALLBACK":"BLURRED_BITMAP"))+
+                                " folder=true frame="+frame.getWidth()+"x"+frame.getHeight()+
+                                " rect="+left+","+top+","+right+","+bottom+
+                                " origin="+shaderLeft+","+shaderTop+
+                                " blurredAvailable="+blurredInput195);
+                        }
+                        return; // outer finally restores Canvas clipping
+                    }
+                    if(layerProbe79==3 && LAYER_PROBE_79_LOGS.getAndIncrement()<90){
+                        log("LAYER_PROBE_79 requested=3 actual=AGSL_COMPOSITE folder=true");
+                    }
                     state.continuousShader.setInputShader("wallpaper",opticalInput195);
                     // V201: clear mode restores original wallpaper detail at the SAME refracted coordinate.
                     // Blur=0 / unavailable: both inputs are identical, so no forced blur or visual shift.
