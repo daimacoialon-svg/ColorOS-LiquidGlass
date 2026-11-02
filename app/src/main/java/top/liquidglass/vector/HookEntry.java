@@ -63,25 +63,26 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
         "  half4 bent = wallpaper.eval(samplePos);\n"+
         "  half4 optical = mix(base,bent,half(safe));\n"+
-        // V96: exact V94 optical output for zero radius; no extra texture taps.
-        // Blur only the already-refracted optical field, with normalized weights.
+        // V99: 0dp must be bit-for-bit the V94 optical field; no blur taps.
         "  if (blurPx95 <= 0.0001) return optical;\n"+
-        "  float sigma = clamp(blurPx95,0.0,8.0);\n"+
-        "  float2 tapX=float2(sigma,0.0);\n"+
-        "  float2 tapY=float2(0.0,sigma);\n"+
-        "  float2 qx=clamp(samplePos+tapX,validBounds.xy,validBounds.zw);\n"+
-        "  float2 qmx=clamp(samplePos-tapX,validBounds.xy,validBounds.zw);\n"+
-        "  float2 qy=clamp(samplePos+tapY,validBounds.xy,validBounds.zw);\n"+
-        "  float2 qmy=clamp(samplePos-tapY,validBounds.xy,validBounds.zw);\n"+
-        "  half4 blurBent=(wallpaper.eval(qx)+wallpaper.eval(qmx)+wallpaper.eval(qy)+wallpaper.eval(qmy))*half(0.25);\n"+
-        "  float2 bx=clamp(p+tapX,validBounds.xy,validBounds.zw);\n"+
-        "  float2 bmx=clamp(p-tapX,validBounds.xy,validBounds.zw);\n"+
-        "  float2 by=clamp(p+tapY,validBounds.xy,validBounds.zw);\n"+
-        "  float2 bmy=clamp(p-tapY,validBounds.xy,validBounds.zw);\n"+
-        "  half4 blurBase=(wallpaper.eval(bx)+wallpaper.eval(bmx)+wallpaper.eval(by)+wallpaper.eval(bmy))*half(0.25);\n"+
-        "  half4 blurOptical=mix(blurBase,blurBent,half(safe));\n"+
-        "  float blend=clamp(sigma*0.28,0.0,0.75);\n"+
-        "  return mix(optical,blurOptical,half(blend));\n"+
+        // Small-radius symmetric low-pass at the SAME source locations as V94.
+        // Center-heavy normalized weights prevent 4-neighbour ghosting/pixelation.
+        "  float sigma = clamp(blurPx95,0.0,4.0);\n"+
+        "  float2 offX=float2(max(0.35,sigma),0.0);\n"+
+        "  float2 offY=float2(0.0,max(0.35,sigma));\n"+
+        "  float2 pL=clamp(p-offX,validBounds.xy+1.0,validBounds.zw-1.0);\n"+
+        "  float2 pR=clamp(p+offX,validBounds.xy+1.0,validBounds.zw-1.0);\n"+
+        "  float2 pU=clamp(p-offY,validBounds.xy+1.0,validBounds.zw-1.0);\n"+
+        "  float2 pD=clamp(p+offY,validBounds.xy+1.0,validBounds.zw-1.0);\n"+
+        "  float2 bL=clamp(samplePos-offX,validBounds.xy+1.0,validBounds.zw-1.0);\n"+
+        "  float2 bR=clamp(samplePos+offX,validBounds.xy+1.0,validBounds.zw-1.0);\n"+
+        "  float2 bU=clamp(samplePos-offY,validBounds.xy+1.0,validBounds.zw-1.0);\n"+
+        "  float2 bD=clamp(samplePos+offY,validBounds.xy+1.0,validBounds.zw-1.0);\n"+
+        "  half4 avgBase=(wallpaper.eval(pL)+wallpaper.eval(pR)+wallpaper.eval(pU)+wallpaper.eval(pD))*half(0.25);\n"+
+        "  half4 avgBent=(wallpaper.eval(bL)+wallpaper.eval(bR)+wallpaper.eval(bU)+wallpaper.eval(bD))*half(0.25);\n"+
+        "  half4 avg=mix(avgBase,avgBent,half(safe));\n"+
+        "  float weight=clamp(sigma*sigma*0.10,0.0,0.45);\n"+
+        "  return mix(optical,avg,half(weight));\n"+
         "}\n";
 
     private static final Uri CONFIG = Uri.parse("content://top.liquidglass.vector.config/settings");
@@ -3845,6 +3846,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         }catch(Throwable e){if(dragLayerLog166++<180)log("DRAG_LAYER_166 error="+e.getClass().getSimpleName()+" "+e.getMessage());}
     }
 
+    // V99: mode3 is the folder-only optical pipeline. Never allow old blurred
+    // quarter-resolution bitmap to be composited underneath its sharp source.
+    private static boolean folderMode3Active99(View view){
+        if(view==null || view.getBackground() instanceof DockBackground204)return false;
+        try{
+            android.content.Context c=launcherContext;
+            return c!=null && android.provider.Settings.Global.getInt(
+                c.getContentResolver(),"liquidglass_source_isolation_90",0)==3;
+        }catch(Throwable ignored){return false;}
+    }
+
     private static final java.util.concurrent.atomic.AtomicInteger SAFE_GEOMETRY_LOGS_20524 = new java.util.concurrent.atomic.AtomicInteger();
     private static void drawReferenceRefraction(View view,Canvas canvas,RectF rect,float radius) {
         long[] drawCtx1761=DRAW_CONTEXT_1761.get();
@@ -4127,7 +4139,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             logRefractionPath169(pathMode169,"ENTER",refractionActive);
             final int compositeMode170=refractionComposite170();
             logComposite170(compositeMode170,"ENTER",-1);
-            if(compositeMode170==1 && customBlurMode==1 && customBlurDp>0 && !refractionActive){
+            if(compositeMode170==1 && customBlurMode==1 && customBlurDp>0 && !refractionActive && !folderMode3Active99(view)){
                 android.graphics.Bitmap blurred=blurredWallpaper(frame,dm.density,view);
                 if(blurred!=null){
                     if(blurHitLogs142++<24)log("BLUR_DRAW_142 READY radius="+customBlurDp+" afterOEM="+Boolean.TRUE.equals(REFRACTION_AFTER_OEM.get()));
@@ -4734,10 +4746,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
                                                 canvas.drawRoundRect(rect,contourRadius,contourRadius,paint93);
-                                                if(edgeShaderLogs93++<60)log("EDGE_SHADER_96 stage=DRAW blurDp="+folderMicroBlurDp95+" blurMode="+customBlurMode+" strength="+refractionPercent+
+                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_99 stage=DRAW requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+refractionPercent+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
                                             }catch(Throwable e){
-                                                if(edgeShaderLogs93++<60)log("EDGE_SHADER_94 stage=ERROR "+e);
+                                                if(edgeShaderLogs93++<60)log("FOLDER_BLUR_99 stage=ERROR "+e);
                                             }
                                         }
                                     }
