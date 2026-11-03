@@ -18,7 +18,9 @@ LAUNCHERDESIG=$LAUNCHERDEDIR/.liquidglass_wallpaper_reference_sig
 TRIGGER=/data/local/tmp/.liquidglass-wallpaper-trigger
 LOG=/data/local/tmp/liquidglass-wallpaper-sync.log
 WATCHER_PID=
-cleanup() { [ -n "$WATCHER_PID" ] && kill "$WATCHER_PID" 2>/dev/null; rm -f "$TRIGGER"; }
+CONFIG_WATCHER_PID=
+CONFIG_TRIGGER=/data/local/tmp/.liquidglass-config-trigger
+cleanup() { [ -n "$WATCHER_PID" ] && kill "$WATCHER_PID" 2>/dev/null; [ -n "$CONFIG_WATCHER_PID" ] && kill "$CONFIG_WATCHER_PID" 2>/dev/null; rm -f "$TRIGGER" "$CONFIG_TRIGGER"; }
 trap cleanup EXIT INT TERM
 # Only one service loop; avoid duplicates after manual testing/restarts.
 LOCK=/data/local/tmp/.liquidglass-wallpaper-sync.lock
@@ -53,6 +55,13 @@ if command -v inotifyd >/dev/null 2>&1; then
   inotifyd /data/adb/service.d/99-liquidglass-wallpaper-notify.sh /data/system/users/0:cmw >/dev/null 2>&1 &
   WATCHER_PID=$!
 fi
+# V123: watch the app's private preferences directory. Android SharedPreferences
+# commonly persists via rename from glass.xml.bak, so monitor the directory.
+# This watcher only signals; the existing root loop publishes the snapshot.
+if command -v inotifyd >/dev/null 2>&1 && [ -d "/data/user/0/$PKG/shared_prefs" ]; then
+  inotifyd /data/adb/service.d/99-liquidglass-wallpaper-notify.sh "/data/user/0/$PKG/shared_prefs:cmw" >/dev/null 2>&1 &
+  CONFIG_WATCHER_PID=$!
+fi
 # Persist a minimal non-secret configuration snapshot independent of the app provider.
 PREF=/data/user/0/$PKG/shared_prefs/glass.xml
 SNAPKEY=liquidglass_boot_snapshot_v1
@@ -66,9 +75,9 @@ config_value() { v=$(xml_value "$1"); case "$v" in ''|*[!0-9-]*) echo "$2";; *) 
 sync_config() {
   [ -s "$PREF" ] || return
   grep -q 'name="enabled"' "$PREF" 2>/dev/null || return
-  # The first item is the schema marker; 21 fields match HookEntry.restoreBootSnapshot().
+  # The first item is the schema marker; 32 snapshot tokens (LG1 + 31 values) match HookEntry.restoreBootSnapshot().
   SNAP="LG1"
-  for entry in 'enabled:0' 'alpha:210' 'tint:0' 'tint_strength:30' 'highlight:0' 'diagnostics:0' 'highlight_strength:25' 'probe_mode:0' 'highlight_width:2' 'directional_light:1' 'native_blur_experiment:0' 'blur_radius_percent:100' 'native_alpha_probe:1' 'wallpaper_compare:0' 'real_refraction:0' 'custom_blur_dp:14' 'refraction_percent:35' 'glass_tint_opacity:18' 'custom_blur_mode:1' 'clear_refraction:0' 'dynamic_sheen_mode:0' 'surface_mode_195:3' 'surface_strength_195:100' 'surface_softness_195:100' 'icon_optics_204:0' 'dock_glass_204:0'; do
+  for entry in 'enabled:0' 'alpha:210' 'tint:0' 'tint_strength:30' 'highlight:0' 'diagnostics:0' 'highlight_strength:25' 'probe_mode:0' 'highlight_width:2' 'directional_light:1' 'native_blur_experiment:0' 'blur_radius_percent:100' 'native_alpha_probe:1' 'wallpaper_compare:0' 'real_refraction:0' 'custom_blur_dp:14' 'refraction_percent:35' 'glass_tint_opacity:18' 'custom_blur_mode:1' 'clear_refraction:0' 'dynamic_sheen_mode:0' 'surface_mode_195:3' 'surface_strength_195:100' 'surface_softness_195:100' 'icon_optics_204:0' 'dock_glass_204:0' 'nonlinear_107:65' 'thickness_107:55' 'interior_107:20' 'focus_107:45' 'reflection_107:30'; do
     key=${entry%%:*}; fallback=${entry#*:}
     SNAP="$SNAP|$(config_value "$key" "$fallback")"
   done
@@ -183,10 +192,22 @@ sync_launcher_reference
 sync_de_reference
 sync_once
 TICKS=0
+CONFIG_TICKS=0
 BOOT_TICKS=0
 while true; do
   if [ "$BOOT_TICKS" -lt 180 ]; then sleep 1; else sleep 2; fi
-  sync_config
+  # V123: event-first config publication. Fallback is deliberately infrequent
+  # (roughly 5 minutes after boot) and never blocks wallpaper synchronization.
+  if [ -e "$CONFIG_TRIGGER" ]; then
+    rm -f "$CONFIG_TRIGGER"
+    sync_config
+  elif [ "$BOOT_TICKS" -lt 180 ]; then
+    # Initial startup: retry while CE storage and preferences become available.
+    if [ $((BOOT_TICKS % 10)) -eq 0 ]; then sync_config; fi
+  elif [ $((CONFIG_TICKS % 150)) -eq 0 ]; then
+    sync_config
+  fi
+  CONFIG_TICKS=$((CONFIG_TICKS + 1))
   TICKS=$((TICKS + 1))
   if [ -e "$TRIGGER" ]; then
     rm -f "$TRIGGER"

@@ -382,7 +382,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             String raw=android.provider.Settings.Global.getString(context.getContentResolver(),BOOT_SNAPSHOT_KEY);
             if(raw==null || !raw.startsWith("LG1|"))return false;
             String[] v=raw.split("\\|",-1);
-            if(v.length!=16 && v.length!=20 && v.length!=21 && v.length!=22 && v.length!=25 && v.length!=27){log("BOOT_SNAPSHOT_REJECT reason=field_count count="+v.length);return false;}
+            if(v.length!=16 && v.length!=20 && v.length!=21 && v.length!=22 && v.length!=25 && v.length!=27 && v.length!=32){log("BOOT_SNAPSHOT_REJECT reason=field_count count="+v.length);return false;}
             // Parse all fields first: never partially apply a corrupt snapshot.
             int[] x=new int[15];
             for(int i=0;i<x.length;i++)x[i]=Integer.parseInt(v[i+1]);
@@ -399,6 +399,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
             if(v.length<25 && !raw.equals(lastBootSnapshot))log("SURFACE_SNAPSHOT_197_MISSING count="+v.length+" expected=25");
             if(v.length>=25){surfaceMode194=clampInt(Integer.parseInt(v[22]),0,3);surfaceStrength194=clampInt(Integer.parseInt(v[23]),0,200);surfaceSoftness194=clampInt(Integer.parseInt(v[24]),50,200);}
             if(v.length>=27){iconOptics204="1".equals(v[25]);dockGlass204="1".equals(v[26]);}
+            // V122: optical parameters must reach Launcher via the root snapshot, not the blocked provider.
+            if(v.length>=32){nonlinear107=clampInt(Integer.parseInt(v[27]),0,100);thickness107=clampInt(Integer.parseInt(v[28]),0,100);interior107=clampInt(Integer.parseInt(v[29]),0,100);focus107=clampInt(Integer.parseInt(v[30]),0,100);reflection107=clampInt(Integer.parseInt(v[31]),0,100);}
             configEverLoaded=true;
             CONFIG_READY_AT_146=android.os.SystemClock.uptimeMillis();
             if(previousRefraction!=REFRACTION_ENABLED){
@@ -410,6 +412,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             if(!raw.equals(lastBootSnapshot)){
                 lastBootSnapshot=raw;
                 log("BOOT_SNAPSHOT_APPLIED enabled="+glassEnabled+" highlight="+highlightEnabled+" refraction="+REFRACTION_ENABLED+" fields="+v.length+" surface="+surfaceMode194+" strength="+surfaceStrength194+" softness="+surfaceSoftness194);
+                log("OPTICAL_CONFIG_SYNC_122 source=GLOBAL_SNAPSHOT fields="+v.length+" legacyEnabled="+REFRACTION_ENABLED+" legacyPercent="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107+" synced="+(v.length>=32));
                 if(CONFIG_LOGS_146++<32)log("CONFIG_FIRST_FRAME_146 snapshotReady="+CONFIG_READY_AT_146+" unlockAt="+CONFIG_UNLOCK_AT_146+" blur="+customBlurDp+" alpha="+glassAlpha+" refract="+refractionPercent);
                 return true;
             }
