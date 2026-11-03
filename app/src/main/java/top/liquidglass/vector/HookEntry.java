@@ -6793,7 +6793,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                         long received125=android.os.SystemClock.uptimeMillis();
                                         boolean changed=restoreBootSnapshot(app);
                                         if(changed)handler.post(()->{
-                                            log("CONFIG_LATENCY_125 launcher_received_uptime="+received125+
+                                            log("CONFIG_CHAIN_126 stage=LAUNCHER_RECEIVED launcher_received_uptime="+received125+
                                                 " invalidate_uptime="+android.os.SystemClock.uptimeMillis());
                                             invalidateGlassViews();
                                         });

@@ -93,23 +93,37 @@ make_snapshot125() {
 }
 sync_config() {
   local_sync_lock=/data/local/tmp/.liquidglass-config-publish.lock
-  mkdir "$local_sync_lock" 2>/dev/null || return
+  # V126: a busy publisher must not silently drop the newest event.
+  if ! mkdir "$local_sync_lock" 2>/dev/null; then
+    touch "$CONFIG_TRIGGER"
+    echo "CONFIG_CHAIN_126 stage=BUSY_REQUEUE time=$(date +%s)" >> "$LOG"
+    return
+  fi
   [ -s "$PREF" ] || { rmdir "$local_sync_lock"; return; }
   grep -q 'name="enabled"' "$PREF" 2>/dev/null || { rmdir "$local_sync_lock"; return; }
   # Single-pass snapshot generation; preserve existing field order and defaults.
   SNAP=$(make_snapshot125)
   [ -n "$SNAP" ] || { rmdir "$local_sync_lock"; return; }
-  if [ "$SNAP" = "$LASTSNAP" ]; then rmdir "$local_sync_lock"; return; fi
+  # Compare with the system value, not a process-local variable: event workers
+  # and the resident service are separate shell processes.
+  CURRENT=$(settings get global "$SNAPKEY" 2>/dev/null)
+  if [ "$SNAP" = "$CURRENT" ]; then rmdir "$local_sync_lock"; return; fi
   read UPTIME_BEFORE _ < /proc/uptime
   if settings put global "$SNAPKEY" "$SNAP" 2>>"$LOG"; then
     read UPTIME_AFTER _ < /proc/uptime
-    echo "CONFIG_LATENCY_125 root_publish_start=$UPTIME_BEFORE root_publish_end=$UPTIME_AFTER" >> "$LOG"
+    echo "CONFIG_CHAIN_126 stage=ROOT_PUBLISHED start_uptime=$UPTIME_BEFORE end_uptime=$UPTIME_AFTER wall=$(date +%s)" >> "$LOG"
     LASTSNAP="$SNAP"
     echo "$(date) config snapshot published" >> "$LOG"
   else
     echo "$(date) config snapshot publish failed" >> "$LOG"
   fi
   rmdir "$local_sync_lock" 2>/dev/null
+  # A file update may have arrived while this worker held the lock.
+  # Re-read once after release; the last writer wins.
+  if [ -e "$CONFIG_TRIGGER" ]; then
+    rm -f "$CONFIG_TRIGGER"
+    [ -s "$PREF" ] && sync_config
+  fi
 }
 sync_once() {
   [ -f "$SRC" ] && [ -d "$DSTDIR" ] || return

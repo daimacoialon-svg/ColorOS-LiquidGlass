@@ -7,5 +7,6 @@ case "$3" in
     "$SERVICE" --event-wallpaper >/dev/null 2>&1 & ;;
   glass.xml|glass.xml.bak)
     touch /data/local/tmp/.liquidglass-config-trigger
+    echo "CONFIG_CHAIN_126 stage=FS_EVENT wall=$(date +%s)" >> /data/local/tmp/liquidglass-wallpaper-sync.log
     "$SERVICE" --event-config >/dev/null 2>&1 & ;;
 esac
