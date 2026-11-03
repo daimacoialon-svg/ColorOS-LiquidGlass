@@ -374,10 +374,19 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // which OplusAppStartupManager blocks on affected devices.
     private static final String BOOT_SNAPSHOT_KEY = "liquidglass_boot_snapshot_v1";
     private static volatile String lastBootSnapshot = "";
+    // V129: a successful direct Provider read takes precedence over delayed root snapshots.
+    // This is per-Launcher-process state; cold boot still restores the last known good snapshot.
+    private static volatile boolean directConfigAuthoritative129 = false;
+    private static volatile long directConfigAppliedAt129 = 0L;
+    private static volatile int opticalDiagnostics129 = 0;
     // Separate the user switch from the independent blur/wallpaper sampling pipeline.
     private static volatile long REFRACTION_CONFIG_EPOCH = 0L;
     private static volatile int REFRACTION_SWITCH_LOGS = 0;
     private static boolean restoreBootSnapshot(android.content.Context context) {
+        if(directConfigAuthoritative129){
+            if(opticalDiagnostics129++<12)log("OPTICAL_AUTHORITY_129 stage=SKIP_STALE_GLOBAL directAt="+directConfigAppliedAt129);
+            return false;
+        }
         try {
             String raw=android.provider.Settings.Global.getString(context.getContentResolver(),BOOT_SNAPSHOT_KEY);
             if(raw==null || !raw.startsWith("LG1|"))return false;
@@ -481,6 +490,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 summary += " surfaceMode="+surfaceMode194+" surfaceStrength="+surfaceStrength194+" surfaceSoftness="+surfaceSoftness194;
                 summary += " realRefraction="+REFRACTION_ENABLED+" wallpaperCompare="+wallpaperCompare+" customBlurDp="+customBlurDp+" refractionPercent="+refractionPercent+" glassTintOpacity="+glassTintOpacity+" customBlurMode="+customBlurMode+" clearRefraction="+clearRefraction;
                 if(!summary.equals(lastConfigSummary)){lastConfigSummary=summary;log("CONFIG_SYNC "+summary);}
+                if(direct128){
+                    directConfigAppliedAt129=android.os.SystemClock.uptimeMillis();
+                    directConfigAuthoritative129=true;
+                    log("OPTICAL_AUTHORITY_129 stage=DIRECT_APPLIED legacyEnabled="+REFRACTION_ENABLED+
+                        " legacyPercent="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+
+                        interior107+","+focus107+","+reflection107+" uptime="+directConfigAppliedAt129);
+                }
             }
         } catch(Throwable t) { if(direct128)log("CONFIG_DIRECT_128 stage=PROVIDER_FAILED reason="+t.getClass().getSimpleName()); if(alphaLogs++<8) log("CONFIG_READ_FAILED reason="+t.getClass().getSimpleName()); }
         if(!configEverLoaded)restoreBootSnapshot(context);
@@ -5008,6 +5024,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     rect.top-top+frame.getHeight()*referenceScaleY);
                                                 shader93.setFloatUniform("radius",contourRadius);
                                                 shader93.setFloatUniform("strength",legacyRefractionActive117 ? Math.min(1.0f,Math.max(0f,refractionPercent)/100f) : 0f);
+                                                if(opticalDiagnostics129++<90){
+                                                    float legacyMax129=legacyRefractionActive117 ? 17f*refractionPercent/100f : 0f;
+                                                    float lensMax129=(residualMode120==2 ? 0f :
+                                                        34f*nonlinear107/100f+20f*thickness107/100f+12f*interior107/100f);
+                                                    log("OPTICAL_FIELD_129 stage=SHADER_INPUT legacySwitch="+REFRACTION_ENABLED+
+                                                        " legacyPercent="+refractionPercent+" legacyActive="+legacyRefractionActive117+
+                                                        " lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107+
+                                                        " isolation="+residualMode120+" legacyUpperPx="+legacyMax129+
+                                                        " lensUpperPx="+lensMax129+" probe="+opticalProbe118+
+                                                        " allDisplacementZero="+(legacyMax129==0f && lensMax129==0f && opticalProbe118==0));
+                                                }
                                                 shader93.setFloatUniform("blurPx95",blend101>0f ? 0f : requestedBlurPx101);
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
                                                 paint93.setShader(shader93);
