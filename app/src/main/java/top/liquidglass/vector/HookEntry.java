@@ -2363,6 +2363,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
         android.graphics.Bitmap source;
         int bitmapBoundaryMode78=-1;
         float lastX=Float.NaN,lastY=Float.NaN;
+        // V154: position observed by the UI traversal vs position actually drawn.
+        float drawnSampleX154=Float.NaN,drawnSampleY154=Float.NaN;
+        boolean pendingSample154=false,frameScheduled154=false;
+        int retryBudget154=0;
+        long lastSampleTrace154=0L;
         android.view.ViewTreeObserver.OnPreDrawListener listener;
         int moveLogs;
         long coordLogAt=0L;
@@ -2404,6 +2409,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     float[] xy=dynamicScreenPosition(view,tracked);
                     if(Float.isNaN(tracked.lastX) || Math.abs(xy[0]-tracked.lastX)>0.5f || Math.abs(xy[1]-tracked.lastY)>0.5f){
                         tracked.lastX=xy[0];tracked.lastY=xy[1];
+                        tracked.pendingSample154=true;
+                        tracked.retryBudget154=3;
+                        // Invalidate on the next vsync as well: parent RenderNode movement
+                        // may not re-record the cached child in this pre-draw traversal.
+                        scheduleSampleRefresh154(view,tracked);
                         view.invalidate();
                     }
                 }catch(Throwable ignored){}
@@ -2429,6 +2439,26 @@ public final class HookEntry implements IXposedHookLoadPackage {
         DYNAMIC_REFRACTION.put(view,state);
         view.postInvalidate(); // Draw a stable refraction frame even before the first swipe
         return state;
+    }
+    // V154: bounded redraw handshake. A position observation is not a completed
+    // wallpaper sample. Do not allocate a bitmap or rebuild the shader here.
+    private static void scheduleSampleRefresh154(final View view,final DynamicRefraction state){
+        if(state.frameScheduled154 || !view.isAttachedToWindow() || !view.isShown())return;
+        if(state.retryBudget154<=0)return;
+        state.frameScheduled154=true;
+        view.postOnAnimation(new Runnable(){
+            @Override public void run(){
+                state.frameScheduled154=false;
+                if(!view.isAttachedToWindow() || !view.isShown())return;
+                if(!state.pendingSample154 || state.retryBudget154<=0)return;
+                state.retryBudget154--;
+                view.postInvalidateOnAnimation();
+                if(state.retryBudget154>0){
+                    // A second vsync allows a parent hardware layer to re-record.
+                    scheduleSampleRefresh154(view,state);
+                }
+            }
+        });
     }
     private static int recenterLogs187=0;
     // V188: exactly one pending vsync callback per folder. Only animate when
@@ -4455,6 +4485,25 @@ public final class HookEntry implements IXposedHookLoadPackage {
         DynamicRefraction state=dynamicState(view);
         float[] xy=dynamicScreenPosition(view,state);
         float left=xy[0]+rect.left,top=xy[1]+rect.top;
+        // V154: retain the actual sampling position for a later draw acknowledgment.
+        final float sampledX154=xy[0],sampledY154=xy[1];
+        if(state.pendingSample154){
+            state.drawnSampleX154=sampledX154;
+            state.drawnSampleY154=sampledY154;
+            if(Math.abs(state.lastX-sampledX154)<0.5f && Math.abs(state.lastY-sampledY154)<0.5f){
+                state.pendingSample154=false;
+                state.retryBudget154=0;
+            }
+            long now154=android.os.SystemClock.uptimeMillis();
+            if(diagnostics && now154-state.lastSampleTrace154>500L){
+                state.lastSampleTrace154=now154;
+                log("SAMPLE_SYNC_154 view="+System.identityHashCode(view)+
+                    " observed="+state.lastX+","+state.lastY+
+                    " draw="+sampledX154+","+sampledY154+
+                    " pending="+state.pendingSample154+
+                    " frame="+System.identityHashCode(frame));
+            }
+        }
         final int coordProbe155=coordinateProbe155();
         if(coordProbe155!=0){
             int[] screenLoc155=new int[2];
