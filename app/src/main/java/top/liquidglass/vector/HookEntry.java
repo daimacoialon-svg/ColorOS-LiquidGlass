@@ -54,6 +54,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float focus107;\n"+
         "uniform float opticalCalibration144;\n"+
         "uniform float opticalModel146;\n"+
+        "uniform float opticalDiagnostic147;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
         "uniform float lensBalance135;\n"+
@@ -222,10 +223,32 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float2 focusField146=n*(lensReach*0.42*focus107*focusShape146);\n"+
         "    deltaLens=global146+internal146+thicknessField146+focusField146;\n"+
         "  }\n"+
+        // V147: visual truth map, calculated from the actual V146 field geometry.
+        // Diagnostic returns BEFORE wallpaper sampling and overlays. Mode 8 is zero warp.
+        "  if(opticalDiagnostic147>0.5 && opticalDiagnostic147<7.5){\n"+
+        "    float2 uv147=(p-center136)/half136;\n"+
+        "    float depth147=clamp(-d/max(lensReach,1.0),0.0,1.0);\n"+
+        "    float inside147=smoothstep(0.0,0.12,clamp(-d/max(halfMin,1.0),0.0,1.0));\n"+
+        "    float rad147=clamp(length(uv147)*0.70710678,0.0,1.5);\n"+
+        "    float global147=clamp(length(uv147)*(3.0+3.0*rad147*rad147)*nonlinear107*inside147/8.0,0.0,1.0);\n"+
+        "    float interior147=clamp(length((center136-p)*(0.055*interior107)*inside147*(1.0-smoothstep(0.48,1.08,rad147)))/8.0,0.0,1.0);\n"+
+        "    float thickness147=clamp(thickness107*pow(sin(3.14159265*depth147),2.0),0.0,1.0);\n"+
+        "    float focus147=clamp(abs((depth147-0.43)*pow(sin(3.14159265*depth147),2.0))*focus107*2.5,0.0,1.0);\n"+
+        "    float reflect147=clamp(reflection107*pow(max(0.0,1.0-abs(d+4.0)/max(4.0,4.0+thickness107*8.0)),2.0),0.0,1.0);\n"+
+        "    float3 channels147=float3(global147,interior147,thickness147);\n"+
+        "    if(opticalDiagnostic147<1.5) return half4(half3(thickness147,0.0,0.0),1.0);\n"+
+        "    if(opticalDiagnostic147<2.5) return half4(half3(0.0,0.0,interior147),1.0);\n"+
+        "    if(opticalDiagnostic147<3.5) return half4(half3(0.0,global147,0.0),1.0);\n"+
+        "    if(opticalDiagnostic147<4.5) return half4(half3(focus147,focus147*0.56,0.0),1.0);\n"+
+        "    if(opticalDiagnostic147<5.5) return half4(half3(reflect147*0.65,0.0,reflect147),1.0);\n"+
+        "    if(opticalDiagnostic147<6.5) return half4(half3(thickness147+focus147*0.5,global147+focus147*0.3,interior147+reflect147),1.0);\n"+
+        "    return half4(half3(clamp(abs(deltaLens.x)/12.0,0.0,1.0),clamp(abs(deltaLens.y)/12.0,0.0,1.0),clamp(length(deltaLens)/12.0,0.0,1.0)),1.0);\n"+
+        "  }\n"+
         "  // V130: one refraction displacement engine at a time.\n"+
         "  // Lens displacement takes precedence; legacy is a fallback only.\n"+
         "  float lensMagnitude=abs(nonlinear107)+abs(thickness107)+abs(interior107)+abs(focus107);\n"+
         "  float2 delta=(lensMagnitude>0.0001)?deltaLens:deltaLegacy;\n"+
+        "  if(opticalDiagnostic147>7.5) delta=float2(0.0);\n"+
         "  if (opticalProbe118 > 0.5 && opticalProbe118 < 1.5) delta=float2(28.0,0.0);\n"+
         "  float2 samplePos = p+delta;\n"+
         // V140 mode 3: smoothly attenuate displacement before crossing the valid wallpaper domain.
@@ -5241,6 +5264,19 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable e146){ log("OPTICAL_MODEL_146_READ_FAILED "+e146.getClass().getSimpleName()); }
                                                 opticalModel146=Math.max(0,Math.min(1,opticalModel146));
                                                 shader93.setFloatUniform("opticalModel146",(float)opticalModel146);
+                                                // V147 diagnostic: 0=normal; 1-5=isolated optical layers;
+                                                // 6=composite heat map; 7=warp displacement; 8=zero warp.
+                                                int opticalDiagnostic147=0;
+                                                try { opticalDiagnostic147=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_optical_diagnostic_147",0); }
+                                                catch(Throwable e147){ if(lensPipelineLogs111<160)log("OPTICAL_DIAGNOSTIC_147_READ_FAILED "+e147.getClass().getSimpleName()); }
+                                                opticalDiagnostic147=Math.max(0,Math.min(8,opticalDiagnostic147));
+                                                shader93.setFloatUniform("opticalDiagnostic147",(float)opticalDiagnostic147);
+                                                if(lensPipelineLogs111<160)log("OPTICAL_DIAGNOSTIC_147 target=FOLDER mode="+opticalDiagnostic147+
+                                                    " model="+opticalModel146+" sampling="+sampling142+
+                                                    " nonlinear="+nonlinear107+" interior="+interior107+
+                                                    " thickness="+thickness107+" focus="+focus107+
+                                                    " reflection="+reflection107+" stage=SHADER_UNIFORM");
                                                 if(lensPipelineLogs111<160)log("OPTICAL_MODEL_146 target=FOLDER model="+opticalModel146+
                                                     " nonlinear="+nonlinear107+" interior="+interior107+
                                                     " thickness="+thickness107+" focus="+focus107+
