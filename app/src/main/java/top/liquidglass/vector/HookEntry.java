@@ -107,12 +107,23 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // Weighted material response is normalized before applying one shared amplitude.
         // At 100% all controls, radial derivative remains below ~0.63 px/px
         // for a locally straight rim (corner curvature requires separate validation).
+        // V143: independent thickness control. It changes optical rim width AND
+        // background displacement, rather than only the normalized weight ratio.
+        // The envelope remains C1-continuous at both rim endpoints.
+        "  float thicknessWidth143=mix(0.52,1.0,thickness107);\n"+
+        "  float thicknessPhase143=clamp(phase/max(thicknessWidth143,0.01),0.0,1.0);\n"+
+        "  float thicknessWave143=sin(3.14159265*thicknessPhase143);\n"+
+        "  float thicknessShape143=thicknessWave143*thicknessWave143;\n"+
+        "  float thicknessOptical143=thickness107*thicknessShape143*thicknessShape143;\n"+
         "  float weightSum=29.0*nonlinear107+17.0*thickness107+10.0*interior107;\n"+
         "  float weightedShape=(29.0*nonlinear107*nonlinearProfile+17.0*thickness107*thicknessProfile+10.0*interior107*innerProfile)/max(weightSum,0.0001);\n"+
         "  float balance135=clamp(lensBalance135,0.0,2.0);\n"+
         "  float shiftRatio135=balance135<0.5?0.20:(balance135<1.5?0.26:0.30);\n"+
         "  float maxShift=lensReach*shiftRatio135;\n"+
         "  float extra=maxShift*clamp(weightSum/56.0,0.0,1.0)*weightedShape;\n"+
+        // Preserve baseline mid-range response, but make 0% and 100% distinct.
+        "  float thicknessDelta143=lensReach*0.105*(thickness107-0.55)*thicknessShape143*thicknessShape143;\n"+
+        "  extra+=thicknessDelta143;\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
         // V137: preserve mode 0 as an exact V135 edge-only control. Modes 1/2
         // use a smooth interior field and a controlled edge focusing profile.
@@ -136,7 +147,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float focusCore137=exp(-pow((focusPhase137-0.23)/0.14,2.0));\n"+
         "  float focusEnvelope137=smoothWave;\n"+
         "  float focusStrength137=(balance135<0.5?0.0:(balance135<1.5?0.065:0.085));\n"+
-        "  float focusShift137=lensReach*focusStrength137*focusCore137*focusEnvelope137*clamp(weightSum/56.0,0.0,1.0);\n"+
+        // V143: focus slider drives the actual wallpaper sampling displacement.
+        // 0% = no focusing shift; 100% = stronger narrow optical compression.
+        "  float focusShift137=lensReach*focusStrength137*focusCore137*focusEnvelope137*clamp(weightSum/56.0,0.0,1.0)*clamp(focus107/0.45,0.0,2.2222);\n"+
+        "  float focusIndependent143=lensReach*0.115*focus107*focusCore137*focusEnvelope137;\n"+
+        "  focusShift137+=focusIndependent143;\n"+
         // V139 opt-in: smooth whole-surface lens field. Zero at the silhouette;
         // fades toward the centre without crossing SDF medial-axis normals.
         // The interior direction is a smooth normalized container coordinate,
@@ -155,7 +170,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  }\n"+
         "  // V130: one refraction displacement engine at a time.\n"+
         "  // Lens displacement takes precedence; legacy is a fallback only.\n"+
-        "  float lensMagnitude=abs(nonlinear107)+abs(thickness107)+abs(interior107);\n"+
+        "  float lensMagnitude=abs(nonlinear107)+abs(thickness107)+abs(interior107)+abs(focus107);\n"+
         "  float2 delta=(lensMagnitude>0.0001)?deltaLens:deltaLegacy;\n"+
         "  if (opticalProbe118 > 0.5 && opticalProbe118 < 1.5) delta=float2(28.0,0.0);\n"+
         "  float2 samplePos = p+delta;\n"+
@@ -5159,6 +5174,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable t142){ if(lensPipelineLogs111<160)log("OPTICAL_SAMPLING_142_READ_FAILED "+t142.getClass().getSimpleName()); }
                                                 sampling142=Math.max(0,Math.min(2,sampling142));
                                                 shader93.setFloatUniform("opticalSampling142",(float)sampling142);
+                                                if(lensPipelineLogs111<160)log("OPTICS_CONTROLS_143 target=FOLDER thicknessRaw="+thickness107+
+                                                    " focusRaw="+focus107+" thicknessUniform="+(residualMode120==2?0f:thickness107/100f)+
+                                                    " focusUniform="+(residualMode120==2?0f:focus107/100f)+
+                                                    " sampling="+sampling142+" branch=INDEPENDENT_DISPLACEMENT");
                                                 if(lensPipelineLogs111<160)log("OPTICAL_SAMPLING_142 target=FOLDER mode="+sampling142+
                                                     " nonlinear="+nonlinear107+" interior="+interior107+
                                                     " thickness="+thickness107+" continuous="+continuous139+
