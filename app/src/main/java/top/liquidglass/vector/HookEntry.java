@@ -5439,7 +5439,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 shader93.setFloatUniform("opticalModel152",(float)opticalModel152);
                                                 int opticalReflection153=1;
                                                 try { opticalReflection153=android.provider.Settings.Global.getInt(
-                                                    context.getContentResolver(),"liquidglass_optical_reflection_153",1);
+                                                    view.getContext().getContentResolver(),"liquidglass_optical_reflection_153",1);
                                                 } catch(Throwable ignored) {}
                                                 opticalReflection153=Math.max(0,Math.min(2,opticalReflection153));
                                                 shader93.setFloatUniform("opticalReflection153",(float)opticalReflection153);
