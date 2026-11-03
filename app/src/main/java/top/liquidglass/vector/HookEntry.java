@@ -173,7 +173,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // fades toward the centre without crossing SDF medial-axis normals.
         // The interior direction is a smooth normalized container coordinate,
         // rather than the discontinuous nearest-edge SDF normal.
-        "  float2 deltaLens=n*(extra+focusShift137+gain144*(thicknessShift144+focusShift144))+interiorDelta136;\n"+
+        // V145: geometry thickness changes the broad curvature envelope; focus
+        // changes its local derivative using a zero-mean two-lobe displacement.
+        // Both fields taper to zero without a hard border at their inner limit.
+        "  float thickDepth145=clamp(phase/max(mix(0.58,1.0,thickness107),0.01),0.0,1.0);\n"+
+        "  float thickWave145=sin(3.14159265*thickDepth145);\n"+
+        "  float thickEnvelope145=thickWave145*thickWave145;\n"+
+        "  float thicknessCurvature145=lensReach*0.13*thickness107*thickEnvelope145;\n"+
+        "  float focusDepth145=clamp(phase,0.0,1.0);\n"+
+        "  float focusEnvelope145=pow(sin(3.14159265*focusDepth145),2.0);\n"+
+        "  float focusDipole145=(focusDepth145-0.47)*focusEnvelope145;\n"+
+        "  float focusCompression145=lensReach*0.25*focus107*focusDipole145;\n"+
+        "  float baseline145=extra-thicknessDelta143;\n"+
+        "  float2 rim145=n*(baseline145+thicknessCurvature145*gain144+focusCompression145*gain144);\n"+
+        "  float2 deltaLens=(calibration144<0.5)?n*(extra+focusShift137)+interiorDelta136:rim145+interiorDelta136;\n"+
         "  if(continuousField139>0.5){\n"+
         "    float2 uv139=(p-center136)/half136;\n"+
         "    float depth139=clamp(-d/max(halfMin,1.0),0.0,1.0);\n"+
@@ -181,7 +194,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float coreFade139=1.0-smoothstep(0.68,1.0,length(uv139)*0.70710678);\n"+
         "    float amplitude139=(continuousField139<1.5?3.0:5.5)*interiorPower136;\n"+
         "    float2 field139=-uv139*amplitude139*edgeFade139*coreFade139;\n"+
-        "    float2 rim139=n*(extra+focusShift137+gain144*(thicknessShift144+focusShift144));\n"+
+        "    float2 rim139=(calibration144<0.5)?n*(extra+focusShift137):rim145;\n"+
         "    float rimWeight139=1.0-smoothstep(0.55,1.0,phase);\n"+
         "    deltaLens=rim139*rimWeight139+field139;\n"+
         "  }\n"+
