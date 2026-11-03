@@ -54,6 +54,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float focus107;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
+        "uniform float lensBalance135;\n"+
 
         "float glassSdf(float2 p) {\n"+
         "  float2 halfSize = max((bounds.zw-bounds.xy)*0.5,float2(0.5));\n"+
@@ -106,7 +107,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // for a locally straight rim (corner curvature requires separate validation).
         "  float weightSum=29.0*nonlinear107+17.0*thickness107+10.0*interior107;\n"+
         "  float weightedShape=(29.0*nonlinear107*nonlinearProfile+17.0*thickness107*thicknessProfile+10.0*interior107*innerProfile)/max(weightSum,0.0001);\n"+
-        "  float maxShift=lensReach*0.20;\n"+
+        "  float balance135=clamp(lensBalance135,0.0,2.0);\n"+
+        "  float shiftRatio135=balance135<0.5?0.20:(balance135<1.5?0.26:0.30);\n"+
+        "  float maxShift=lensReach*shiftRatio135;\n"+
         "  float extra=maxShift*clamp(weightSum/56.0,0.0,1.0)*weightedShape;\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
         "  float2 deltaLens=n*extra; // independent of legacy strength\n"+
@@ -5028,6 +5031,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 // 0=V104/V105 optical baseline; 1=standard; 2=enhanced.
                                                 int rimLevel106=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_lens_rim_106",0);
                                                 shader93.setFloatUniform("lensRimEnhance106",(float)Math.max(0,Math.min(2,rimLevel106)));
+                                                // V135 experimental modes: 0=V134, 1=balanced, 2=depth.
+                                                int lensBalance135=0;
+                                                try { lensBalance135=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_lens_balance_135",0); }catch(Throwable ignored135){}
+                                                lensBalance135=Math.max(0,Math.min(2,lensBalance135));
+                                                shader93.setFloatUniform("lensBalance135",(float)lensBalance135);
                                                 shader93.setFloatUniform("nonlinear107",residualMode120==2?0f:nonlinear107/100f);
                                                 shader93.setFloatUniform("thickness107",residualMode120==2?0f:thickness107/100f);
                                                 shader93.setFloatUniform("interior107",residualMode120==2?0f:interior107/100f);
@@ -5038,7 +5046,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 opticalProbe118=Math.max(0,Math.min(2,opticalProbe118));
                                                 shader93.setFloatUniform("opticalProbe118",residualMode120==2?0f:(float)opticalProbe118);
                                                 if(residualMode120==2)residualLog120("ZERO_LENS_UNIFORMS","mode=2");
-                                                if(lensPipelineLogs111++<160)log("OPTICAL_UV_119 stage=UNIFORMS probe="+opticalProbe118+" legacy="+(legacyRefractionActive117 ? refractionPercent : 0)+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107);
+                                                if(lensPipelineLogs111++<160)log("OPTICAL_UV_119 stage=UNIFORMS balance135="+lensBalance135+" probe="+opticalProbe118+" legacy="+(legacyRefractionActive117 ? refractionPercent : 0)+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107);
                                                 shader93.setFloatUniform("blurMix101",blend101);
                                                 shader93.setFloatUniform("bounds",rect.left,rect.top,rect.right,rect.bottom);
                                                 shader93.setFloatUniform("validBounds",rect.left-left,rect.top-top,
