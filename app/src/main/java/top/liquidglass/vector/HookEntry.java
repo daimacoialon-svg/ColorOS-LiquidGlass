@@ -61,6 +61,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float opticalModel149;\n"+
         "uniform float opticalModel150;\n"+
         "uniform float opticalModel151;\n"+
+        "uniform float opticalModel152;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
         "uniform float lensBalance135;\n"+
@@ -302,6 +303,28 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float2 focus151=normal151*sin(6.2831853*t151)*pow(1.0-t151,2.0)*entry151*span151*0.13*focus107;\n"+
         "    float2 raw151=rim151+whole151+center151+focus151;\n"+
         "    deltaLens=raw151*(18.0/sqrt(324.0+dot(raw151,raw151)));\n"+
+        "  }\n"+
+        // V152: avoid the nearest-edge SDF normal entirely in the experimental path.
+        // Smooth four-side potential gives a single differentiable vector field,
+        // including the diagonals/medial axes of square and elongated containers.
+        // 1 = moderate continuous lens, 2 = stronger old-2D-inspired edge compression.
+        "  if(opticalModel152>0.5 && opticalModel149>0.5){\n"+
+        "    float2 size152=max(bounds.zw-bounds.xy,float2(2.0));\n"+
+        "    float2 uv152=(p-center136)/(size152*0.5);\n"+
+        "    float depth152=max(-d,0.0);\n"+
+        "    float entry152=smoothstep(0.0,3.5,depth152);\n"+
+        "    float span152=max(12.0,min(halfMin*0.78,halfMin*0.32+12.0));\n"+
+        "    float t152=clamp(depth152/span152,0.0,1.0);\n"+
+        "    float shoulder152=1.0-smoothstep(0.0,1.0,t152);\n"+
+        "    float2 soft152=smoothN/max(length(smoothN),0.65);\n"+
+        "    float2 whole152=-uv152*(2.0+2.0*dot(uv152,uv152))*nonlinear107*entry152;\n"+
+        "    float inner152=1.0-smoothstep(0.25,1.12,length(uv152)*0.70710678);\n"+
+        "    float2 center152=-uv152*(3.0*interior107)*inner152*entry152;\n"+
+        "    float2 rim152=soft152*(2.0+span152*0.19)*thickness107*shoulder152*entry152;\n"+
+        "    float2 focus152=soft152*(sin(6.2831853*t152)*pow(1.0-t152,2.0))*span152*0.16*focus107*entry152;\n"+
+        "    float gain152=(opticalModel152>1.5)?1.45:1.0;\n"+
+        "    float2 raw152=(whole152+center152+rim152+focus152)*gain152;\n"+
+        "    deltaLens=raw152*(19.0/sqrt(361.0+dot(raw152,raw152)));\n"+
         "  }\n"+
         // V147: visual truth map, calculated from the actual V146 field geometry.
         // Diagnostic returns BEFORE wallpaper sampling and overlays. Mode 8 is zero warp.
@@ -5397,6 +5420,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable e151){ log("OPTICAL_MODEL_151_READ_FAILED "+e151.getClass().getSimpleName()); }
                                                 opticalModel151=Math.max(0,Math.min(1,opticalModel151));
                                                 shader93.setFloatUniform("opticalModel151",(float)opticalModel151);
+                                                // V152: 0=V150 baseline, 1=continuous lens, 2=stronger edge optics.
+                                                int opticalModel152=0;
+                                                try { opticalModel152=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_optical_model_152",0); }
+                                                catch(Throwable e152){ log("OPTICAL_MODEL_152_READ_FAILED "+e152.getClass().getSimpleName()); }
+                                                opticalModel152=Math.max(0,Math.min(2,opticalModel152));
+                                                shader93.setFloatUniform("opticalModel152",(float)opticalModel152);
                                                 // V147 diagnostic: 0=normal; 1-5=isolated optical layers;
                                                 // 6=composite heat map; 7=warp displacement; 8=zero warp.
                                                 int opticalDiagnostic147=0;
