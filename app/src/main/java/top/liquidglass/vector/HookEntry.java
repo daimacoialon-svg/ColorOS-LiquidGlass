@@ -55,6 +55,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
         "uniform float lensBalance135;\n"+
+        "uniform float continuousField139;\n"+
 
         "float glassSdf(float2 p) {\n"+
         "  float2 halfSize = max((bounds.zw-bounds.xy)*0.5,float2(0.5));\n"+
@@ -135,7 +136,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float focusEnvelope137=smoothWave;\n"+
         "  float focusStrength137=(balance135<0.5?0.0:(balance135<1.5?0.065:0.085));\n"+
         "  float focusShift137=lensReach*focusStrength137*focusCore137*focusEnvelope137*clamp(weightSum/56.0,0.0,1.0);\n"+
+        // V139 opt-in: smooth whole-surface lens field. Zero at the silhouette;
+        // fades toward the centre without crossing SDF medial-axis normals.
+        // The interior direction is a smooth normalized container coordinate,
+        // rather than the discontinuous nearest-edge SDF normal.
         "  float2 deltaLens=n*(extra+focusShift137)+interiorDelta136;\n"+
+        "  if(continuousField139>0.5){\n"+
+        "    float2 uv139=(p-center136)/half136;\n"+
+        "    float depth139=clamp(-d/max(halfMin,1.0),0.0,1.0);\n"+
+        "    float edgeFade139=smoothstep(0.0,0.18,depth139);\n"+
+        "    float coreFade139=1.0-smoothstep(0.68,1.0,length(uv139)*0.70710678);\n"+
+        "    float amplitude139=(continuousField139<1.5?3.0:5.5)*interiorPower136;\n"+
+        "    float2 field139=-uv139*amplitude139*edgeFade139*coreFade139;\n"+
+        "    float2 rim139=n*(extra+focusShift137);\n"+
+        "    float rimWeight139=1.0-smoothstep(0.55,1.0,phase);\n"+
+        "    deltaLens=rim139*rimWeight139+field139;\n"+
+        "  }\n"+
         "  // V130: one refraction displacement engine at a time.\n"+
         "  // Lens displacement takes precedence; legacy is a fallback only.\n"+
         "  float lensMagnitude=abs(nonlinear107)+abs(thickness107)+abs(interior107);\n"+
@@ -5059,6 +5075,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 try { lensBalance135=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_lens_balance_135",0); }catch(Throwable ignored135){}
                                                 lensBalance135=Math.max(0,Math.min(2,lensBalance135));
                                                 shader93.setFloatUniform("lensBalance135",(float)lensBalance135);
+                                                // V139: 0=V138.1 untouched; 1/2=whole-surface experimental lens.
+                                                int continuous139=0;
+                                                try { continuous139=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_continuous_field_139",0); }
+                                                catch(Throwable ignored139){}
+                                                continuous139=Math.max(0,Math.min(2,continuous139));
+                                                shader93.setFloatUniform("continuousField139",(float)continuous139);
                                                 shader93.setFloatUniform("nonlinear107",residualMode120==2?0f:nonlinear107/100f);
                                                 shader93.setFloatUniform("thickness107",residualMode120==2?0f:thickness107/100f);
                                                 shader93.setFloatUniform("interior107",residualMode120==2?0f:interior107/100f);
