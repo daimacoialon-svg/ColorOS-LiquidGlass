@@ -85,14 +85,21 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float rimCore106=smoothstep(-24.0,-13.0,d)*(1.0-smoothstep(-8.0,-2.0,d));\n"+
         // V109: all experimental displacement stays in the reliable outer SDF rim.
         // The interior medial axis is never sampled for optical normals.
-        "  float rimDepth=clamp(-d,0.0,20.0);\n"+
-        "  float rimWindow=smoothstep(0.0,3.0,rimDepth)*(1.0-smoothstep(13.0,20.0,rimDepth));\n"+
-        "  float phase=clamp(rimDepth/20.0,0.0,1.0);\n"+
-        "  float nonlinearProfile=pow(max(sin(3.14159265*phase),0.0),1.5)*rimWindow;\n"+
-        "  float thicknessProfile=pow(max(sin(3.14159265*phase),0.0),2.0)*rimWindow;\n"+
-        "  float innerProfile=smoothstep(4.0,9.0,rimDepth)*(1.0-smoothstep(13.0,20.0,rimDepth));\n"+
+        // V131: size-adaptive, smoothly tapered lens band. Keep V104 normals and
+        // zero displacement beyond the safe rim; never sample medial-axis normals.
+        "  float halfMin=min(hs.x,hs.y);\n"+
+        "  float lensReach=min(30.0,max(16.0,halfMin*0.34));\n"+
+        "  float rimDepth=clamp(-d,0.0,lensReach);\n"+
+        "  float phase=clamp(rimDepth/max(lensReach,1.0),0.0,1.0);\n"+
+        "  float entry=smoothstep(0.0,0.10,phase);\n"+
+        "  float exit=1.0-smoothstep(0.62,1.0,phase);\n"+
+        "  float lensEnvelope=entry*exit;\n"+
+        "  float nonlinearProfile=pow(max(sin(3.14159265*phase),0.0),1.15)*lensEnvelope;\n"+
+        "  float thicknessProfile=pow(max(sin(3.14159265*phase),0.0),1.55)*lensEnvelope;\n"+
+        "  float innerProfile=smoothstep(0.16,0.42,phase)*exit;\n"+
         "  float gain106=1.0+lensRimEnhance106*0.28*rimCore106;\n"+
-        "  float extra=(nonlinear107*34.0*nonlinearProfile+thickness107*20.0*thicknessProfile+interior107*12.0*innerProfile);\n"+
+        // Lower peak slightly while spreading displacement, avoiding stronger rim bulges.
+        "  float extra=(nonlinear107*29.0*nonlinearProfile+thickness107*17.0*thicknessProfile+interior107*10.0*innerProfile);\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
         "  float2 deltaLens=n*extra; // independent of legacy strength\n"+
         "  // V130: one refraction displacement engine at a time.\n"+
