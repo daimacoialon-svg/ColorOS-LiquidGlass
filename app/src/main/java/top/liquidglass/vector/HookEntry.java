@@ -60,6 +60,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float opticalModel148;\n"+
         "uniform float opticalModel149;\n"+
         "uniform float opticalModel150;\n"+
+        "uniform float opticalModel151;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
         "uniform float lensBalance135;\n"+
@@ -282,6 +283,25 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float2 combined149=global149+interior149+thickness149+focus149;\n"+
         "    float magnitude149=length(combined149);\n"+
         "    deltaLens=combined149*(20.0/sqrt(400.0+magnitude149*magnitude149));\n"+
+        "  }\n"+
+        // V151 opt-in: transparent continuous lens displacement. Preserve V150 default.
+        // Same normalized coordinates for square folders, strips and Dock.
+        // No nearest-side switch and no division by a vanishing gradient.
+        "  if(opticalModel151>0.5 && opticalModel149>0.5){\n"+
+        "    float2 size151=max(bounds.zw-bounds.xy,float2(2.0));\n"+
+        "    float2 uv151=(p-center136)/(size151*0.5);\n"+
+        "    float depth151=max(-d,0.0);\n"+
+        "    float entry151=smoothstep(0.0,3.0,depth151);\n"+
+        "    float span151=max(10.0,min(halfMin*0.72,halfMin*0.30+12.0));\n"+
+        "    float t151=clamp(depth151/span151,0.0,1.0);\n"+
+        "    float shoulder151=pow(1.0-smoothstep(0.0,1.0,t151),1.5);\n"+
+        "    float2 normal151=mix(n,smoothN/max(length(smoothN),0.35),smoothstep(2.0,10.0,depth151));\n"+
+        "    float2 rim151=normal151*shoulder151*entry151*(2.0+span151*0.11)*thickness107;\n"+
+        "    float2 whole151=-uv151*entry151*(2.4+2.0*dot(uv151,uv151))*nonlinear107;\n"+
+        "    float2 center151=(center136-p)*(0.017*interior107)*entry151*(1.0-smoothstep(0.4,1.18,length(uv151)*0.70710678));\n"+
+        "    float2 focus151=normal151*sin(6.2831853*t151)*pow(1.0-t151,2.0)*entry151*span151*0.13*focus107;\n"+
+        "    float2 raw151=rim151+whole151+center151+focus151;\n"+
+        "    deltaLens=raw151*(18.0/sqrt(324.0+dot(raw151,raw151)));\n"+
         "  }\n"+
         // V147: visual truth map, calculated from the actual V146 field geometry.
         // Diagnostic returns BEFORE wallpaper sampling and overlays. Mode 8 is zero warp.
@@ -5370,6 +5390,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable e150){ log("OPTICAL_MODEL_150_READ_FAILED "+e150.getClass().getSimpleName()); }
                                                 opticalModel150=Math.max(0,Math.min(1,opticalModel150));
                                                 shader93.setFloatUniform("opticalModel150",(float)opticalModel150);
+                                                // V151 is opt-in; 0 exactly retains the V150 shader path.
+                                                int opticalModel151=0;
+                                                try { opticalModel151=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_optical_model_151",0); }
+                                                catch(Throwable e151){ log("OPTICAL_MODEL_151_READ_FAILED "+e151.getClass().getSimpleName()); }
+                                                opticalModel151=Math.max(0,Math.min(1,opticalModel151));
+                                                shader93.setFloatUniform("opticalModel151",(float)opticalModel151);
                                                 // V147 diagnostic: 0=normal; 1-5=isolated optical layers;
                                                 // 6=composite heat map; 7=warp displacement; 8=zero warp.
                                                 int opticalDiagnostic147=0;
