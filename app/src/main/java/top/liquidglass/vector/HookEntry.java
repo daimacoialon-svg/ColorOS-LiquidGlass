@@ -92,19 +92,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float lensReach=min(30.0,max(12.0,halfMin*0.34));\n"+
         "  float rimDepth=clamp(-d,0.0,lensReach);\n"+
         "  float phase=clamp(rimDepth/max(lensReach,1.0),0.0,1.0);\n"+
-        "  float entry=smoothstep(0.0,0.10,phase);\n"+
-        "  float exit=1.0-smoothstep(0.62,1.0,phase);\n"+
-        "  float lensEnvelope=entry*exit;\n"+
-        "  float nonlinearProfile=pow(max(sin(3.14159265*phase),0.0),1.15)*lensEnvelope;\n"+
-        "  float thicknessProfile=pow(max(sin(3.14159265*phase),0.0),1.55)*lensEnvelope;\n"+
-        "  float innerProfile=smoothstep(0.16,0.42,phase)*exit;\n"+
+        // V134: C1-continuous lens displacement; bounded radial slope across the rim.
+        // A sin^2(pi*phase) envelope has zero value AND zero slope at both ends.
+        // Its radial derivative is bounded by pi/lensReach before corner geometry.
+        "  float wave=sin(3.14159265*phase);\n"+
+        "  float smoothWave=wave*wave;\n"+
+        "  float nonlinearProfile=smoothWave;\n"+
+        "  float thicknessProfile=smoothWave*smoothWave;\n"+
+        "  float innerProfile=smoothWave*(0.5+0.5*phase);\n"+
         "  float gain106=1.0+lensRimEnhance106*0.28*rimCore106;\n"+
-        // Lower peak slightly while spreading displacement, avoiding stronger rim bulges.
-        "  float rawExtra=(nonlinear107*29.0*nonlinearProfile+thickness107*17.0*thicknessProfile+interior107*10.0*innerProfile);\n"+
-        "  // V132: soft-limit peak shift by geometry, preventing thin Dock rims from folding.\n"+
-        "  float maxShift=lensReach*0.30;\n"+
-        "  float scaledExtra=rawExtra/max(maxShift,0.001);\n"+
-        "  float extra=maxShift*scaledExtra/sqrt(1.0+scaledExtra*scaledExtra);\n"+
+        // Weighted material response is normalized before applying one shared amplitude.
+        // At 100% all controls, radial derivative remains below ~0.63 px/px
+        // for a locally straight rim (corner curvature requires separate validation).
+        "  float weightSum=29.0*nonlinear107+17.0*thickness107+10.0*interior107;\n"+
+        "  float weightedShape=(29.0*nonlinear107*nonlinearProfile+17.0*thickness107*thicknessProfile+10.0*interior107*innerProfile)/max(weightSum,0.0001);\n"+
+        "  float maxShift=lensReach*0.20;\n"+
+        "  float extra=maxShift*clamp(weightSum/56.0,0.0,1.0)*weightedShape;\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
         "  float2 deltaLens=n*extra; // independent of legacy strength\n"+
         "  // V130: one refraction displacement engine at a time.\n"+
