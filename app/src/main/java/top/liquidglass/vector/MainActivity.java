@@ -137,9 +137,9 @@ public final class MainActivity extends Activity {
         current.addView(appleHint);
         toggle("桌面应用图标统一表面光学（首轮适配）","icon_optics_204",false);
         toggle("自适应液态玻璃 Dock（预览）","dock_glass_204",false);
-        TextView dockInfo=text("Dock 保持既有 92% 宽度及胶囊形状，与桌面文件夹共用壁纸采样、折射、模糊和表面光学参数；图标轮廓保留 V1.9.205.11。",12,false);current.addView(dockInfo);
+        TextView dockInfo=text("Dock 保持原有尺寸和位置；V132 与文件夹共用直接背景采样及透镜位移 Shader，并按容器几何自适应。",12,false);current.addView(dockInfo);
 
-        section("透镜光学实验 V107","连续非线性边缘折射；调节后观察文件夹和 Dock。推荐参数仍需真机验证。");
+        section("统一透镜光学 V132","连续非线性边缘折射；调节后观察文件夹和 Dock。推荐参数仍需真机验证。");
         slider("非线性边缘折射 (%)","nonlinear_107",65,0,100);
         slider("玻璃光学厚度 (%)","thickness_107",55,0,100);
         slider("内部透镜强度 (%)","interior_107",20,0,100);

@@ -88,7 +88,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // V131: size-adaptive, smoothly tapered lens band. Keep V104 normals and
         // zero displacement beyond the safe rim; never sample medial-axis normals.
         "  float halfMin=min(hs.x,hs.y);\n"+
-        "  float lensReach=min(30.0,max(16.0,halfMin*0.34));\n"+
+        "  // V132: normalized optical depth scales with the smaller glass dimension.\n"+
+        "  float lensReach=min(30.0,max(12.0,halfMin*0.34));\n"+
         "  float rimDepth=clamp(-d,0.0,lensReach);\n"+
         "  float phase=clamp(rimDepth/max(lensReach,1.0),0.0,1.0);\n"+
         "  float entry=smoothstep(0.0,0.10,phase);\n"+
@@ -99,7 +100,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float innerProfile=smoothstep(0.16,0.42,phase)*exit;\n"+
         "  float gain106=1.0+lensRimEnhance106*0.28*rimCore106;\n"+
         // Lower peak slightly while spreading displacement, avoiding stronger rim bulges.
-        "  float extra=(nonlinear107*29.0*nonlinearProfile+thickness107*17.0*thicknessProfile+interior107*10.0*innerProfile);\n"+
+        "  float rawExtra=(nonlinear107*29.0*nonlinearProfile+thickness107*17.0*thicknessProfile+interior107*10.0*innerProfile);\n"+
+        "  // V132: soft-limit peak shift by geometry, preventing thin Dock rims from folding.\n"+
+        "  float maxShift=lensReach*0.30;\n"+
+        "  float extra=maxShift*tanh(rawExtra/max(maxShift,0.001));\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
         "  float2 deltaLens=n*extra; // independent of legacy strength\n"+
         "  // V130: one refraction displacement engine at a time.\n"+
@@ -4467,7 +4471,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     // Do not change Dock rendering or the V104 safe rim normals.
                     boolean independentLens115 = nonlinear107>0 || thickness107>0 || interior107>0;
                     boolean independentSurface115 = focus107>0 || reflection107>0;
-                    boolean folderOptical115 = !(view.getBackground() instanceof DockBackground204);
+                    boolean folderOptical115 = true; // V132: folder and Dock share the same direct bitmap optical path
                     int opticalProbeRoute118=0;
                     try { opticalProbeRoute118=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_optical_probe_118",0); }catch(Throwable ignored118){}
                     if(folderOptical115 && (lensDiag111>0 || independentLens115 || independentSurface115 || opticalProbeRoute118>0))
@@ -4477,6 +4481,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         " lens="+independentLens115+" surface="+independentSurface115+
                         " diag="+lensDiag111+" original="+originalIsolation111+
                         " effective="+sourceIsolation90+" folder="+folderOptical115);
+                    if(lensPipelineLogs111++<160)log("UNIFIED_GLASS_132 container="+
+                        ((view.getBackground() instanceof DockBackground204)?"DOCK":"FOLDER")+
+                        " route="+sourceIsolation90+" lens="+nonlinear107+","+thickness107+","+interior107+
+                        " size="+view.getWidth()+"x"+view.getHeight());
                     if(lensPipelineLogs111++<160)log("LENS_PIPELINE_111 stage=CONFIG diag="+lensDiag111+
                         " originalMode="+originalIsolation111+" effectiveMode="+sourceIsolation90+
                         " legacy="+refractionPercent+" legacySwitch="+REFRACTION_ENABLED+" lens="+nonlinear107+","+thickness107+","+interior107+
