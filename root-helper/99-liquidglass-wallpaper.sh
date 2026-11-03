@@ -68,25 +68,42 @@ fi
 PREF=/data/user/0/$PKG/shared_prefs/glass.xml
 SNAPKEY=liquidglass_boot_snapshot_v1
 LASTSNAP=""
-xml_value() {
-  line=$(grep -F "name=\"$1\"" "$PREF" 2>/dev/null | head -n 1)
-  case "$line" in *'value="true"'*) echo 1;; *'value="false"'*) echo 0;;
-    *) echo "$line" | sed -n 's/.*value="\([-0-9]*\)".*/\1/p';; esac
+# V125: parse preferences in a single awk process instead of 31 grep/head/sed
+# pipelines. This reduces shell process creation on each UI update.
+make_snapshot125() {
+  awk '
+  BEGIN {
+    n=split("enabled:0 alpha:210 tint:0 tint_strength:30 highlight:0 diagnostics:0 highlight_strength:25 probe_mode:0 highlight_width:2 directional_light:1 native_blur_experiment:0 blur_radius_percent:100 native_alpha_probe:1 wallpaper_compare:0 real_refraction:0 custom_blur_dp:14 refraction_percent:35 glass_tint_opacity:18 custom_blur_mode:1 clear_refraction:0 dynamic_sheen_mode:0 surface_mode_195:3 surface_strength_195:100 surface_softness_195:100 icon_optics_204:0 dock_glass_204:0 nonlinear_107:65 thickness_107:55 interior_107:20 focus_107:45 reflection_107:30", items, " ");
+    for(i=1;i<=n;i++){split(items[i],pair,":"); keys[i]=pair[1]; values[pair[1]]=pair[2]}
+  }
+  /name="/ {
+    line=$0
+    if(match(line,/name="[^"]+"/)){
+      key=substr(line,RSTART+6,RLENGTH-7)
+      if(!(key in values))next
+      if(match(line,/value="[^"]*"/)){
+        val=substr(line,RSTART+7,RLENGTH-8)
+        if(val=="true")val="1"; else if(val=="false")val="0"
+        if(val ~ /^-?[0-9]+$/) values[key]=val
+      }
+    }
+  }
+  END { result="LG1";for(i=1;i<=n;i++)result=result "|" values[keys[i]];print result }
+  ' "$PREF"
 }
-config_value() { v=$(xml_value "$1"); case "$v" in ''|*[!0-9-]*) echo "$2";; *) echo "$v";; esac; }
 sync_config() {
   local_sync_lock=/data/local/tmp/.liquidglass-config-publish.lock
   mkdir "$local_sync_lock" 2>/dev/null || return
   [ -s "$PREF" ] || { rmdir "$local_sync_lock"; return; }
   grep -q 'name="enabled"' "$PREF" 2>/dev/null || { rmdir "$local_sync_lock"; return; }
-  # The first item is the schema marker; 32 snapshot tokens (LG1 + 31 values) match HookEntry.restoreBootSnapshot().
-  SNAP="LG1"
-  for entry in 'enabled:0' 'alpha:210' 'tint:0' 'tint_strength:30' 'highlight:0' 'diagnostics:0' 'highlight_strength:25' 'probe_mode:0' 'highlight_width:2' 'directional_light:1' 'native_blur_experiment:0' 'blur_radius_percent:100' 'native_alpha_probe:1' 'wallpaper_compare:0' 'real_refraction:0' 'custom_blur_dp:14' 'refraction_percent:35' 'glass_tint_opacity:18' 'custom_blur_mode:1' 'clear_refraction:0' 'dynamic_sheen_mode:0' 'surface_mode_195:3' 'surface_strength_195:100' 'surface_softness_195:100' 'icon_optics_204:0' 'dock_glass_204:0' 'nonlinear_107:65' 'thickness_107:55' 'interior_107:20' 'focus_107:45' 'reflection_107:30'; do
-    key=${entry%%:*}; fallback=${entry#*:}
-    SNAP="$SNAP|$(config_value "$key" "$fallback")"
-  done
+  # Single-pass snapshot generation; preserve existing field order and defaults.
+  SNAP=$(make_snapshot125)
+  [ -n "$SNAP" ] || { rmdir "$local_sync_lock"; return; }
   if [ "$SNAP" = "$LASTSNAP" ]; then rmdir "$local_sync_lock"; return; fi
+  read UPTIME_BEFORE _ < /proc/uptime
   if settings put global "$SNAPKEY" "$SNAP" 2>>"$LOG"; then
+    read UPTIME_AFTER _ < /proc/uptime
+    echo "CONFIG_LATENCY_125 root_publish_start=$UPTIME_BEFORE root_publish_end=$UPTIME_AFTER" >> "$LOG"
     LASTSNAP="$SNAP"
     echo "$(date) config snapshot published" >> "$LOG"
   else

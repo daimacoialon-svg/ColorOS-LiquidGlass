@@ -6790,8 +6790,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             new android.database.ContentObserver(handler){
                                 @Override public void onChange(boolean selfChange){
                                     new Thread(()->{
+                                        long received125=android.os.SystemClock.uptimeMillis();
                                         boolean changed=restoreBootSnapshot(app);
-                                        if(changed)handler.post(()->invalidateGlassViews());
+                                        if(changed)handler.post(()->{
+                                            log("CONFIG_LATENCY_125 launcher_received_uptime="+received125+
+                                                " invalidate_uptime="+android.os.SystemClock.uptimeMillis());
+                                            invalidateGlassViews();
+                                        });
                                     },"LiquidGlass-SnapshotChanged").start();
                                 }
                             });
