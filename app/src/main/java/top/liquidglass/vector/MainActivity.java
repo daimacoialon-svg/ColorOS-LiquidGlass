@@ -11,7 +11,7 @@ import android.content.SharedPreferences;
 import android.view.View;
 import android.widget.*;
 
-/** V1.9.101: clean settings surface; legacy preferences remain intact. */
+/** V138: material-first settings, with legacy preference keys retained for renderer compatibility. */
 public final class MainActivity extends Activity {
     private SharedPreferences prefs;
     private TextView rootStatus;
@@ -98,57 +98,38 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.130  ·  单一折射引擎实验版",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
-        section("玻璃效果","独立壁纸模糊、折射、底色和高光。");
+        TextView version=text("V1.9.205.138  ·  统一玻璃材质设置",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        section("玻璃材质总览","文件夹与 Dock 共用光学参数；两者可分别启用。预设不会强制打开旧版实验模式。");
         toggle("启用桌面文件夹玻璃", "enabled",false);
         TextView presetInfo=text("玻璃预设仅在手动点击时应用；文件夹与 Dock 共用玻璃渲染参数，不改变功能开关。",12,false);current.addView(presetInfo);
-        action("应用清透玻璃预设",()->{
-            prefs.edit().putBoolean("enabled",true).putInt("alpha",0).putInt("tint",0).putInt("tint_strength",0)
-                .putInt("glass_tint_opacity",0).putInt("custom_blur_dp",4).putInt("custom_blur_mode",1).putInt("refraction_percent",45)
-                .putBoolean("highlight",false).putInt("highlight_strength",45).putInt("highlight_width",2)
-                .putBoolean("directional_light",true).putBoolean("native_alpha_probe",false).putBoolean("real_refraction",true)
-                .putInt("probe_mode",0).commit();recreate();
-        });
-        action("恢复液态玻璃推荐参数（含透镜光学）",()->{
-            prefs.edit().putInt("custom_blur_dp",3).putInt("refraction_percent",35)
-                .putInt("nonlinear_107",65).putInt("thickness_107",55).putInt("interior_107",20).putInt("focus_107",45).putInt("reflection_107",30)
-                .putInt("glass_tint_opacity",6).putInt("alpha",0).putInt("tint",0).putInt("tint_strength",0).putInt("highlight_strength",22)
-                .putInt("custom_blur_mode",1).putBoolean("real_refraction",true)
-                .putBoolean("highlight",false).putBoolean("enabled",true).commit();recreate();
-        });
-        action("应用苹果风格玻璃推荐参数（文件夹 + Dock）",()->{
-            // V1.9.205.12: shared renderer already consumes these settings.
-            // Do not modify enabled, dock_glass_204, icon_optics_204,
-            // real_refraction or clear_refraction toggles.
-            prefs.edit()
-                .putInt("custom_blur_dp",3)
-                .putInt("custom_blur_mode",1)
-                .putInt("refraction_percent",35)
-                .putInt("glass_tint_opacity",6)
-                .putInt("surface_mode_195",3)
-                .putInt("surface_strength_195",100)
-                .putInt("surface_softness_195",100)
-                .commit();
+        action("应用清透液态玻璃推荐参数",()->{
+            prefs.edit().putBoolean("enabled",true)
+                .putInt("custom_blur_dp",2).putInt("custom_blur_tenths_95",20).putInt("custom_blur_mode",1)
+                .putInt("glass_tint_opacity",6).putInt("tint",0).putInt("tint_strength",0)
+                .putInt("nonlinear_107",72).putInt("thickness_107",65)
+                .putInt("interior_107",48).putInt("focus_107",45).putInt("reflection_107",22)
+                .putInt("refraction_percent",0).putBoolean("real_refraction",false)
+                .putInt("surface_mode_195",3).putInt("surface_strength_195",65)
+                .putInt("surface_softness_195",100).commit();
             notifyConfigChanged128();
-            Toast.makeText(this,"已应用苹果风格玻璃参数；原有功能开关保持不变",Toast.LENGTH_LONG).show();
+            Toast.makeText(this,"已应用统一透镜推荐参数；Dock 开关保持原状态",Toast.LENGTH_LONG).show();
             recreate();
         });
-        TextView appleHint=text("推荐：模糊 3dp · 折射 35% · 底色 6% · 柔和表面反射。二维玻璃折射与玻璃细节增强开关保持原状态；需要看到折射时请手动开启。",12,false);
-        current.addView(appleHint);
-        toggle("桌面应用图标统一表面光学（首轮适配）","icon_optics_204",false);
-        toggle("自适应液态玻璃 Dock（预览）","dock_glass_204",false);
+        TextView presetHint=text("推荐参数是测试起点，不代表已达到 iOS 目标。旧二维折射默认关闭，避免与统一透镜叠加。",12,false);
+        current.addView(presetHint);
+        
+        toggle("启用 Dock 玻璃","dock_glass_204",false);
         TextView dockInfo=text("Dock 保持原有尺寸和位置；V132 与文件夹共用直接背景采样及透镜位移 Shader，并按容器几何自适应。",12,false);current.addView(dockInfo);
 
-        section("统一透镜光学 V132","连续非线性边缘折射；调节后观察文件夹和 Dock。推荐参数仍需真机验证。");
-        slider("非线性边缘折射 (%)","nonlinear_107",65,0,100);
-        slider("玻璃光学厚度 (%)","thickness_107",55,0,100);
-        slider("内部透镜强度 (%)","interior_107",20,0,100);
-        slider("边缘光学聚焦 (%)","focus_107",45,0,100);
-        slider("表面反射 (%)","reflection_107",30,0,100);
-        section("玻璃效果参数","壁纸模糊、折射和底色。");
+        section("统一曲面透镜","主折射路径：文件夹与 Dock 共用光学参数。厚度、内部形变和聚焦分别控制不同计算项。");
+        slider("整体非线性折射 (%)","nonlinear_107",65,0,100);
+        slider("边缘玻璃厚度 (%)","thickness_107",55,0,100);
+        slider("内部透镜形变 (%)","interior_107",20,0,100);
+        slider("边缘纹理聚焦 (%)","focus_107",45,0,100);
+        slider("透镜反射权重 (%)","reflection_107",30,0,100);
+        section("玻璃外观","背景模糊和底色独立于折射；应用图标不会被自定义壁纸模糊处理。");
         slider("玻璃底色不透明度 (%)","glass_tint_opacity",18,0,100);
         microBlurSlider95();
-        slider("二维折射强度 (%)","refraction_percent",35,0,100);
         TextView modeLabel=text("背景模糊模式",13,false);current.addView(modeLabel);
         Spinner blurMode=new Spinner(this);
         String[] blurModes={"关闭模糊 · 纯折射","自定义壁纸模糊 · 推荐","ColorOS 原生兼容"};
@@ -158,17 +139,15 @@ public final class MainActivity extends Activity {
             public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){prefs.edit().putInt("custom_blur_mode",pos).commit();}
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
         });
-        toggle("二维玻璃折射（文件夹与 Dock 共用四边弧形透镜）","real_refraction",false);
-        toggle("玻璃细节增强（模糊时恢复少量壁纸纹理）","clear_refraction",false);
         // Legacy native_alpha_probe is deliberately disabled: blur and material opacity are separate.
         prefs.edit().putBoolean("native_alpha_probe",false).apply();
         TextView blurInfo=text("自定义模糊使用壁纸采样，不模糊应用图标。系统模糊开关不再强制开启；ColorOS 自身仍可能启用原生模糊。",12,false);current.addView(blurInfo);
         // V1.9.199: legacy soft-highlight controls removed from UI. Existing
         // preferences remain for compatibility; the unified surface owns reflection.
-        section("统一玻璃表面光学","新版圆角反射独立于背景模糊；设置保存后会同步给 Launcher。");
+        section("边缘高光与暗边","仅控制静态/动态高光及柔和暗边；不是环境反射或真实光线追踪。");
         TextView surfaceLabel=text("表面反射模式",13,false);current.addView(surfaceLabel);
         Spinner surfaceSpinner=new Spinner(this);
-        String[] surfaceModes={"0 · 关闭表面反射","1 · 静态圆角反射","2 · 动态圆角反射","3 · 动态反射 + 柔和暗边"};
+        String[] surfaceModes={"0 · 关闭描边","1 · 静态柔和高光","2 · 动态柔和高光","3 · 动态高光 + 柔和暗边"};
         surfaceSpinner.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,surfaceModes));
         surfaceSpinner.setSelection(Math.max(0,Math.min(3,prefs.getInt("surface_mode_195",3))));current.addView(surfaceSpinner);
         surfaceSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
@@ -178,9 +157,9 @@ public final class MainActivity extends Activity {
             }
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
         });
-        slider("表面反射强度 (%)","surface_strength_195",100,0,200);
-        slider("高光宽度 (%)","surface_softness_195",100,50,200);
-        TextView surfaceHint=text("这三项是真正的 APK 设置控件；与背景模糊半径、壁纸折射强度分别控制不同效果。",12,false);
+        slider("边缘高光强度 (%)","surface_strength_195",100,0,200);
+        slider("高光过渡宽度 (%)","surface_softness_195",100,50,200);
+        TextView surfaceHint=text("这些参数仅作用于高光与暗边，不会改变壁纸采样位移；光学折射请调整统一曲面透镜。",12,false);
         current.addView(surfaceHint);
         section("玻璃底色色调","选择玻璃底色的冷暖色调与叠加浓度；与模糊、折射、表面反射独立。");
         TextView tintLabel=text("色调",13,false);current.addView(tintLabel);
@@ -193,14 +172,33 @@ public final class MainActivity extends Activity {
         });
         slider("底色色调强度 (%)","tint_strength",30,0,90);
         TextView tintInfo=text("底色色调强度为 0% 时不添加颜色；原生模式不添加色调。颜色变化需在玻璃底色不透明度和当前渲染路径允许的情况下观察。",12,false);current.addView(tintInfo);
-        section("维护与状态","高级实验已从首页隐藏，保留必要的 Root 脚本更新与日志开关。");
+        section("旧版兼容与实验","旧二维壁纸折射仅用于对照测试。默认折叠，避免误以为它是第二套必需的光学系统。");
+        final LinearLayout legacyContainer=column();
+        final Button legacyButton=new Button(this);
+        legacyButton.setAllCaps(false);legacyButton.setText("展开旧版二维折射实验");
+        current.addView(legacyButton);
+        current.addView(legacyContainer);
+        legacyContainer.setVisibility(View.GONE);
+        final LinearLayout savedCurrent=current;
+        current=legacyContainer;
+        toggle("旧二维壁纸折射（实验对照）","real_refraction",false);
+        slider("旧二维折射强度 (%)","refraction_percent",0,0,100);
+        toggle("旧版玻璃细节增强","clear_refraction",false);
+        toggle("应用图标高光实验","icon_optics_204",false);
+        current=savedCurrent;
+        legacyButton.setOnClickListener(v->{
+            boolean show=legacyContainer.getVisibility()!=View.VISIBLE;
+            legacyContainer.setVisibility(show?View.VISIBLE:View.GONE);
+            legacyButton.setText(show?"收起旧版实验参数":"展开旧版二维折射实验");
+        });
+        section("维护与状态","Root 脚本更新、同步状态和诊断日志。");
         rootStatus=text("正在检查 Root 脚本与运行进程…",12,false);current.addView(rootStatus);
         action("检查并更新 Root 辅助脚本",()->RootHelperUpdater.runAsync(this,result->{
             rootStatus.setText(result);
             rootStatusHandler.removeCallbacks(rootStatusPoll);
             rootStatusHandler.postDelayed(rootStatusPoll,1000);
         }));
-        TextView serviceHint=text("安装或更新脚本后请重启手机：旧版服务进程不会因文件被覆盖而自动重启。重启后配置快照应包含 25 个字段。",12,false);current.addView(serviceHint);
+        TextView serviceHint=text("安装或更新脚本后请重启手机：旧版服务进程不会因文件被覆盖而自动重启。重启后检查配置同步是否正常。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
         setContentView(scroll);
