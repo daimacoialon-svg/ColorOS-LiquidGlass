@@ -52,6 +52,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float thickness107;\n"+
         "uniform float interior107;\n"+
         "uniform float focus107;\n"+
+        "uniform float opticalCalibration144;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
         "uniform float lensBalance135;\n"+
@@ -124,6 +125,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // Preserve baseline mid-range response, but make 0% and 100% distinct.
         "  float thicknessDelta143=lensReach*0.105*(thickness107-0.55)*thicknessShape143*thicknessShape143;\n"+
         "  extra+=thicknessDelta143;\n"+
+        // V144: thickness contributes a separate, smooth rim displacement whose
+        // amplitude and support grow with the slider; zero is exactly zero.
+        "  float thickReach144=mix(0.48,0.92,thickness107);\n"+
+        "  float thickPhase144=clamp(phase/max(thickReach144,0.01),0.0,1.0);\n"+
+        "  float thickWave144=sin(3.14159265*thickPhase144);\n"+
+        "  float thickRim144=thickWave144*thickWave144;\n"+
+        "  float thicknessShift144=lensReach*0.19*thickness107*thickRim144*thickRim144;\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
         // V137: preserve mode 0 as an exact V135 edge-only control. Modes 1/2
         // use a smooth interior field and a controlled edge focusing profile.
@@ -152,11 +160,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float focusShift137=lensReach*focusStrength137*focusCore137*focusEnvelope137*clamp(weightSum/56.0,0.0,1.0)*clamp(focus107/0.45,0.0,2.2222);\n"+
         "  float focusIndependent143=lensReach*0.115*focus107*focusCore137*focusEnvelope137;\n"+
         "  focusShift137+=focusIndependent143;\n"+
+        // V144: a separate wide, C1-continuous optical focusing lobe. Previous
+        // focusCore137 * focusEnvelope137 multiplied two narrow masks, making
+        // the slider visually imperceptible even at 100%.
+        "  float focusWave144=sin(3.14159265*clamp(phase,0.0,1.0));\n"+
+        "  float focusWide144=focusWave144*focusWave144;\n"+
+        "  float focusCenter144=exp(-pow((phase-0.34)/0.24,2.0));\n"+
+        "  float focusShift144=lensReach*0.28*focus107*focusWide144*focusCenter144;\n"+
+        "  float calibration144=clamp(opticalCalibration144,0.0,2.0);\n"+
+        "  float gain144=(calibration144<0.5?0.0:(calibration144<1.5?1.0:1.5));\n"+
         // V139 opt-in: smooth whole-surface lens field. Zero at the silhouette;
         // fades toward the centre without crossing SDF medial-axis normals.
         // The interior direction is a smooth normalized container coordinate,
         // rather than the discontinuous nearest-edge SDF normal.
-        "  float2 deltaLens=n*(extra+focusShift137)+interiorDelta136;\n"+
+        "  float2 deltaLens=n*(extra+focusShift137+gain144*(thicknessShift144+focusShift144))+interiorDelta136;\n"+
         "  if(continuousField139>0.5){\n"+
         "    float2 uv139=(p-center136)/half136;\n"+
         "    float depth139=clamp(-d/max(halfMin,1.0),0.0,1.0);\n"+
@@ -164,7 +181,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float coreFade139=1.0-smoothstep(0.68,1.0,length(uv139)*0.70710678);\n"+
         "    float amplitude139=(continuousField139<1.5?3.0:5.5)*interiorPower136;\n"+
         "    float2 field139=-uv139*amplitude139*edgeFade139*coreFade139;\n"+
-        "    float2 rim139=n*(extra+focusShift137);\n"+
+        "    float2 rim139=n*(extra+focusShift137+gain144*(thicknessShift144+focusShift144));\n"+
         "    float rimWeight139=1.0-smoothstep(0.55,1.0,phase);\n"+
         "    deltaLens=rim139*rimWeight139+field139;\n"+
         "  }\n"+
@@ -5174,6 +5191,19 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable t142){ if(lensPipelineLogs111<160)log("OPTICAL_SAMPLING_142_READ_FAILED "+t142.getClass().getSimpleName()); }
                                                 sampling142=Math.max(0,Math.min(2,sampling142));
                                                 shader93.setFloatUniform("opticalSampling142",(float)sampling142);
+                                                // 0=V143 displacement, 1=enhanced V144 default, 2=strong diagnostic.
+                                                int calibration144=1;
+                                                try { calibration144=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_optical_calibration_144",1); }
+                                                catch(Throwable t144){ if(lensPipelineLogs111<160)log("OPTICAL_CALIBRATION_144_READ_FAILED "+t144.getClass().getSimpleName()); }
+                                                calibration144=Math.max(0,Math.min(2,calibration144));
+                                                shader93.setFloatUniform("opticalCalibration144",(float)calibration144);
+                                                if(lensPipelineLogs111<160)log("OPTICAL_CALIBRATION_144 target=FOLDER mode="+calibration144+
+                                                    " thicknessRaw="+thickness107+" focusRaw="+focus107+
+                                                    " thicknessUniform="+(residualMode120==2?0f:thickness107/100f)+
+                                                    " focusUniform="+(residualMode120==2?0f:focus107/100f)+
+                                                    " sampling="+sampling142+" residual="+residualMode120+
+                                                    " stage=SHADER_UNIFORM");
                                                 if(lensPipelineLogs111<160)log("OPTICS_CONTROLS_143 target=FOLDER thicknessRaw="+thickness107+
                                                     " focusRaw="+focus107+" thicknessUniform="+(residualMode120==2?0f:thickness107/100f)+
                                                     " focusUniform="+(residualMode120==2?0f:focus107/100f)+
