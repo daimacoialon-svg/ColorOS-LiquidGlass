@@ -95,7 +95,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float extra=(nonlinear107*34.0*nonlinearProfile+thickness107*20.0*thicknessProfile+interior107*12.0*innerProfile);\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
         "  float2 deltaLens=n*extra; // independent of legacy strength\n"+
-        "  float2 delta=deltaLegacy+deltaLens;\n"+
+        "  // V130: one refraction displacement engine at a time.\n"+
+        "  // Lens displacement takes precedence; legacy is a fallback only.\n"+
+        "  float lensMagnitude=abs(nonlinear107)+abs(thickness107)+abs(interior107);\n"+
+        "  float2 delta=(lensMagnitude>0.0001)?deltaLens:deltaLegacy;\n"+
         "  if (opticalProbe118 > 0.5 && opticalProbe118 < 1.5) delta=float2(28.0,0.0);\n"+
         "  float2 samplePos = p+delta;\n"+
         "  samplePos=clamp(samplePos,validBounds.xy+float2(1.0),validBounds.zw-float2(1.0));\n"+
@@ -5028,12 +5031,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     float legacyMax129=legacyRefractionActive117 ? 17f*refractionPercent/100f : 0f;
                                                     float lensMax129=(residualMode120==2 ? 0f :
                                                         34f*nonlinear107/100f+20f*thickness107/100f+12f*interior107/100f);
+                                                    log("REFRACTION_ENGINE_130 active="+(lensMax129>0f ? "LENS" : (legacyMax129>0f ? "LEGACY_FALLBACK" : "ZERO"))+" legacySuppressed="+(lensMax129>0f && legacyMax129>0f)+" lensUpperPx="+lensMax129+" legacyUpperPx="+legacyMax129);
                                                     log("OPTICAL_FIELD_129 stage=SHADER_INPUT legacySwitch="+REFRACTION_ENABLED+
                                                         " legacyPercent="+refractionPercent+" legacyActive="+legacyRefractionActive117+
                                                         " lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107+
                                                         " isolation="+residualMode120+" legacyUpperPx="+legacyMax129+
                                                         " lensUpperPx="+lensMax129+" probe="+opticalProbe118+
-                                                        " allDisplacementZero="+(legacyMax129==0f && lensMax129==0f && opticalProbe118==0));
+                                                        " allDisplacementZero="+((lensMax129==0f ? legacyMax129==0f : false) && opticalProbe118==0));
                                                 }
                                                 shader93.setFloatUniform("blurPx95",blend101>0f ? 0f : requestedBlurPx101);
                                                 Paint paint93=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
