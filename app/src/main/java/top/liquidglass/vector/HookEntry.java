@@ -103,7 +103,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float rawExtra=(nonlinear107*29.0*nonlinearProfile+thickness107*17.0*thicknessProfile+interior107*10.0*innerProfile);\n"+
         "  // V132: soft-limit peak shift by geometry, preventing thin Dock rims from folding.\n"+
         "  float maxShift=lensReach*0.30;\n"+
-        "  float extra=maxShift*tanh(rawExtra/max(maxShift,0.001));\n"+
+        "  float scaledExtra=rawExtra/max(maxShift,0.001);\n"+
+        "  float extra=maxShift*scaledExtra/sqrt(1.0+scaledExtra*scaledExtra);\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
         "  float2 deltaLens=n*extra; // independent of legacy strength\n"+
         "  // V130: one refraction displacement engine at a time.\n"+
