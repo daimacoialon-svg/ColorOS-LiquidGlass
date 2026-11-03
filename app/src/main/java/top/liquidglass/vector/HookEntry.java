@@ -158,6 +158,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 delta=(lensMagnitude>0.0001)?deltaLens:deltaLegacy;\n"+
         "  if (opticalProbe118 > 0.5 && opticalProbe118 < 1.5) delta=float2(28.0,0.0);\n"+
         "  float2 samplePos = p+delta;\n"+
+        // V140 mode 3: smoothly attenuate displacement before crossing the valid wallpaper domain.
+        // Avoid a flat clamped sample-coordinate plateau. Default V139 modes remain unchanged.
+        "  if(continuousField139>2.5){\n"+
+        "   float2 low140=validBounds.xy+float2(1.0);\n"+
+        "   float2 high140=validBounds.zw-float2(1.0);\n"+
+        "   float2 room140=max(float2(0.0),min(p-low140,high140-p));\n"+
+        "   float2 toward140=abs(delta);\n"+
+        "   float2 factor140=smoothstep(float2(0.0),float2(12.0),room140);\n"+
+        "   delta*=factor140;\n"+
+        "   samplePos=p+delta;\n"+
+        "  }\n"+
         "  samplePos=clamp(samplePos,validBounds.xy+float2(1.0),validBounds.zw-float2(1.0));\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
         "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
@@ -3399,7 +3410,23 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float maxShift63=min(span63*0.035,1.8)*clamp(abs(displacement173)/22.0,0.0,1.0);\n"+
         "  lensShift20521+=sign(displacement173)*maxShift63*envelope63;\n"+
         " }\n"+
+        // V140 shared sampling diagnostics, applicable to BOTH Dock and folders.
+        // 47: unwarped reference; 48: rim-only (no shared interior wave);
+        // 49: smooth displacement attenuation near the screen boundary.
+        " if(sampleIsolation>46.5 && sampleIsolation<47.5){lensShift20521=0.0;}\n"+
+        " if(sampleIsolation>47.5 && sampleIsolation<48.5){\n"+
+        "  float span140=max(2.0,min(short20515*0.42,radius20513*1.10));\n"+
+        "  float depth140=clamp(inside20516/span140,0.0,1.0);\n"+
+        "  float wave140=sin(3.14159265*depth140);\n"+
+        "  float interior140=min(span140*0.035,1.8)*clamp(abs(displacement173)/22.0,0.0,1.0)*wave140*wave140*smoothstep(0.0,0.20,depth140);\n"+
+        "  if(sharedInteriorLens63>0.5){lensShift20521-=sign(displacement173)*interior140;}\n"+
+        " }\n"+
         " float2 samplingPoint=p-lensNormal20521*lensShift20521;\n"+
+        " if(sampleIsolation>48.5 && sampleIsolation<49.5){\n"+
+        "  float2 room140=max(float2(0.0),min(p-screenClip.xy,screenClip.zw-p));\n"+
+        "  float2 attenuation140=smoothstep(float2(0.0),float2(18.0),room140);\n"+
+        "  samplingPoint=p+(samplingPoint-p)*attenuation140;\n"+
+        " }\n"+
         " bool outOfDisplay=samplingPoint.x<screenClip.x || samplingPoint.y<screenClip.y || samplingPoint.x>screenClip.z || samplingPoint.y>screenClip.w;\n"+
         // The visible display is the only valid wallpaper sample region. A
         // folder may be partly offscreen while swiping; never sample a CLAMP
