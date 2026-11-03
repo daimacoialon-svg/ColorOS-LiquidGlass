@@ -1966,6 +1966,34 @@ public final class HookEntry implements IXposedHookLoadPackage {
             finally{REFRACTION_LOADING=false;}
         }},"LiquidGlass-Wallpaper-Reference").start();
     }
+    // V124: watch the Launcher-owned reference file, not the protected system source.
+    // Keep observers strongly referenced; FileObserver callbacks are not on the UI thread.
+    private static final java.util.List<android.os.FileObserver> REFERENCE_OBSERVERS_124 =
+        new java.util.ArrayList<android.os.FileObserver>();
+    private static void watchReferenceChanges124(final android.content.Context app,
+                                                   final android.os.Handler handler) {
+        if(!REFERENCE_OBSERVERS_124.isEmpty())return;
+        String[] dirs={app.getFilesDir().getAbsolutePath(),
+            app.createDeviceProtectedStorageContext().getFilesDir().getAbsolutePath()};
+        for(final String dir:dirs){
+            try {
+                android.os.FileObserver observer=new android.os.FileObserver(dir,
+                    android.os.FileObserver.CLOSE_WRITE | android.os.FileObserver.MOVED_TO |
+                    android.os.FileObserver.CREATE){
+                    @Override public void onEvent(int event,String name){
+                        if(name==null || !"liquidglass_wallpaper_reference.jpg".equals(name))return;
+                        handler.post(()->{
+                            REFRACTION_LAST_CHECK=0L;
+                            scheduleReferenceLoad(app,null);
+                            log("WALLPAPER_REFERENCE_EVENT_124 event="+event);
+                        });
+                    }
+                };
+                observer.startWatching();
+                REFERENCE_OBSERVERS_124.add(observer);
+            }catch(Throwable t){log("WALLPAPER_WATCH_FAILED_124 "+t.getClass().getSimpleName());}
+        }
+    }
     // Keep each icon's shader and pre-draw observer in a weak map. No disk IO on UI thread.
     private static final java.util.Map<View, DynamicRefraction> DYNAMIC_REFRACTION =
         java.util.Collections.synchronizedMap(new java.util.WeakHashMap<View, DynamicRefraction>());
@@ -6743,6 +6771,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         }
                     };
                     restore.run();
+                    watchReferenceChanges124(app,handler);
                     prewarmBootRefraction(app,handler);
                     try {
                         app.getContentResolver().registerContentObserver(CONFIG,false,new android.database.ContentObserver(handler){

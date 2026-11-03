@@ -37,6 +37,7 @@ lock_owner_alive() {
   now_start=$(sed 's/.*) //' "/proc/$old/stat" 2>/dev/null | awk '{print $20}')
   [ -n "$now_start" ] && [ "$old_start" = "$now_start" ]
 }
+if [ "$1" != "--event-wallpaper" ] && [ "$1" != "--event-config" ]; then
 if ! mkdir "$LOCK" 2>/dev/null; then
   if lock_owner_alive; then exit 0; fi
   rm -rf "$LOCK"
@@ -48,17 +49,18 @@ sha256sum /data/adb/service.d/99-liquidglass-wallpaper.sh 2>/dev/null | cut -d '
 sed 's/.*) //' "/proc/$$/stat" 2>/dev/null | awk '{print $20}' > "$LOCK/starttime"
 cleanup_all() { cleanup; rm -rf "$LOCK"; }
 trap cleanup_all EXIT INT TERM
+fi
 # inotifyd launches this script for filesystem events in the watched directory.
  # Watch source directory for close-write / moved-to / create events.
 # If inotifyd is absent or fails, the 5-minute fallback remains active.
-if command -v inotifyd >/dev/null 2>&1; then
+if [ -z "$1" ] && command -v inotifyd >/dev/null 2>&1; then
   inotifyd /data/adb/service.d/99-liquidglass-wallpaper-notify.sh /data/system/users/0:cmw >/dev/null 2>&1 &
   WATCHER_PID=$!
 fi
 # V123: watch the app's private preferences directory. Android SharedPreferences
 # commonly persists via rename from glass.xml.bak, so monitor the directory.
 # This watcher only signals; the existing root loop publishes the snapshot.
-if command -v inotifyd >/dev/null 2>&1 && [ -d "/data/user/0/$PKG/shared_prefs" ]; then
+if [ -z "$1" ] && command -v inotifyd >/dev/null 2>&1 && [ -d "/data/user/0/$PKG/shared_prefs" ]; then
   inotifyd /data/adb/service.d/99-liquidglass-wallpaper-notify.sh "/data/user/0/$PKG/shared_prefs:cmw" >/dev/null 2>&1 &
   CONFIG_WATCHER_PID=$!
 fi
@@ -73,21 +75,24 @@ xml_value() {
 }
 config_value() { v=$(xml_value "$1"); case "$v" in ''|*[!0-9-]*) echo "$2";; *) echo "$v";; esac; }
 sync_config() {
-  [ -s "$PREF" ] || return
-  grep -q 'name="enabled"' "$PREF" 2>/dev/null || return
+  local_sync_lock=/data/local/tmp/.liquidglass-config-publish.lock
+  mkdir "$local_sync_lock" 2>/dev/null || return
+  [ -s "$PREF" ] || { rmdir "$local_sync_lock"; return; }
+  grep -q 'name="enabled"' "$PREF" 2>/dev/null || { rmdir "$local_sync_lock"; return; }
   # The first item is the schema marker; 32 snapshot tokens (LG1 + 31 values) match HookEntry.restoreBootSnapshot().
   SNAP="LG1"
   for entry in 'enabled:0' 'alpha:210' 'tint:0' 'tint_strength:30' 'highlight:0' 'diagnostics:0' 'highlight_strength:25' 'probe_mode:0' 'highlight_width:2' 'directional_light:1' 'native_blur_experiment:0' 'blur_radius_percent:100' 'native_alpha_probe:1' 'wallpaper_compare:0' 'real_refraction:0' 'custom_blur_dp:14' 'refraction_percent:35' 'glass_tint_opacity:18' 'custom_blur_mode:1' 'clear_refraction:0' 'dynamic_sheen_mode:0' 'surface_mode_195:3' 'surface_strength_195:100' 'surface_softness_195:100' 'icon_optics_204:0' 'dock_glass_204:0' 'nonlinear_107:65' 'thickness_107:55' 'interior_107:20' 'focus_107:45' 'reflection_107:30'; do
     key=${entry%%:*}; fallback=${entry#*:}
     SNAP="$SNAP|$(config_value "$key" "$fallback")"
   done
-  [ "$SNAP" = "$LASTSNAP" ] && return
+  if [ "$SNAP" = "$LASTSNAP" ]; then rmdir "$local_sync_lock"; return; fi
   if settings put global "$SNAPKEY" "$SNAP" 2>>"$LOG"; then
     LASTSNAP="$SNAP"
     echo "$(date) config snapshot published" >> "$LOG"
   else
     echo "$(date) config snapshot publish failed" >> "$LOG"
   fi
+  rmdir "$local_sync_lock" 2>/dev/null
 }
 sync_once() {
   [ -f "$SRC" ] && [ -d "$DSTDIR" ] || return
@@ -187,6 +192,20 @@ sync_de_reference() {
 # V1.9.94: do not wait for the five-minute fallback when Android CE
 # storage / Launcher private files appear after Magisk service startup.
 # Run the first checks immediately; repeat quickly until both copies exist.
+if [ "$1" = "--event-config" ]; then
+  sync_config
+  exit 0
+fi
+if [ "$1" = "--event-wallpaper" ]; then
+  event_lock=/data/local/tmp/.liquidglass-wallpaper-event.lock
+  mkdir "$event_lock" 2>/dev/null || exit 0
+  # Wait briefly for system to finish replacing its source screenshot.
+  sync_launcher_reference
+  sync_de_reference
+  sync_once
+  rmdir "$event_lock" 2>/dev/null
+  exit 0
+fi
 sync_config
 sync_launcher_reference
 sync_de_reference
