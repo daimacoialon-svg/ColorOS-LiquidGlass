@@ -53,6 +53,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float interior107;\n"+
         "uniform float focus107;\n"+
         "uniform float opticalCalibration144;\n"+
+        "uniform float opticalModel146;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
         "uniform float lensBalance135;\n"+
@@ -198,6 +199,29 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float rimWeight139=1.0-smoothstep(0.55,1.0,phase);\n"+
         "    deltaLens=rim139*rimWeight139+field139;\n"+
         "  }\n"+
+        "  // V146: independently controlled optical fields; mode 0 retains V145 exactly.\n"+
+        "  if(opticalModel146>0.5){\n"+
+        "    float2 uv146=(p-center136)/half136;\n"+
+        "    float depth146=clamp(-d/max(lensReach,1.0),0.0,1.0);\n"+
+        "    float edge146=smoothstep(0.0,0.16,depth146);\n"+
+        "    float center146=smoothstep(0.18,0.68,depth146);\n"+
+        "    float inside146=smoothstep(0.0,0.12,clamp(-d/max(halfMin,1.0),0.0,1.0));\n"+
+        "    // Nonlinear: global curved mapping, not the interior magnification field.\n"+
+        "    float radial146=clamp(length(uv146)*0.70710678,0.0,1.5);\n"+
+        "    float2 global146=-uv146*(3.0+3.0*radial146*radial146)*nonlinear107*inside146;\n"+
+        "    // Interior: isotropic local lens magnification with a distinct central support.\n"+
+        "    float innerFall146=1.0-smoothstep(0.48,1.08,radial146);\n"+
+        "    float2 internal146=(center136-p)*(0.055*interior107)*inside146*innerFall146;\n"+
+        "    float il146=length(internal146);\n"+
+        "    internal146*=12.0/sqrt(144.0+il146*il146);\n"+
+        "    // Thickness: broad smooth edge-to-interior curvature, no hard inner rim.\n"+
+        "    float thick146=sin(3.14159265*depth146);\n"+
+        "    float2 thicknessField146=n*(lensReach*0.12*thickness107*thick146*thick146);\n"+
+        "    // Focus: signed compression/expansion dipole, not a second thickness lobe.\n"+
+        "    float focusShape146=(depth146-0.43)*pow(sin(3.14159265*depth146),2.0);\n"+
+        "    float2 focusField146=n*(lensReach*0.42*focus107*focusShape146);\n"+
+        "    deltaLens=global146+internal146+thicknessField146+focusField146;\n"+
+        "  }\n"+
         "  // V130: one refraction displacement engine at a time.\n"+
         "  // Lens displacement takes precedence; legacy is a fallback only.\n"+
         "  float lensMagnitude=abs(nonlinear107)+abs(thickness107)+abs(interior107)+abs(focus107);\n"+
@@ -242,7 +266,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  if (opticalProbe118 > 1.5) return half4(0.0,1.0,0.0,1.0);\n"+
         "  half4 optical = mix(base,bent,half(safe));\n"+
         "  float lightBand=pow(max(0.0,1.0-abs(d+4.0)/max(4.0,4.0+thickness107*8.0)),2.0);\n"+
-        "  float light=reflection107*0.065*lightBand+focus107*0.035*lightBand*max(0.0,n.y*-0.7+n.x*-0.3);\n"+
+        "  float light=(opticalModel146>0.5)?reflection107*0.16*lightBand*max(0.0,0.65-0.45*n.x-0.25*n.y):reflection107*0.065*lightBand+focus107*0.035*lightBand*max(0.0,n.y*-0.7+n.x*-0.3);\n"+
         "  optical.rgb=clamp(optical.rgb+half3(light),half3(0.0),half3(1.0));\n"+
         // V99: 0dp must be bit-for-bit the V94 optical field; no blur taps.
         "  if (diagnosticBlur103 > 1.5) return optical;\n"+
@@ -5211,6 +5235,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable t144){ if(lensPipelineLogs111<160)log("OPTICAL_CALIBRATION_144_READ_FAILED "+t144.getClass().getSimpleName()); }
                                                 calibration144=Math.max(0,Math.min(2,calibration144));
                                                 shader93.setFloatUniform("opticalCalibration144",(float)calibration144);
+                                                int opticalModel146=1;
+                                                try { opticalModel146=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_optical_model_146",1); }
+                                                catch(Throwable e146){ log("OPTICAL_MODEL_146_READ_FAILED "+e146.getClass().getSimpleName()); }
+                                                opticalModel146=Math.max(0,Math.min(1,opticalModel146));
+                                                shader93.setFloatUniform("opticalModel146",(float)opticalModel146);
+                                                if(lensPipelineLogs111<160)log("OPTICAL_MODEL_146 target=FOLDER model="+opticalModel146+
+                                                    " nonlinear="+nonlinear107+" interior="+interior107+
+                                                    " thickness="+thickness107+" focus="+focus107+
+                                                    " reflection="+reflection107+" sampling="+sampling142+
+                                                    " stage=SHADER_UNIFORM");
                                                 if(lensPipelineLogs111<160)log("OPTICAL_CALIBRATION_144 target=FOLDER mode="+calibration144+
                                                     " thicknessRaw="+thickness107+" focusRaw="+focus107+
                                                     " thicknessUniform="+(residualMode120==2?0f:thickness107/100f)+
