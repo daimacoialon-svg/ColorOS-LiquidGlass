@@ -112,7 +112,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float maxShift=lensReach*shiftRatio135;\n"+
         "  float extra=maxShift*clamp(weightSum/56.0,0.0,1.0)*weightedShape;\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
-        "  float2 deltaLens=n*extra; // independent of legacy strength\n"+
+        // V136: smooth full-surface convex-lens field, zero at the center and
+        // at the rim. This avoids medial-axis SDF normal seams: the interior
+        // field is Cartesian and never normalizes the center-to-pixel vector.
+        // Mode 0 preserves V135 exactly for A/B rollback.
+        "  float2 center136=(bounds.xy+bounds.zw)*0.5;\n"+
+        "  float2 half136=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n"+
+        "  float2 unit136=(p-center136)/half136;\n"+
+        "  float radial136=clamp(length(unit136)*0.70710678,0.0,1.5);\n"+
+        "  float innerMask136=smoothstep(0.0,max(5.0,lensReach*0.85),-d);\n"+
+        "  float centerFall136=1.0-smoothstep(0.58,1.12,radial136);\n"+
+        "  float interiorPower136=clamp(0.55*nonlinear107+0.45*interior107,0.0,1.0);\n"+
+        "  float interiorGain136=(balance135<0.5?0.0:(balance135<1.5?0.10:0.145))*interiorPower136;\n"+
+        "  float2 interiorDelta136=(center136-p)*interiorGain136*innerMask136*centerFall136;\n"+
+        "  float interiorLength136=length(interiorDelta136);\n"+
+        "  interiorDelta136*=min(1.0,10.0/max(interiorLength136,0.0001));\n"+
+        "  float2 deltaLens=n*extra+interiorDelta136; // one continuous sampling field\n"+
         "  // V130: one refraction displacement engine at a time.\n"+
         "  // Lens displacement takes precedence; legacy is a fallback only.\n"+
         "  float lensMagnitude=abs(nonlinear107)+abs(thickness107)+abs(interior107);\n"+
