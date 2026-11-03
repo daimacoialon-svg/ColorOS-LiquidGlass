@@ -2342,16 +2342,35 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(c!=null){
                     int mode=android.provider.Settings.Global.getInt(c.getContentResolver(),
                         "liquidglass_refraction_sample_test",0);
-                    mode=Math.max(0,Math.min(34,mode));
+                    mode=Math.max(0,Math.min(49,mode)); // V141: 47-49 were previously silently clamped to 34
                     if(mode!=sampleIsolationMode){
                         sampleIsolationMode=mode;
-                        log("REFRACTION_SAMPLE_ISOLATION_113 mode="+mode+
+                        log("REFRACTION_SAMPLE_ISOLATION_141 mode="+mode+" applied=true"+
                             " legend=0-original,1-neutral,2-screen-clamp,3-luma,4-boundary-overlay,5-compress-luma,6-folder-zero-shift,7-folder-sdf-gradient,8-folder-raw-boundary,9-folder-isotropic-rim,10-folder-fixed-rim,11-all-folder-zero-shift,12-corner-risk,13-local-cap,14-contour,15-contour-capped,16-sample-grid,17-sample-displacement,18-reference-grid,19-gradient-guard-soft,20-gradient-guard-strong,21-gradient-risk-heatmap");
                     }
                 }
             }catch(Throwable t){log("REFRACTION_SAMPLE_ISOLATION_READ_FAILED "+t.getClass().getSimpleName());}
         }
         return sampleIsolationMode;
+    }
+    // V141: low-volume proof that each selected test reaches the actual AGSL draw.
+    // Avoid per-frame logs: one record per view and effective mode, with a cap.
+    private static final java.util.WeakHashMap<View,Integer> SAMPLE_TRACE_141=new java.util.WeakHashMap<>();
+    private static int sampleTraceCount141=0;
+    private static void traceSample141(View view,int requested,int effective,boolean dock,
+            int probe156,int finalProbe77,float strength,int bitmapWidth,int bitmapHeight){
+        if(sampleTraceCount141>=160)return;
+        synchronized(SAMPLE_TRACE_141){
+            Integer previous=SAMPLE_TRACE_141.get(view);
+            if(previous!=null && previous.intValue()==effective)return;
+            SAMPLE_TRACE_141.put(view,effective);
+            sampleTraceCount141++;
+        }
+        log("REFRACTION_SAMPLE_APPLIED_141 requested="+requested+" effective="+effective+
+            " target="+(dock?"DOCK":"FOLDER")+" view="+System.identityHashCode(view)+
+            " probe156="+probe156+" finalProbe77="+finalProbe77+
+            " bitmap="+bitmapWidth+"x"+bitmapHeight+
+            " note=uniform_set_before_draw");
     }
     // V1.9.134.1: mode 0 restores real AGSL displacement without the extra luminance sheen.
     // Mode 1 retains the legacy AGSL comparison; mode 2 disables AGSL for diagnosis.
@@ -4875,7 +4894,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if(finalProbe77>=1 && finalProbe77<=3){
                         samplingDiagnostic=15+finalProbe77;
                     }
-                    state.continuousShader.setFloatUniform("sampleIsolation",(float)(probe156==2?1:samplingDiagnostic));
+                    final int effectiveSample141=probe156==2?1:samplingDiagnostic;
+                    state.continuousShader.setFloatUniform("sampleIsolation",(float)effectiveSample141);
+                    traceSample141(view,currentSampleIsolationMode(),effectiveSample141,dockProbe77,
+                        probe156,finalProbe77,0f,frame.getWidth(),frame.getHeight());
                     // Dock keeps the exact previous optical path, regardless of diagnostic mode.
                     state.continuousShader.setFloatUniform("folderContourMode20534",
                         (view.getBackground() instanceof DockBackground204)?0.0f:1.0f);
