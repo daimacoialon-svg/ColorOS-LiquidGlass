@@ -112,10 +112,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float maxShift=lensReach*shiftRatio135;\n"+
         "  float extra=maxShift*clamp(weightSum/56.0,0.0,1.0)*weightedShape;\n"+
         "  float2 deltaLegacy=n*strength*(17.0*profile*gain106);\n"+
-        // V136: smooth full-surface convex-lens field, zero at the center and
-        // at the rim. This avoids medial-axis SDF normal seams: the interior
-        // field is Cartesian and never normalizes the center-to-pixel vector.
-        // Mode 0 preserves V135 exactly for A/B rollback.
+        // V137: preserve mode 0 as an exact V135 edge-only control. Modes 1/2
+        // use a smooth interior field and a controlled edge focusing profile.
+        // No hard 10px clipping: the saturation function has continuous slope.
         "  float2 center136=(bounds.xy+bounds.zw)*0.5;\n"+
         "  float2 half136=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n"+
         "  float2 unit136=(p-center136)/half136;\n"+
@@ -126,8 +125,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float interiorGain136=(balance135<0.5?0.0:(balance135<1.5?0.10:0.145))*interiorPower136;\n"+
         "  float2 interiorDelta136=(center136-p)*interiorGain136*innerMask136*centerFall136;\n"+
         "  float interiorLength136=length(interiorDelta136);\n"+
-        "  interiorDelta136*=min(1.0,10.0/max(interiorLength136,0.0001));\n"+
-        "  float2 deltaLens=n*extra+interiorDelta136; // one continuous sampling field\n"+
+        "  interiorDelta136*=10.0/sqrt(100.0+interiorLength136*interiorLength136);\n"+
+        // Continuous thin optical compression line, not a separately drawn border.
+        // Edge wave has smooth zero derivative at the inner and outer limits.
+        // A modest increase in lens shift and a second broad curvature lobe
+        // restore perceived thickness while preserving V134's smooth edges.
+        "  float focusPhase137=clamp((-d)/max(lensReach,1.0),0.0,1.0);\n"+
+        "  float focusCore137=exp(-pow((focusPhase137-0.23)/0.14,2.0));\n"+
+        "  float focusEnvelope137=smoothWave;\n"+
+        "  float focusStrength137=(balance135<0.5?0.0:(balance135<1.5?0.065:0.085));\n"+
+        "  float focusShift137=lensReach*focusStrength137*focusCore137*focusEnvelope137*clamp(weightSum/56.0,0.0,1.0);\n"+
+        "  float2 deltaLens=n*(extra+focusShift137)+interiorDelta136;\n"+
         "  // V130: one refraction displacement engine at a time.\n"+
         "  // Lens displacement takes precedence; legacy is a fallback only.\n"+
         "  float lensMagnitude=abs(nonlinear107)+abs(thickness107)+abs(interior107);\n"+
