@@ -56,6 +56,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float opticalProbe118;\n"+
         "uniform float lensBalance135;\n"+
         "uniform float continuousField139;\n"+
+        "uniform float opticalSampling142;\n"+
 
         "float glassSdf(float2 p) {\n"+
         "  float2 halfSize = max((bounds.zw-bounds.xy)*0.5,float2(0.5));\n"+
@@ -172,7 +173,27 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  samplePos=clamp(samplePos,validBounds.xy+float2(1.0),validBounds.zw-float2(1.0));\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
         "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
+        // V142: optical-only subpixel sampling test. Preserve original mode 0.
+        // Four or nine filtered taps approximate the warped pixel footprint;
+        // no displacement attenuation, so the glass thickness remains unchanged.
         "  half4 bent = wallpaper.eval(samplePos);\n"+
+        "  if(opticalSampling142>0.5 && lensMagnitude>0.0001){\n"+
+        "    float2 lo142=validBounds.xy+float2(1.0);\n"+
+        "    float2 hi142=validBounds.zw-float2(1.0);\n"+
+        "    float2 a142=float2(0.38,0.38);\n"+
+        "    half4 sum142=wallpaper.eval(clamp(samplePos+float2(-a142.x,-a142.y),lo142,hi142));\n"+
+        "    sum142+=wallpaper.eval(clamp(samplePos+float2(a142.x,-a142.y),lo142,hi142));\n"+
+        "    sum142+=wallpaper.eval(clamp(samplePos+float2(-a142.x,a142.y),lo142,hi142));\n"+
+        "    sum142+=wallpaper.eval(clamp(samplePos+float2(a142.x,a142.y),lo142,hi142));\n"+
+        "    bent=sum142*half(0.25);\n"+
+        "    if(opticalSampling142>1.5){\n"+
+        "      half4 outer142=wallpaper.eval(clamp(samplePos+float2(-0.75,0.0),lo142,hi142));\n"+
+        "      outer142+=wallpaper.eval(clamp(samplePos+float2(0.75,0.0),lo142,hi142));\n"+
+        "      outer142+=wallpaper.eval(clamp(samplePos+float2(0.0,-0.75),lo142,hi142));\n"+
+        "      outer142+=wallpaper.eval(clamp(samplePos+float2(0.0,0.75),lo142,hi142));\n"+
+        "      bent=(sum142+outer142+wallpaper.eval(samplePos))*half(1.0/9.0);\n"+
+        "    }\n"+
+        "  }\n"+
         "  if (opticalProbe118 > 1.5) return half4(0.0,1.0,0.0,1.0);\n"+
         "  half4 optical = mix(base,bent,half(safe));\n"+
         "  float lightBand=pow(max(0.0,1.0-abs(d+4.0)/max(4.0,4.0+thickness107*8.0)),2.0);\n"+
@@ -5131,6 +5152,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable ignored139){}
                                                 continuous139=Math.max(0,Math.min(2,continuous139));
                                                 shader93.setFloatUniform("continuousField139",(float)continuous139);
+                                                // V142: 0=original, 1=4-tap, 2=9-tap.
+                                                int sampling142=0;
+                                                try { sampling142=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_optical_sampling_142",0); }
+                                                catch(Throwable t142){ if(lensPipelineLogs111<160)log("OPTICAL_SAMPLING_142_READ_FAILED "+t142.getClass().getSimpleName()); }
+                                                sampling142=Math.max(0,Math.min(2,sampling142));
+                                                shader93.setFloatUniform("opticalSampling142",(float)sampling142);
+                                                if(lensPipelineLogs111<160)log("OPTICAL_SAMPLING_142 target=FOLDER mode="+sampling142+
+                                                    " nonlinear="+nonlinear107+" interior="+interior107+
+                                                    " thickness="+thickness107+" continuous="+continuous139+
+                                                    " view="+System.identityHashCode(view)+" stage=SHADER_UNIFORM");
                                                 shader93.setFloatUniform("nonlinear107",residualMode120==2?0f:nonlinear107/100f);
                                                 shader93.setFloatUniform("thickness107",residualMode120==2?0f:thickness107/100f);
                                                 shader93.setFloatUniform("interior107",residualMode120==2?0f:interior107/100f);
