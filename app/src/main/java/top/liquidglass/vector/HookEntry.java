@@ -31,6 +31,7 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public final class HookEntry implements IXposedHookLoadPackage {
     private static final String TAG = "ColorOSLiquidGlass";
     private static int edgeShaderLogs93=0;
+    private static volatile String lastOpticalState149 = "";
     private static int lensPipelineLogs111=0, lensProofLogs111=0;
     // Independent AGSL path: local geometry, screen-aligned bitmap coordinates.
     // Both the base and warped samples come from the same DECAL bitmap source.
@@ -56,6 +57,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float opticalModel146;\n"+
         "uniform float opticalDiagnostic147;\n"+
         "uniform float opticalModel148;\n"+
+        "uniform float opticalModel149;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
         "uniform float lensBalance135;\n"+
@@ -249,8 +251,41 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float len148=length(raw148);\n"+
         "    deltaLens=raw148*(24.0/sqrt(576.0+len148*len148));\n"+
         "  }\n"+
+        // V149: curved-surface field with continuous support across rounded rectangles.
+        // Independent global warp, local center lens, broad shoulder curvature and signed focus.
+        // Zero parameters produce zero displacement. V148 remains selectable for A/B.
+        "  if(opticalModel149>0.5){\n"+
+        "    float2 sz149=max(bounds.zw-bounds.xy,float2(2.0));\n"+
+        "    float2 uv149=(p-center136)/(sz149*0.5);\n"+
+        "    float2 abs149=abs(uv149);\n"+
+        "    float radial149=clamp(length(uv149)*0.70710678,0.0,1.4);\n"+
+        "    float depth149=max(-d,0.0);\n"+
+        "    float enter149=smoothstep(0.0,4.0,depth149);\n"+
+        "    float span149=max(12.0,min(halfMin*0.90,halfMin*(0.34+0.32*thickness107)));\n"+
+        "    float phase149=clamp(depth149/span149,0.0,1.0);\n"+
+        "    float shoulder149=(1.0-smoothstep(0.0,1.0,phase149));\n"+
+        "    float2 global149=-uv149*(3.0+4.0*radial149*radial149)*nonlinear107*enter149;\n"+
+        "    float center149=1.0-smoothstep(0.22,0.90,radial149);\n"+
+        "    float2 interior149=(center136-p)*(0.025*interior107)*center149*enter149;\n"+
+        "    float2 thickness149=n*(thickness107*(2.0+span149*0.13)*shoulder149*enter149);\n"+
+        "    float focusShape149=sin(6.2831853*phase149)*pow(1.0-phase149,2.0);\n"+
+        "    float2 focus149=n*(focus107*span149*0.18*focusShape149*enter149);\n"+
+        "    float2 combined149=global149+interior149+thickness149+focus149;\n"+
+        "    float magnitude149=length(combined149);\n"+
+        "    deltaLens=combined149*(20.0/sqrt(400.0+magnitude149*magnitude149));\n"+
+        "  }\n"+
         // V147: visual truth map, calculated from the actual V146 field geometry.
         // Diagnostic returns BEFORE wallpaper sampling and overlays. Mode 8 is zero warp.
+        "  if(opticalDiagnostic147>9.5 && opticalDiagnostic147<10.5){\n"+
+        "    float v149=clamp(length(deltaLens)/20.0,0.0,1.0);\n"+
+        "    return half4(half3(v149,1.0-abs(2.0*v149-1.0),1.0-v149),1.0);\n"+
+        "  }\n"+
+        "  if(opticalDiagnostic147>10.5 && opticalDiagnostic147<11.5){\n"+
+        "    float2 q149=p+deltaLens;\n"+
+        "    float grid149=max(abs(fract(q149.x/24.0)-0.5),abs(fract(q149.y/24.0)-0.5));\n"+
+        "    float line149=1.0-smoothstep(0.45,0.49,grid149);\n"+
+        "    return half4(half3(line149,line149,line149),1.0);\n"+
+        "  }\n"+
         "  if(opticalDiagnostic147>8.5 && opticalDiagnostic147<9.5){\n"+
         "    return half4(half3(clamp(abs(deltaLens.x)/16.0,0.0,1.0),clamp(abs(deltaLens.y)/16.0,0.0,1.0),clamp(length(deltaLens)/16.0,0.0,1.0)),1.0);\n"+
         "  }\n"+
@@ -276,7 +311,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  // V130: one refraction displacement engine at a time.\n"+
         "  // Lens displacement takes precedence; legacy is a fallback only.\n"+
         "  float lensMagnitude=abs(nonlinear107)+abs(thickness107)+abs(interior107)+abs(focus107);\n"+
-        "  float2 delta=(opticalModel148>0.5)?deltaLens:((lensMagnitude>0.0001)?deltaLens:deltaLegacy);\n"+
+        "  float2 delta=(opticalModel149>0.5 || opticalModel148>0.5)?deltaLens:((lensMagnitude>0.0001)?deltaLens:deltaLegacy);\n"+
         "  if(opticalDiagnostic147>7.5 && opticalDiagnostic147<8.5) delta=float2(0.0);\n"+
         "  if (opticalProbe118 > 0.5 && opticalProbe118 < 1.5) delta=float2(28.0,0.0);\n"+
         "  float2 samplePos = p+delta;\n"+
@@ -5299,22 +5334,30 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable e148){ log("OPTICAL_MODEL_148_READ_FAILED "+e148.getClass().getSimpleName()); }
                                                 opticalModel148=Math.max(0,Math.min(1,opticalModel148));
                                                 shader93.setFloatUniform("opticalModel148",(float)opticalModel148);
+                                                int opticalModel149=1;
+                                                try { opticalModel149=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_optical_model_149",1); }
+                                                catch(Throwable e149){ log("OPTICAL_MODEL_149_READ_FAILED "+e149.getClass().getSimpleName()); }
+                                                opticalModel149=Math.max(0,Math.min(1,opticalModel149));
+                                                shader93.setFloatUniform("opticalModel149",(float)opticalModel149);
                                                 // V147 diagnostic: 0=normal; 1-5=isolated optical layers;
                                                 // 6=composite heat map; 7=warp displacement; 8=zero warp.
                                                 int opticalDiagnostic147=0;
                                                 try { opticalDiagnostic147=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_diagnostic_147",0); }
                                                 catch(Throwable e147){ if(lensPipelineLogs111<160)log("OPTICAL_DIAGNOSTIC_147_READ_FAILED "+e147.getClass().getSimpleName()); }
-                                                opticalDiagnostic147=Math.max(0,Math.min(9,opticalDiagnostic147));
+                                                opticalDiagnostic147=Math.max(0,Math.min(11,opticalDiagnostic147));
                                                 shader93.setFloatUniform("opticalDiagnostic147",(float)opticalDiagnostic147);
-                                                // V148: report actual parameter routing for every Shader setup,
-                                                // not subject to the older global diagnostic log cap.
-                                                log("OPTICAL_PIPELINE_148 target=FOLDER model148="+opticalModel148+
-                                                    " model146="+opticalModel146+" diagnostic="+opticalDiagnostic147+
+                                                // V149: log only on configuration changes, not every Shader setup.
+                                                String opticalState149="model149="+opticalModel149+
+                                                    " model148="+opticalModel148+" diagnostic="+opticalDiagnostic147+
                                                     " sampling="+sampling142+" nonlinear="+nonlinear107+
                                                     " interior="+interior107+" thickness="+thickness107+
-                                                    " focus="+focus107+" reflection="+reflection107+
-                                                    " stage=SHADER_UNIFORM");
+                                                    " focus="+focus107+" reflection="+reflection107;
+                                                if(!opticalState149.equals(lastOpticalState149)){
+                                                    lastOpticalState149=opticalState149;
+                                                    log("OPTICAL_PIPELINE_149 target=FOLDER "+opticalState149+" stage=SHADER_UNIFORM");
+                                                }
                                                 if(lensPipelineLogs111<160)log("OPTICAL_DIAGNOSTIC_147 target=FOLDER mode="+opticalDiagnostic147+
                                                     " model="+opticalModel146+" sampling="+sampling142+
                                                     " nonlinear="+nonlinear107+" interior="+interior107+
