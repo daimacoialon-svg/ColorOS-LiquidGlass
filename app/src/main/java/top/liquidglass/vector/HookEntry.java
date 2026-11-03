@@ -62,6 +62,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float opticalModel150;\n"+
         "uniform float opticalModel151;\n"+
         "uniform float opticalModel152;\n"+
+        "uniform float opticalReflection153;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
         "uniform float lensBalance135;\n"+
@@ -420,6 +421,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  half4 optical = mix(base,bent,half(safe));\n"+
         "  float lightBand=pow(max(0.0,1.0-abs(d+4.0)/max(4.0,4.0+thickness107*8.0)),2.0);\n"+
         "  float light=(opticalModel148>0.5)?reflection107*0.11*(0.32+0.68*lightBand)*max(0.0,0.62-0.32*n.x-0.22*n.y):((opticalModel146>0.5)?reflection107*0.16*lightBand*max(0.0,0.65-0.45*n.x-0.25*n.y):reflection107*0.065*lightBand+focus107*0.035*lightBand*max(0.0,n.y*-0.7+n.x*-0.3));\n"+
+        "  // V153: reflection only. Keep V150/V152 wallpaper displacement untouched.\n"+
+        "  if(opticalReflection153>0.5){\n"+
+        "    float2 rn153=smoothN/max(length(smoothN),0.35);\n"+
+        "    float depth153=max(-d,0.0);\n"+
+        "    float rim153=pow(1.0-smoothstep(0.0,max(7.0,7.0+thickness107*10.0),depth153),2.0);\n"+
+        "    float direction153=clamp(0.62-0.32*rn153.x-0.22*rn153.y,0.0,1.0);\n"+
+        "    light=reflection107*0.11*rim153*direction153;\n"+
+        "    if(opticalReflection153>1.5) light=0.0;\n"+
+        "  }\n"+
         "  optical.rgb=clamp(optical.rgb+half3(light),half3(0.0),half3(1.0));\n"+
         // V99: 0dp must be bit-for-bit the V94 optical field; no blur taps.
         "  if (diagnosticBlur103 > 1.5) return optical;\n"+
@@ -5427,6 +5437,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable e152){ log("OPTICAL_MODEL_152_READ_FAILED "+e152.getClass().getSimpleName()); }
                                                 opticalModel152=Math.max(0,Math.min(2,opticalModel152));
                                                 shader93.setFloatUniform("opticalModel152",(float)opticalModel152);
+                                                int opticalReflection153=1;
+                                                try { opticalReflection153=android.provider.Settings.Global.getInt(
+                                                    context.getContentResolver(),"liquidglass_optical_reflection_153",1);
+                                                } catch(Throwable ignored) {}
+                                                opticalReflection153=Math.max(0,Math.min(2,opticalReflection153));
+                                                shader93.setFloatUniform("opticalReflection153",(float)opticalReflection153);
                                                 // V147 diagnostic: 0=normal; 1-5=isolated optical layers;
                                                 // 6=composite heat map; 7=warp displacement; 8=zero warp.
                                                 int opticalDiagnostic147=0;
