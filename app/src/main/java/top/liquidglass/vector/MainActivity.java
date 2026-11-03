@@ -34,6 +34,16 @@ public final class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();rootStatusVisible=true;rootStatusHandler.removeCallbacks(rootStatusPoll);rootStatusHandler.post(rootStatusPoll);}
     @Override protected void onStop(){rootStatusVisible=false;rootStatusHandler.removeCallbacks(rootStatusPoll);super.onStop();}
 
+    // Event-only signal: no configuration data is carried by this broadcast.
+    // Launcher must fetch the authoritative values from the app provider.
+    private void notifyConfigChanged128(){
+        getContentResolver().notifyChange(GlassConfigProvider.URI,null);
+        try {
+            android.content.Intent i=new android.content.Intent("top.liquidglass.vector.CONFIG_CHANGED_128");
+            i.setPackage("com.android.launcher");
+            sendBroadcast(i);
+        }catch(Throwable ignored){}
+    }
     private LinearLayout body;
     private final int ink=0xFF172635, muted=0xFF657587, blue=0xFF2979E5;
     private GradientDrawable bg(int color,int radius){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(radius));return d;}
@@ -52,7 +62,7 @@ public final class MainActivity extends Activity {
         Switch s=new Switch(this);s.setText(label);s.setTextColor(ink);s.setTextSize(14);s.setPadding(0,dp(8),0,dp(8));s.setChecked(prefs.getBoolean(key,def));
         s.setOnCheckedChangeListener((v,checked)->{
             prefs.edit().putBoolean(key,checked).commit();
-            getContentResolver().notifyChange(GlassConfigProvider.URI,null);
+            notifyConfigChanged128();
         });current.addView(s);
     }
     private void slider(String label,String key,int def,int min,int max){
@@ -60,9 +70,9 @@ public final class MainActivity extends Activity {
         SeekBar bar=new SeekBar(this);bar.setMax(max-min);bar.setProgress(Math.max(0,Math.min(max-min,prefs.getInt(key,def)-min)));current.addView(bar);
         Runnable update=()->caption.setText(label+"  ·  "+(bar.getProgress()+min));update.run();
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){prefs.edit().putInt(key,progress+min).apply();getContentResolver().notifyChange(GlassConfigProvider.URI,null);}}
+            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){prefs.edit().putInt(key,progress+min).apply();notifyConfigChanged128();}}
             public void onStartTrackingTouch(SeekBar b){}
-            public void onStopTrackingTouch(SeekBar b){prefs.edit().putInt(key,b.getProgress()+min).commit();getContentResolver().notifyChange(GlassConfigProvider.URI,null);}
+            public void onStopTrackingTouch(SeekBar b){prefs.edit().putInt(key,b.getProgress()+min).commit();notifyConfigChanged128();}
         });
     }
     // V95: decimal dp is persisted as tenths to avoid SharedPreferences float/int migration issues.
@@ -74,21 +84,21 @@ public final class MainActivity extends Activity {
         SeekBar bar=new SeekBar(this);bar.setMax(400);bar.setProgress(initial);current.addView(bar);
         Runnable update=()->caption.setText(String.format(java.util.Locale.US,"桌面文件夹背景模糊半径  ·  %.1f dp",bar.getProgress()/10f));update.run();
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){prefs.edit().putInt(key,progress).putInt("custom_blur_dp",Math.round(progress/10f)).apply();getContentResolver().notifyChange(GlassConfigProvider.URI,null);}}
+            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){prefs.edit().putInt(key,progress).putInt("custom_blur_dp",Math.round(progress/10f)).apply();notifyConfigChanged128();}}
             public void onStartTrackingTouch(SeekBar b){}
-            public void onStopTrackingTouch(SeekBar b){prefs.edit().putInt(key,b.getProgress()).putInt("custom_blur_dp",Math.round(b.getProgress()/10f)).commit();getContentResolver().notifyChange(GlassConfigProvider.URI,null);}
+            public void onStopTrackingTouch(SeekBar b){prefs.edit().putInt(key,b.getProgress()).putInt("custom_blur_dp",Math.round(b.getProgress()/10f)).commit();notifyConfigChanged128();}
         });
     }
     private void action(String label,Runnable run){
         Button b=new Button(this);b.setAllCaps(false);b.setText(label);b.setTextColor(blue);b.setOnClickListener(v->run.run());current.addView(b,new LinearLayout.LayoutParams(-1,dp(52)));
     }
-    @Override protected void onPause(){super.onPause();getContentResolver().notifyChange(GlassConfigProvider.URI,null);}
+    @Override protected void onPause(){super.onPause();notifyConfigChanged128();}
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);prefs=getSharedPreferences("glass",0);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.125  ·  配置快照加速版",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.128  ·  直接配置通知诊断版",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("玻璃效果","独立壁纸模糊、折射、底色和高光。");
         toggle("启用桌面文件夹玻璃", "enabled",false);
         TextView presetInfo=text("玻璃预设仅在手动点击时应用；文件夹与 Dock 共用玻璃渲染参数，不改变功能开关。",12,false);current.addView(presetInfo);
@@ -119,7 +129,7 @@ public final class MainActivity extends Activity {
                 .putInt("surface_strength_195",100)
                 .putInt("surface_softness_195",100)
                 .commit();
-            getContentResolver().notifyChange(GlassConfigProvider.URI,null);
+            notifyConfigChanged128();
             Toast.makeText(this,"已应用苹果风格玻璃参数；原有功能开关保持不变",Toast.LENGTH_LONG).show();
             recreate();
         });
@@ -164,7 +174,7 @@ public final class MainActivity extends Activity {
         surfaceSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
             public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){
                 prefs.edit().putInt("surface_mode_195",pos).commit();
-                getContentResolver().notifyChange(GlassConfigProvider.URI,null);
+                notifyConfigChanged128();
             }
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
         });
@@ -178,7 +188,7 @@ public final class MainActivity extends Activity {
         tint.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,names));
         tint.setSelection(Math.max(0,Math.min(3,prefs.getInt("tint",0))));current.addView(tint);
         tint.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
-            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){prefs.edit().putInt("tint",pos).commit();getContentResolver().notifyChange(GlassConfigProvider.URI,null);}
+            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){prefs.edit().putInt("tint",pos).commit();notifyConfigChanged128();}
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
         });
         slider("底色色调强度 (%)","tint_strength",30,0,90);

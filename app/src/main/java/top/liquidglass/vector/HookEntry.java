@@ -423,17 +423,21 @@ public final class HookEntry implements IXposedHookLoadPackage {
     }
     private static void refresh(View v) { refreshFromContext(v.getContext()); }
     private static void refreshFromContext(android.content.Context context) {
+        refreshFromContext(context,false);
+    }
+    private static void refreshFromContext(android.content.Context context, boolean direct128) {
         long now = android.os.SystemClock.uptimeMillis();
-        if (configEverLoaded && now-lastRead < 1500) return;
+        if (!direct128 && configEverLoaded && now-lastRead < 1500) return;
         lastRead=now;
         // V1.9.97: Launcher never cold-starts the module ContentProvider.
         // ColorOS blocks that startup during boot; use the root-published snapshot.
-        if ("com.android.launcher".equals(context.getPackageName())) {
+        if (!direct128 && "com.android.launcher".equals(context.getPackageName())) {
             restoreBootSnapshot(context);
             return;
         }
         try (Cursor c = context.getContentResolver().query(CONFIG,null,null,null,null)) {
             if(c!=null && c.moveToFirst()) {
+                if(direct128)log("CONFIG_DIRECT_128 stage=PROVIDER_OK uptime="+now);
                 lastRead=now;
                 configEverLoaded=true;
                 glassEnabled=c.getInt(0)==1;
@@ -478,7 +482,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 summary += " realRefraction="+REFRACTION_ENABLED+" wallpaperCompare="+wallpaperCompare+" customBlurDp="+customBlurDp+" refractionPercent="+refractionPercent+" glassTintOpacity="+glassTintOpacity+" customBlurMode="+customBlurMode+" clearRefraction="+clearRefraction;
                 if(!summary.equals(lastConfigSummary)){lastConfigSummary=summary;log("CONFIG_SYNC "+summary);}
             }
-        } catch(Throwable t) { if(alphaLogs++<8) log("CONFIG_READ_FAILED reason="+t.getClass().getSimpleName()); }
+        } catch(Throwable t) { if(direct128)log("CONFIG_DIRECT_128 stage=PROVIDER_FAILED reason="+t.getClass().getSimpleName()); if(alphaLogs++<8) log("CONFIG_READ_FAILED reason="+t.getClass().getSimpleName()); }
         if(!configEverLoaded)restoreBootSnapshot(context);
     }
     private static void refreshConfigFromContext(android.content.Context ctx) {
@@ -6790,6 +6794,27 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         }
                     };
                     restore.run();
+                    // V128: direct UI event attempts a provider read on a worker thread.
+                    // Keep the established Settings.Global snapshot as the fallback.
+                    try {
+                        android.content.IntentFilter directFilter128=new android.content.IntentFilter(
+                            "top.liquidglass.vector.CONFIG_CHANGED_128");
+                        app.registerReceiver(new android.content.BroadcastReceiver(){
+                            @Override public void onReceive(android.content.Context c,android.content.Intent i){
+                                final long notified=android.os.SystemClock.uptimeMillis();
+                                log("CONFIG_DIRECT_128 stage=SIGNAL_RECEIVED uptime="+notified);
+                                new Thread(()->{
+                                    refreshFromContext(app,true);
+                                    handler.post(()->{
+                                        invalidateGlassViews();
+                                        log("CONFIG_DIRECT_128 stage=INVALIDATE_REQUESTED elapsed_ms="+
+                                            (android.os.SystemClock.uptimeMillis()-notified));
+                                    });
+                                },"LiquidGlass-DirectConfig128").start();
+                            }
+                        },directFilter128,android.content.Context.RECEIVER_EXPORTED);
+                        log("CONFIG_DIRECT_128 stage=RECEIVER_READY");
+                    }catch(Throwable t){log("CONFIG_DIRECT_128 stage=RECEIVER_FAILED reason="+t.getClass().getSimpleName());}
                     watchReferenceChanges124(app,handler);
                     prewarmBootRefraction(app,handler);
                     try {
