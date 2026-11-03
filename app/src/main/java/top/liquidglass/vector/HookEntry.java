@@ -381,6 +381,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         try {
             String raw=android.provider.Settings.Global.getString(context.getContentResolver(),BOOT_SNAPSHOT_KEY);
             if(raw==null || !raw.startsWith("LG1|"))return false;
+            // V127: unchanged snapshots must not be reparsed on every restore/draw.
+            if(configEverLoaded && raw.equals(lastBootSnapshot))return false;
             String[] v=raw.split("\\|",-1);
             if(v.length!=16 && v.length!=20 && v.length!=21 && v.length!=22 && v.length!=25 && v.length!=27 && v.length!=32){log("BOOT_SNAPSHOT_REJECT reason=field_count count="+v.length);return false;}
             // Parse all fields first: never partially apply a corrupt snapshot.
@@ -6759,15 +6761,32 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     // Direct-boot/credential storage can make the config provider
                     // unavailable when Launcher starts. Retry after unlock without
                     // killing Launcher. No persistent polling or background service.
+                    final java.util.concurrent.atomic.AtomicBoolean restoreRunning127=new java.util.concurrent.atomic.AtomicBoolean(false);
+                    final java.util.concurrent.atomic.AtomicBoolean restorePending127=new java.util.concurrent.atomic.AtomicBoolean(false);
                     final Runnable restore=new Runnable(){
                         @Override public void run(){
+                            restorePending127.set(true);
+                            if(!restoreRunning127.compareAndSet(false,true))return;
                             new Thread(()->{
-                                boolean wasLoaded=configEverLoaded;
-                                boolean snapshotChanged=restoreBootSnapshot(app);
-                                refreshFromContext(app);
-                                log("BOOT_CONFIG_RESTORE loaded="+configEverLoaded+" enabled="+glassEnabled+" highlight="+highlightEnabled+" refraction="+REFRACTION_ENABLED);
-                                if(configEverLoaded)handler.post(()->invalidateGlassViews());
-                            },"LiquidGlass-ConfigRestore").start();
+                                try {
+                                    do {
+                                        restorePending127.set(false);
+                                        long start127=android.os.SystemClock.uptimeMillis();
+                                        boolean changed=restoreBootSnapshot(app);
+                                        // The root snapshot is authoritative for Launcher. Avoid
+                                        // a second provider/read pass for every event.
+                                        if(!configEverLoaded)refreshFromContext(app);
+                                        if(changed){
+                                            log("CONFIG_CHAIN_127 stage=RESTORE_CHANGED duration_ms="+
+                                                (android.os.SystemClock.uptimeMillis()-start127));
+                                            handler.post(()->invalidateGlassViews());
+                                        }
+                                    } while(restorePending127.get());
+                                } finally {
+                                    restoreRunning127.set(false);
+                                    if(restorePending127.get())handler.post(this);
+                                }
+                            },"LiquidGlass-ConfigRestore127").start();
                         }
                     };
                     restore.run();
@@ -6789,15 +6808,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             android.provider.Settings.Global.getUriFor(BOOT_SNAPSHOT_KEY),false,
                             new android.database.ContentObserver(handler){
                                 @Override public void onChange(boolean selfChange){
-                                    new Thread(()->{
-                                        long received125=android.os.SystemClock.uptimeMillis();
-                                        boolean changed=restoreBootSnapshot(app);
-                                        if(changed)handler.post(()->{
-                                            log("CONFIG_CHAIN_126 stage=LAUNCHER_RECEIVED launcher_received_uptime="+received125+
-                                                " invalidate_uptime="+android.os.SystemClock.uptimeMillis());
-                                            invalidateGlassViews();
-                                        });
-                                    },"LiquidGlass-SnapshotChanged").start();
+                                    log("CONFIG_CHAIN_127 stage=SNAPSHOT_NOTIFIED uptime="+
+                                        android.os.SystemClock.uptimeMillis());
+                                    restore.run();
                                 }
                             });
                         log("BOOT_SNAPSHOT_OBSERVER_READY");
