@@ -186,7 +186,7 @@ public final class MainActivity extends Activity {
         toggle("旧版玻璃细节增强","clear_refraction",false);
         toggle("应用图标高光实验","icon_optics_204",false);
         current=savedCurrent;
-        legacyButton.setOnClickListener(v->{
+        legacyButton.setOnClickListener(clickedView->{
             boolean show=legacyContainer.getVisibility()!=View.VISIBLE;
             legacyContainer.setVisibility(show?View.VISIBLE:View.GONE);
             legacyButton.setText(show?"收起旧版实验参数":"展开旧版二维折射实验");
