@@ -65,6 +65,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float motionGradient158;\n"+
         "uniform float unifiedLens159;\n"+
         "uniform float unifiedStrength162;\n"+
+        "uniform float opticalMapping168;\n"+
         "uniform float opticalReflection153;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
@@ -95,11 +96,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float shoulder=t*exp(-1.8*t);\n"+
         "  float dome=t*t*(1.0-0.55*t);\n"+
         "  float slope=12.0*dome+25.0*shoulder+21.0*edge;\n"+
+        "  if(opticalMapping168>0.5){\n"+
+        "    float inner168=t*t*(1.0-t);\n"+
+        "    float transition168=t*(1.0-t);\n"+
+        "    float weight168=0.62+0.48*transition168+0.32*inner168;\n"+
+        "    slope=slope*weight168+5.0*inner168;\n"+
+        "  }\n"+
         "  float2 raw=-g*slope*clamp(unifiedStrength162,0.0,1.0);\n"+
         "  raw*=smoothstep(0.0,2.4,max(-glassSdf(pp),0.0));\n"+
         "  raw*=(unifiedLens159>1.5)?1.16:1.0;\n"+
         "  float amp=length(raw);\n"+
-        "  return raw*(26.0/sqrt(676.0+amp*amp));\n"+
+        "  float2 disp=raw*(26.0/sqrt(676.0+amp*amp));\n"+
+        "  if(opticalMapping168>0.5){\n"+
+        "    float2 limit168=clamp(sh*float2(0.14)/max(sz/sh,float2(1.0)),float2(6.0),float2(20.0));\n"+
+        "    disp=disp*limit168/sqrt(limit168*limit168+disp*disp);\n"+
+        "  }\n"+
+        "  return disp;\n"+
         "}\n"+
         "half4 main(float2 p) {\n"+
         "  half4 base = wallpaper.eval(p);\n"+
@@ -376,11 +388,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float short166=min(sz166.x,sz166.y);\n"+
         "    float2 uv166=(p-center136)/(sz166*0.5);\n"+
         "    float2 sq166=uv166*uv166;\n"+
-        "    float2 cube166=sq166*uv166;\n"+
         "    float q166=sq166.x*sq166.x+sq166.y*sq166.y;\n"+
         "    float t166=clamp(1.0-q166,0.0,1.0);\n"+
-        "    float2 aspect166=short166/max(sz166,float2(1.0));\n"+
-        "    float2 g166=cube166*aspect166;\n"+
         "    float edgePx166=clamp(short166*0.15,12.0,31.0);\n"+
         "    float band166=clamp(4.0*edgePx166/max(short166,2.0),0.18,0.78);\n"+
         "    float x166=t166/max(band166,0.01);\n"+
@@ -388,11 +397,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float shoulder166=t166*exp(-1.8*t166);\n"+
         "    float dome166=t166*t166*(1.0-0.55*t166);\n"+
         "    float slope166=12.0*dome166+25.0*shoulder166+21.0*edge166;\n"+
-        "    float2 raw166=-g166*slope166*clamp(unifiedStrength162,0.0,1.0);\n"+
-        "    raw166*=smoothstep(0.0,2.4,max(-d,0.0));\n"+
-        "    raw166*=(unifiedLens159>1.5)?1.16:1.0;\n"+
-        "    float amp166=length(raw166);\n"+
-        "    deltaLens=raw166*(26.0/sqrt(676.0+amp166*amp166));\n"+
+        "    float amp166=length(lensDelta167(p));\n"+
+        "    deltaLens=lensDelta167(p);\n"+
         "    if(opticalDiagnostic147>13.5 && opticalDiagnostic147<14.5){\n"+
         "      float shoulderView166=clamp(shoulder166*3.8,0.0,1.0);\n"+
         "      float rimView166=clamp(edge166*2.6,0.0,1.0);\n"+
@@ -497,6 +503,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float2 unclamped167=p+delta;\n"+
         "    float clipped167=clamp(length(unclamped167-samplePos)/8.0,0.0,1.0);\n"+
         "    return half4(half3(clipped167,0.0,1.0-clipped167),1.0);\n"+
+        "  }\n"+
+        // V168: directional local derivative diagnostics on the SAME map as normal rendering.
+        "  if(opticalDiagnostic147>18.5 && opticalDiagnostic147<20.5){\n"+
+        "    float2 lo168=validBounds.xy+float2(1.0);\n"+
+        "    float2 hi168=validBounds.zw-float2(1.0);\n"+
+        "    float2 jx168=0.5*(clamp(p+float2(1.0,0.0)+lensDelta167(p+float2(1.0,0.0)),lo168,hi168)-clamp(p-float2(1.0,0.0)+lensDelta167(p-float2(1.0,0.0)),lo168,hi168));\n"+
+        "    float2 jy168=0.5*(clamp(p+float2(0.0,1.0)+lensDelta167(p+float2(0.0,1.0)),lo168,hi168)-clamp(p-float2(0.0,1.0)+lensDelta167(p-float2(0.0,1.0)),lo168,hi168));\n"+
+        "    float sx168=length(jx168);\n"+
+        "    float sy168=length(jy168);\n"+
+        "    if(opticalDiagnostic147<19.5) return half4(half3(clamp(abs(sx168-1.0)*1.8,0.0,1.0),clamp(abs(sy168-1.0)*1.8,0.0,1.0),clamp((length(jx168-float2(1.0,0.0))+length(jy168-float2(0.0,1.0)))*0.4,0.0,1.0)),1.0);\n"+
+        "    float ratio168=max(sx168,sy168)/max(min(sx168,sy168),0.01);\n"+
+        "    float aniso168=clamp((ratio168-1.0)*0.7,0.0,1.0);\n"+
+        "    float det168=jx168.x*jy168.y-jx168.y*jy168.x;\n"+
+        "    return half4(half3(aniso168,clamp((1.0-aniso168)*0.25,0.0,1.0),(det168<=0.0)?1.0:0.0),1.0);\n"+
         "  }\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
         "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
@@ -5641,6 +5661,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 unifiedLens159=Math.max(0,Math.min(2,unifiedLens159));
                                                 shader93.setFloatUniform("unifiedLens159",(float)unifiedLens159);
                                                 shader93.setFloatUniform("unifiedStrength162",residualMode120==2?0f:Math.max(0f,Math.min(1f,nonlinear107/100f)));
+                                                // V168: 0=exact V167 mapping; 1=constrained mapping. Reversible via Settings.Global.
+                                                int opticalMapping168=1;
+                                                try { opticalMapping168=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_optical_mapping_168",1); }
+                                                catch(Throwable e168){ log("OPTICAL_MAPPING_168_READ_FAILED "+e168.getClass().getSimpleName()); }
+                                                shader93.setFloatUniform("opticalMapping168",(float)Math.max(0,Math.min(1,opticalMapping168)));
                                                 int opticalReflection153=1;
                                                 try { opticalReflection153=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_reflection_153",1);
