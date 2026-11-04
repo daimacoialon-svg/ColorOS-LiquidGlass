@@ -61,8 +61,7 @@ public final class MainActivity extends Activity {
     private void toggle(String label,String key,boolean def){
         Switch s=new Switch(this);s.setText(label);s.setTextColor(ink);s.setTextSize(14);s.setPadding(0,dp(8),0,dp(8));s.setChecked(prefs.getBoolean(key,def));
         s.setOnCheckedChangeListener((v,checked)->{
-            prefs.edit().putBoolean(key,checked).commit();
-            notifyConfigChanged128();
+            putBooleanIfChanged193(key,checked);
         });current.addView(s);
     }
     private void slider(String label,String key,int def,int min,int max){
@@ -70,9 +69,9 @@ public final class MainActivity extends Activity {
         SeekBar bar=new SeekBar(this);bar.setMax(max-min);bar.setProgress(Math.max(0,Math.min(max-min,prefs.getInt(key,def)-min)));current.addView(bar);
         Runnable update=()->caption.setText(label+"  ·  "+(bar.getProgress()+min));update.run();
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){prefs.edit().putInt(key,progress+min).apply();notifyConfigChanged128();}}
+            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){putIntIfChanged193(key,progress+min);}}
             public void onStartTrackingTouch(SeekBar b){}
-            public void onStopTrackingTouch(SeekBar b){prefs.edit().putInt(key,b.getProgress()+min).commit();notifyConfigChanged128();}
+            public void onStopTrackingTouch(SeekBar b){putIntIfChanged193(key,b.getProgress()+min);}
         });
     }
     // V95: decimal dp is persisted as tenths to avoid SharedPreferences float/int migration issues.
@@ -84,10 +83,17 @@ public final class MainActivity extends Activity {
         SeekBar bar=new SeekBar(this);bar.setMax(400);bar.setProgress(initial);current.addView(bar);
         Runnable update=()->caption.setText(String.format(java.util.Locale.US,"桌面文件夹背景模糊半径  ·  %.1f dp",bar.getProgress()/10f));update.run();
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){prefs.edit().putInt(key,progress).putInt("custom_blur_dp",Math.round(progress/10f)).apply();notifyConfigChanged128();}}
+            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){updateMicroBlur193(progress);}}
             public void onStartTrackingTouch(SeekBar b){}
-            public void onStopTrackingTouch(SeekBar b){prefs.edit().putInt(key,b.getProgress()).putInt("custom_blur_dp",Math.round(b.getProgress()/10f)).commit();notifyConfigChanged128();}
+            public void onStopTrackingTouch(SeekBar b){updateMicroBlur193(b.getProgress());}
         });
+    }
+    private void updateMicroBlur193(int progress){
+        int dp=Math.round(progress/10f);
+        if(prefs.getInt("custom_blur_tenths_95",-1)==progress && prefs.getInt("custom_blur_dp",-1)==dp)return;
+        prefs.edit().putInt("custom_blur_tenths_95",progress).putInt("custom_blur_dp",dp).commit();
+        audit193("USER_CHANGED_BLUR");
+        notifyConfigChanged128();
     }
     private void action(String label,Runnable run){
         Button b=new Button(this);b.setAllCaps(false);b.setText(label);b.setTextColor(blue);b.setOnClickListener(v->run.run());current.addView(b,new LinearLayout.LayoutParams(-1,dp(52)));
@@ -112,13 +118,40 @@ public final class MainActivity extends Activity {
         Toast.makeText(this,"已应用风格；独立透镜实验模式 4 将在配置刷新后生效",Toast.LENGTH_LONG).show();
         recreate();
     }
-    @Override protected void onPause(){super.onPause();notifyConfigChanged128();}
+    // V193: opening, backgrounding and closing the settings UI are read-only.
+    @Override protected void onPause(){
+        audit193("UI_ON_PAUSE_READ_ONLY");
+        super.onPause();
+    }
+    private void audit193(String event){
+        if(prefs==null)return;
+        android.util.Log.i("LiquidGlass193",event+" uptime="+android.os.SystemClock.uptimeMillis()
+            +" style="+prefs.getInt("optical_style_186",0)
+            +" lens="+prefs.getInt("nonlinear_107",65)
+            +" thickness="+prefs.getInt("thickness_107",65)
+            +" surface="+prefs.getInt("surface_mode_195",3)
+            +" strength="+prefs.getInt("surface_strength_195",100)
+            +" softness="+prefs.getInt("surface_softness_195",100)
+            +" nativeAlpha="+prefs.getBoolean("native_alpha_probe",false));
+    }
+    private void putIntIfChanged193(String key,int value){
+        if(prefs.getInt(key,value)==value)return;
+        prefs.edit().putInt(key,value).commit();
+        audit193("USER_CHANGED_"+key);
+        notifyConfigChanged128();
+    }
+    private void putBooleanIfChanged193(String key,boolean value){
+        if(prefs.getBoolean(key,value)==value)return;
+        prefs.edit().putBoolean(key,value).commit();
+        audit193("USER_CHANGED_"+key);
+        notifyConfigChanged128();
+    }
     @Override public void onCreate(Bundle saved){
-        super.onCreate(saved);prefs=getSharedPreferences("glass",0);
+        super.onCreate(saved);prefs=getSharedPreferences("glass",0);audit193("UI_ON_CREATE_READ_ONLY");
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.190  ·  双风格光学设置",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.193  ·  配置只读初始化与状态追踪",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -165,11 +198,11 @@ public final class MainActivity extends Activity {
         blurMode.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,blurModes));
         blurMode.setSelection(Math.max(0,Math.min(2,prefs.getInt("custom_blur_mode",1))));current.addView(blurMode);
         blurMode.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
-            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){prefs.edit().putInt("custom_blur_mode",pos).commit();}
+            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){putIntIfChanged193("custom_blur_mode",pos);}
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
         });
         // Legacy native_alpha_probe is deliberately disabled: blur and material opacity are separate.
-        prefs.edit().putBoolean("native_alpha_probe",false).apply();
+        // V193: do not mutate native_alpha_probe while constructing the settings page.
         TextView blurInfo=text("自定义模糊使用壁纸采样，不模糊应用图标。系统模糊开关不再强制开启；ColorOS 自身仍可能启用原生模糊。",12,false);current.addView(blurInfo);
         // V1.9.199: legacy soft-highlight controls removed from UI. Existing
         // preferences remain for compatibility; the unified surface owns reflection.
@@ -182,8 +215,7 @@ public final class MainActivity extends Activity {
         surfaceSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
             public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){
                 if(prefs.getInt("surface_mode_195",3)!=pos){
-                    prefs.edit().putInt("surface_mode_195",pos).commit();
-                    notifyConfigChanged128();
+                    putIntIfChanged193("surface_mode_195",pos);
                 }
             }
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
@@ -198,7 +230,7 @@ public final class MainActivity extends Activity {
         tint.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,names));
         tint.setSelection(Math.max(0,Math.min(3,prefs.getInt("tint",0))));current.addView(tint);
         tint.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
-            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){prefs.edit().putInt("tint",pos).commit();notifyConfigChanged128();}
+            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){putIntIfChanged193("tint",pos);}
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
         });
         slider("底色色调强度 (%)","tint_strength",30,0,90);
@@ -233,6 +265,7 @@ public final class MainActivity extends Activity {
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
         setContentView(scroll);
-        // V1.9.203: status checks are read-only; updates require explicit button tap.
+        audit193("UI_RENDER_COMPLETE_NO_IMPLICIT_WRITE");
+        // V193: only explicit user actions can persist optical settings.
     }
 }

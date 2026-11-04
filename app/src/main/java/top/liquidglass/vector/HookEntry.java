@@ -1109,7 +1109,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 String summary="enabled="+glassEnabled+" alpha="+glassAlpha+" tint="+tintMode+" tintStrength="+tintStrength+" highlight="+highlightEnabled+" highlightStrength="+highlightStrength+" highlightWidth="+highlightWidth+" directional="+directionalLight+" probeMode="+probeMode+" nativeBlurExperiment="+nativeBlurExperiment+" blurRadiusPercent="+blurRadiusPercent+" nativeAlphaProbe="+nativeAlphaProbe;
                 summary += " surfaceMode="+surfaceMode194+" surfaceStrength="+surfaceStrength194+" surfaceSoftness="+surfaceSoftness194;
                 summary += " realRefraction="+REFRACTION_ENABLED+" wallpaperCompare="+wallpaperCompare+" customBlurDp="+customBlurDp+" refractionPercent="+refractionPercent+" glassTintOpacity="+glassTintOpacity+" customBlurMode="+customBlurMode+" clearRefraction="+clearRefraction;
-                if(!summary.equals(lastConfigSummary)){lastConfigSummary=summary;log("CONFIG_SYNC "+summary);}
+                if(!summary.equals(lastConfigSummary)){lastConfigSummary=summary;log("CONFIG_SYNC_V193 source="+(direct128?"PROVIDER_DIRECT":"PROVIDER_FALLBACK")+" uptime="+android.os.SystemClock.uptimeMillis()+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107+" style="+opticalStyle186+" "+summary);}
                 if(direct128){
                     directConfigAppliedAt129=android.os.SystemClock.uptimeMillis();
                     directConfigAuthoritative129=true;
@@ -7763,7 +7763,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         app.registerReceiver(new android.content.BroadcastReceiver(){
                             @Override public void onReceive(android.content.Context c,android.content.Intent i){
                                 final long notified=android.os.SystemClock.uptimeMillis();
-                                log("CONFIG_DIRECT_128 stage=SIGNAL_RECEIVED uptime="+notified);
+                                log("CONFIG_DIRECT_128 stage=SIGNAL_RECEIVED uptime="+notified+" V193_USER_EVENT");
                                 new Thread(()->{
                                     refreshFromContext(app,true);
                                     handler.post(()->{
