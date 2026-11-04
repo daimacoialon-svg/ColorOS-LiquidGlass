@@ -5658,7 +5658,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                         // The folder geometry is always the full local rect.
                                         // Offscreen sampling blends to the unwarped wallpaper,
                                         // rather than stretching CLAMP's last pixel or dropping strips.
-                                        if(sourceIsolationMode90==3 && (legacyRefractionActive117 || nonlinear107>0 || thickness107>0 || interior107>0 || focus107>0 || reflection107>0 || opticalProbeRoute118>0 || (customBlurMode==1 && folderMicroBlurDp95>0f))){
+                                        if(sourceIsolationMode90==3 && (legacyRefractionActive117 || nonlinear107>0 || thickness107>0 || interior107>0 || focus107>0 || reflection107>0 || opticalProbeRoute118>0 || (customBlurMode==1 && folderMicroBlurDp95>0f) || (pipeline173==1 && highlightEnabled && highlightStrength>0))){
                                             try{
                                                 android.graphics.BitmapShader wallpaper93=new android.graphics.BitmapShader(
                                                     frame,android.graphics.Shader.TileMode.DECAL,
@@ -5699,7 +5699,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                         " container="+((view.getBackground() instanceof DockBackground204)?"DOCK":"FOLDER")+
                                                         " strength="+overall173+" diagnostic="+opticalDiagnostic173+
                                                         " rect="+rect.toShortString()+" screenOrigin="+left+","+top+
-                                                        " bitmap="+System.identityHashCode(frame));
+                                                        " edgeEnabled="+highlightEnabled+" edgeStrength="+highlightStrength+" edgeWidth="+highlightWidth+" directional="+directionalLight+" bitmap="+System.identityHashCode(frame));
                                                 } else {
                                                 android.graphics.RuntimeShader shader93=new android.graphics.RuntimeShader(EDGE_SHADER_93);
                                                 shader93.setInputShader("wallpaper",wallpaper93);

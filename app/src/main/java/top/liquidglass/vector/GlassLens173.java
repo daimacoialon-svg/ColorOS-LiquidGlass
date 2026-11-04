@@ -158,9 +158,18 @@ final class GlassLens173 {
         "  float dark174=mix(0.25,0.5-0.5*directional174,direction174);\n" +
         "  float energy174=clamp(edgeLightStrength,0.0,1.0)*envelope174;\n" +
         "  // Light and shade smoothly fade INTO the same glass surface.\n" +
-        "  float lift174=energy174*(0.10*diffuse174+0.014);\n" +
-        "  float shade174=energy174*(0.085*dark174+0.008);\n" +
-        "  result.rgb=clamp(result.rgb*(half(1.0)-half(shade174))+half3(lift174),half3(0.0),half3(1.0));\n" +
+        "  // V175: independent red/blue mask diagnostics before compositing.\n" +
+        "  if(diagnostic>26.5 && diagnostic<27.5){\n" +
+        "    return half4(half3(energy174*diffuse174,0.0,energy174*dark174),1.0);\n" +
+        "  }\n" +
+        "  if(diagnostic>27.5 && diagnostic<28.5){\n" +
+        "    return half4(half3(envelope174,clamp(edgeLightStrength,0.0,1.0),0.0),1.0);\n" +
+        "  }\n" +
+        "  float lift175=energy174*(0.21*diffuse174+0.022);\n" +
+        "  float shade175=energy174*(0.18*dark174+0.018);\n" +
+        "  // Blend independent signed light and shadow without mutual cancellation.\n" +
+        "  half3 lit175=result.rgb+half3(lift175)*(half3(1.0)-result.rgb);\n" +
+        "  result.rgb=clamp(lit175*(half(1.0)-half(shade175)),half3(0.0),half3(1.0));\n" +
         "  return result;\n" +
         "}\n";
 
