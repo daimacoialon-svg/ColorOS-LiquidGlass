@@ -1004,6 +1004,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             if(v.length>=27){iconOptics204="1".equals(v[25]);dockGlass204="1".equals(v[26]);}
             // V122: optical parameters must reach Launcher via the root snapshot, not the blocked provider.
             if(v.length>=32){nonlinear107=clampInt(Integer.parseInt(v[27]),0,100);thickness107=clampInt(Integer.parseInt(v[28]),0,100);interior107=clampInt(Integer.parseInt(v[29]),0,100);focus107=clampInt(Integer.parseInt(v[30]),0,100);reflection107=clampInt(Integer.parseInt(v[31]),0,100);}
+            syncCleanEdgeLighting177();
             configEverLoaded=true;
             CONFIG_READY_AT_146=android.os.SystemClock.uptimeMillis();
             if(previousRefraction!=REFRACTION_ENABLED){
@@ -1078,6 +1079,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 ci=c.getColumnIndex("surface_mode_195");if(ci>=0)surfaceMode194=clampInt(c.getInt(ci),0,3);
                 ci=c.getColumnIndex("surface_strength_195");if(ci>=0)surfaceStrength194=clampInt(c.getInt(ci),0,200);
                 ci=c.getColumnIndex("surface_softness_195");if(ci>=0)surfaceSoftness194=clampInt(c.getInt(ci),50,200);
+                syncCleanEdgeLighting177();
                 String summary="enabled="+glassEnabled+" alpha="+glassAlpha+" tint="+tintMode+" tintStrength="+tintStrength+" highlight="+highlightEnabled+" highlightStrength="+highlightStrength+" highlightWidth="+highlightWidth+" directional="+directionalLight+" probeMode="+probeMode+" nativeBlurExperiment="+nativeBlurExperiment+" blurRadiusPercent="+blurRadiusPercent+" nativeAlphaProbe="+nativeAlphaProbe;
                 summary += " surfaceMode="+surfaceMode194+" surfaceStrength="+surfaceStrength194+" surfaceSoftness="+surfaceSoftness194;
                 summary += " realRefraction="+REFRACTION_ENABLED+" wallpaperCompare="+wallpaperCompare+" customBlurDp="+customBlurDp+" refractionPercent="+refractionPercent+" glassTintOpacity="+glassTintOpacity+" customBlurMode="+customBlurMode+" clearRefraction="+clearRefraction;
@@ -3301,6 +3303,14 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // 3=dynamic reflection + inner depth (default).
     // Legacy experiment switches are only used when explicit rollback=1.
     private static volatile int surfaceMode194=3;
+    // V177: the visible surface controls are authoritative for the clean lens pipeline.
+    // Legacy highlight preferences are retained only for older renderers.
+    private static void syncCleanEdgeLighting177(){
+        highlightEnabled=surfaceMode194!=0 && surfaceStrength194>0;
+        highlightStrength=clampInt(Math.round(surfaceStrength194*0.5f),0,100);
+        highlightWidth=clampInt(Math.round(1f+(surfaceSoftness194-50f)*4f/150f),1,5);
+        directionalLight=surfaceMode194>=2;
+    }
     private static volatile int surfaceStrength194=100;
     private static volatile int surfaceSoftness194=100;
     private static volatile int surfaceRollback194=0;
@@ -5694,10 +5704,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                         view.getContext().getContentResolver(),"liquidglass_optical_sampling_142",0); }
                                                     catch(Throwable ignored173b) {}
                                                     // V176: log only when the actual Launcher-side config changes.
-                                                    String audit176=highlightEnabled+"/"+highlightStrength+"/"+highlightWidth+"/"+directionalLight+"/"+opticalDiagnostic173;
+                                                    String audit176=highlightEnabled+"/"+highlightStrength+"/"+highlightWidth+"/"+directionalLight+"/"+opticalDiagnostic173+"/"+surfaceMode194+"/"+surfaceStrength194+"/"+surfaceSoftness194;
                                                     if(!audit176.equals(edgeAudit176Last)){
                                                         edgeAudit176Last=audit176;
-                                                        log("EDGE_UNIFORM_AUDIT_176 enabled="+highlightEnabled+
+                                                        log("EDGE_UNIFORM_AUDIT_177 mode="+surfaceMode194+" sliderStrength="+surfaceStrength194+" sliderWidth="+surfaceSoftness194+" enabled="+highlightEnabled+
                                                             " rawStrength="+highlightStrength+" effectiveStrength="+(highlightEnabled?highlightStrength:0)+
                                                             " width="+highlightWidth+" directional="+directionalLight+
                                                             " diagnostic="+opticalDiagnostic173+" configSource=LAUNCHER_SNAPSHOT");
