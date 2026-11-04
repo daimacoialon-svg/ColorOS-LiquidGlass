@@ -355,19 +355,28 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float r159=pow(max(x4159+y4159,0.000001),0.25);\n"+
         "    float inv159=1.0/max(r159*r159*r159,0.045);\n"+
         "    float2 grad159=float2(uv159.x*uv159.x*uv159.x,uv159.y*uv159.y*uv159.y)*inv159;\n"+
+        // V160: separate optical roles; every displacement component has a
+        // consistent inward sign, avoiding cancellation at 0..100 percent.
+        // Curvature is deterministic in local container coordinates.
         "    float depth159=max(-d,0.0);\n"+
-        "    float inside159=smoothstep(0.0,3.0,depth159);\n"+
-        "    float shoulder159=1.0-smoothstep(0.69,1.03,r159);\n"+
-        "    float curved159=exp(-pow((r159-0.82)/0.19,2.0));\n"+
-        "    float2 curvedField159=-grad159*(3.0+7.0*curved159)*nonlinear107;\n"+
-        "    float2 coreField159=-uv159*(1.0+2.2*r159*r159)*interior107*shoulder159;\n"+
-        "    float2 thicknessField159=grad159*(2.0+7.0*curved159)*thickness107;\n"+
-        "    float2 focusField159=grad159*(2.8*curved159-1.2*shoulder159)*focus107;\n"+
+        "    float inside159=smoothstep(0.0,2.5,depth159);\n"+
+        "    float shoulder159=1.0-smoothstep(0.60,1.06,r159);\n"+
+        "    float rim159=exp(-pow((r159-0.86)/0.16,2.0));\n"+
+        "    float inner159=(1.0-smoothstep(0.15,0.83,r159))*smoothstep(0.0,0.24,r159);\n"+
+        // Nonlinear = smooth whole-surface inward displacement.
+        "    float2 curvedField159=-grad159*(1.8+3.6*r159*r159)*nonlinear107*shoulder159;\n"+
+        // Interior = mild wide-area magnification, zero at center.
+        "    float2 coreField159=-uv159*(1.0+1.2*r159*r159)*interior107*inner159;\n"+
+        // Thickness = stronger coherent rim refraction, not opposite displacement.
+        "    float2 thicknessField159=-grad159*(2.0+6.0*rim159)*thickness107;\n"+
+        // Focus = narrow secondary rim concentration; no negative center lobe.
+        "    float2 focusField159=-grad159*(2.6*rim159)*focus107;\n"+
         "    float2 raw159=(curvedField159+coreField159+thicknessField159+focusField159)*inside159;\n"+
-        "    float gain159=(unifiedLens159>1.5)?1.27:1.0;\n"+
+        "    float gain159=(unifiedLens159>1.5)?1.20:1.0;\n"+
         "    float2 shaped159=raw159*gain159;\n"+
         "    float amp159=length(shaped159);\n"+
-        "    deltaLens=shaped159*(16.0/sqrt(256.0+amp159*amp159));\n"+
+        // Smooth limiting avoids hard clipping and preserves monotonic response.
+        "    deltaLens=shaped159*(22.0/sqrt(484.0+amp159*amp159));\n"+
         "  }\n"+
         // V147: visual truth map, calculated from the actual V146 field geometry.
         // Diagnostic returns BEFORE wallpaper sampling and overlays. Mode 8 is zero warp.
