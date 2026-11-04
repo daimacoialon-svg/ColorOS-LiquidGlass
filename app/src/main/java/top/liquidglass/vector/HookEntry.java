@@ -991,6 +991,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // which OplusAppStartupManager blocks on affected devices.
     private static final String BOOT_SNAPSHOT_KEY = "liquidglass_boot_snapshot_v1";
     private static volatile String lastBootSnapshot = "";
+    private static volatile String latestDirectSnapshot203 = "";
+
     private static volatile int opticalDiagnostics129 = 0; // Legacy diagnostic throttling; not a config authority.
     // Separate the user switch from the independent blur/wallpaper sampling pipeline.
     private static volatile long REFRACTION_CONFIG_EPOCH = 0L;
@@ -1000,6 +1002,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // Never permanently lock out newer root publications after a UI event.
         try {
             String raw=android.provider.Settings.Global.getString(context.getContentResolver(),BOOT_SNAPSHOT_KEY);
+            // An older Root publication must never undo a more recent UI edit.
+            if(!latestDirectSnapshot203.isEmpty()){
+                if(!latestDirectSnapshot203.equals(raw))return false;
+                latestDirectSnapshot203="";
+            }
+            if(raw==null || !raw.startsWith("LG1|"))return false;
+            return applySnapshot203(raw,"GLOBAL_SNAPSHOT");
+        }catch(Throwable t){log("BOOT_SNAPSHOT_FAILED reason="+t.getClass().getSimpleName());return false;}
+    }
+    private static synchronized boolean applySnapshot203(String raw,String source){
+        try {
             if(raw==null || !raw.startsWith("LG1|"))return false;
             // V127: unchanged snapshots must not be reparsed on every restore/draw.
             if(configEverLoaded && raw.equals(lastBootSnapshot))return false;
@@ -1038,8 +1051,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
             }
             if(!raw.equals(lastBootSnapshot)){
                 lastBootSnapshot=raw;
-                log("CONFIG_APPLIED_194 source=GLOBAL_SNAPSHOT enabled="+glassEnabled+" highlight="+highlightEnabled+" refraction="+REFRACTION_ENABLED+" fields="+v.length+" surface="+surfaceMode194+" strength="+surfaceStrength194+" softness="+surfaceSoftness194+" style="+opticalStyle186);
-                log("OPTICAL_CONFIG_SYNC_122 source=GLOBAL_SNAPSHOT fields="+v.length+" legacyEnabled="+REFRACTION_ENABLED+" legacyPercent="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107+" synced="+(v.length>=32));
+                log("CONFIG_APPLIED_203 source="+source+" enabled="+glassEnabled+" highlight="+highlightEnabled+" refraction="+REFRACTION_ENABLED+" fields="+v.length+" surface="+surfaceMode194+" strength="+surfaceStrength194+" softness="+surfaceSoftness194+" style="+opticalStyle186);
+                log("OPTICAL_CONFIG_SYNC_122 source="+source+" fields="+v.length+" legacyEnabled="+REFRACTION_ENABLED+" legacyPercent="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107+" synced="+(v.length>=32));
                 if(CONFIG_LOGS_146++<32)log("CONFIG_FIRST_FRAME_146 snapshotReady="+CONFIG_READY_AT_146+" unlockAt="+CONFIG_UNLOCK_AT_146+" blur="+customBlurDp+" alpha="+glassAlpha+" refract="+refractionPercent);
                 return true;
             }
@@ -7754,8 +7767,16 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             "top.liquidglass.vector.CONFIG_CHANGED_128");
                         app.registerReceiver(new android.content.BroadcastReceiver(){
                             @Override public void onReceive(android.content.Context c,android.content.Intent i){
-                                handler.removeCallbacks(hint194);
-                                handler.postDelayed(hint194,150L);
+                                String direct=i.getStringExtra("lg_snapshot_203");
+                                if(direct!=null && direct.matches("LG1(\\|-?[0-9]+){32}")){
+                                    latestDirectSnapshot203=direct;
+                                    boolean applied=applySnapshot203(direct,"UI_DIRECT");
+                                    log("CONFIG_203_DIRECT_RECEIVED applied="+applied);
+                                    invalidateGlassViews();
+                                }else{
+                                    handler.removeCallbacks(hint194);
+                                    handler.postDelayed(hint194,150L);
+                                }
                             }
                         },directFilter128,android.content.Context.RECEIVER_EXPORTED);
                         log("CONFIG_194 stage=HINT_RECEIVER_READY authority=GLOBAL_SNAPSHOT");

@@ -34,40 +34,25 @@ public final class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();rootStatusVisible=true;rootStatusHandler.removeCallbacks(rootStatusPoll);rootStatusHandler.post(rootStatusPoll);}
     @Override protected void onStop(){rootStatusVisible=false;rootStatusHandler.removeCallbacks(rootStatusPoll);super.onStop();}
 
-    // V195: publish the committed SharedPreferences snapshot BEFORE notifying Launcher.
-    // A trigger-only request may be missed when the root resident service is not running.
+    // V203: UI commit -> immediate direct snapshot broadcast; Root is asynchronous fallback.
     private final Handler publishHandler194=new Handler(Looper.getMainLooper());
     private final Runnable rootSignal194=()->new Thread(()->{
-        boolean published=false;
-        try {
-            Process p=new ProcessBuilder("su","-c",
-                "sh /data/adb/service.d/99-liquidglass-wallpaper.sh --event-config")
-                .redirectErrorStream(true).start();
-            boolean completed=p.waitFor(8,java.util.concurrent.TimeUnit.SECONDS);
-            if(!completed)p.destroyForcibly();
-            published=completed && p.exitValue()==0;
-            android.util.Log.i("LiquidGlass196","ROOT_PUBLISH_FINISHED completed="+completed+
-                " exit="+(completed?p.exitValue():-1));
-        }catch(Throwable t){
-            android.util.Log.w("LiquidGlass196","ROOT_PUBLISH_FAILED "+t.getClass().getSimpleName());
-        }
-        // Never fall back to the stale Provider snapshot. Launcher will read Global only.
-        // This notification happens after the publication attempt, not before it.
-        if(published){
-            try {
-                android.content.Intent i=new android.content.Intent("top.liquidglass.vector.CONFIG_CHANGED_128");
-                i.setPackage("com.android.launcher");
-                sendBroadcast(i);
-                android.util.Log.i("LiquidGlass196","LAUNCHER_REFRESH_AFTER_PUBLISH");
-            }catch(Throwable t){
-                android.util.Log.w("LiquidGlass196","LAUNCHER_NOTIFY_FAILED "+t.getClass().getSimpleName());
-            }
-        }
-    },"LiquidGlass-Publish195").start();
+        String expected=ConfigPublisher202.snapshot(getApplicationContext());
+        boolean ok=ConfigPublisher202.publishVerified(expected);
+        android.util.Log.i("LiquidGlass203","CONFIG_203_BACKGROUND_PUBLISH verified="+ok);
+    },"LiquidGlass-BackgroundPublish203").start();
     private void notifyConfigChanged128(){
         getContentResolver().notifyChange(GlassConfigProvider.URI,null);
+        String snapshot=ConfigPublisher202.snapshot(getApplicationContext());
+        try{
+            android.content.Intent i=new android.content.Intent("top.liquidglass.vector.CONFIG_CHANGED_128");
+            i.setPackage("com.android.launcher");
+            i.putExtra("lg_snapshot_203",snapshot);
+            sendBroadcast(i);
+            android.util.Log.i("LiquidGlass203","CONFIG_203_DIRECT_SENT fields="+snapshot.split("\\|",-1).length);
+        }catch(Throwable t){android.util.Log.w("LiquidGlass203","CONFIG_203_DIRECT_FAILED",t);}
         publishHandler194.removeCallbacks(rootSignal194);
-        publishHandler194.postDelayed(rootSignal194,280L);
+        publishHandler194.postDelayed(rootSignal194,900L);
     }
     private LinearLayout body;
     private final int ink=0xFF172635, muted=0xFF657587, blue=0xFF2979E5;
