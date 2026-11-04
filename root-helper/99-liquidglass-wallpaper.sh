@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# V1.9.205.195: synchronous UI publication and lock cleanup; event workers never persist; validated snapshots.
+# V1.9.205.196: verified config publication, PID identity and guaranteed lock cleanup.
 # Source is checked twice before atomic replacement; never expose partial copies.
 # Android toybox inotifyd is optional; fallback works without it.
 PKG=top.liquidglass.vector
@@ -95,64 +95,74 @@ make_snapshot125() {
   END { result="LG1";for(i=1;i<=n;i++)result=result "|" values[keys[i]];print result }
   ' "$PREF"
 }
-unlock_config195() {
-  rm -f /data/local/tmp/.liquidglass-config-publish.lock/pid
-  rmdir /data/local/tmp/.liquidglass-config-publish.lock 2>/dev/null
+# V196: validate both PID and process identity; PID reuse must not block updates.
+config_lock_owner_alive196() {
+  owner=$(cat "$local_sync_lock/pid" 2>/dev/null)
+  case "$owner" in ''|*[!0-9]*) return 1;; esac
+  [ -r "/proc/$owner/cmdline" ] || return 1
+  owner_cmd=$(tr '\000' ' ' < "/proc/$owner/cmdline" 2>/dev/null)
+  case "$owner_cmd" in *"99-liquidglass-wallpaper.sh"*) ;; *) return 1;; esac
+  owner_start=$(cat "$local_sync_lock/starttime" 2>/dev/null)
+  [ -n "$owner_start" ] || return 1
+  actual_start=$(sed 's/.*) //' "/proc/$owner/stat" 2>/dev/null | awk '{print $20}')
+  [ -n "$actual_start" ] && [ "$owner_start" = "$actual_start" ]
+}
+unlock_config196() {
+  # The lock directory must be empty before rmdir. Only its owner calls this.
+  rm -f "$local_sync_lock/pid" "$local_sync_lock/starttime"
+  rmdir "$local_sync_lock" 2>/dev/null || echo "CONFIG_196 stage=UNLOCK_FAILED" >> "$LOG"
 }
 sync_config() {
   local_sync_lock=/data/local/tmp/.liquidglass-config-publish.lock
-  # V194: recover a crashed writer's stale lock; never remove an active writer.
   if ! mkdir "$local_sync_lock" 2>/dev/null; then
-    owner=$(cat "$local_sync_lock/pid" 2>/dev/null)
-    case "$owner" in ''|*[!0-9]*) owner=;; esac
-    if [ -n "$owner" ] && [ -d "/proc/$owner" ]; then
+    if config_lock_owner_alive196; then
+      echo "CONFIG_196 stage=LOCK_BUSY owner=$owner" >> "$LOG"
       touch "$CONFIG_TRIGGER"
-      return
+      return 2
     fi
-    modified=$(stat -c %Y "$local_sync_lock" 2>/dev/null)
-    now=$(date +%s)
-    case "$modified" in ''|*[!0-9]*) modified="$now";; esac
-    if [ $((now - modified)) -gt 10 ]; then
-      rm -rf "$local_sync_lock"
-      mkdir "$local_sync_lock" 2>/dev/null || { touch "$CONFIG_TRIGGER"; return; }
-      echo "CONFIG_194 stage=RECOVER_STALE_LOCK" >> "$LOG"
-    else
+    # Legacy V195 locks have only a PID; a reused system PID is not an owner.
+    rm -f "$local_sync_lock/pid" "$local_sync_lock/starttime"
+    if ! rmdir "$local_sync_lock" 2>/dev/null || ! mkdir "$local_sync_lock" 2>/dev/null; then
+      echo "CONFIG_196 stage=LOCK_RECOVERY_FAILED" >> "$LOG"
       touch "$CONFIG_TRIGGER"
-      return
+      return 2
     fi
+    echo "CONFIG_196 stage=RECOVER_STALE_LOCK" >> "$LOG"
   fi
   printf '%s' "$$" > "$local_sync_lock/pid"
-  [ -s "$PREF" ] || { unlock_config195; return; }
-  grep -q 'name="enabled"' "$PREF" 2>/dev/null || { unlock_config195; return; }
-  # Single-pass snapshot generation; preserve existing field order and defaults.
-  SNAP=$(make_snapshot125)
-  [ -n "$SNAP" ] || { unlock_config195; return; }
-  # V194: schema = LG1 plus 32 validated decimal fields; no partial publishes.
-  NF=$(printf '%s' "$SNAP" | awk -F '|' '{print NF}')
-  if [ "$NF" != 33 ] || ! printf '%s' "$SNAP" | grep -Eq '^LG1(\|-?[0-9]+){32}$'; then
-    echo "CONFIG_194 stage=REJECT_SCHEMA nf=$NF" >> "$LOG"
-    unlock_config195; return
-  fi
-  # Compare with the system value, not a process-local variable: event workers
-  # and the resident service are separate shell processes.
-  CURRENT=$(settings get global "$SNAPKEY" 2>/dev/null)
-  if [ "$SNAP" = "$CURRENT" ]; then unlock_config195; return; fi
-  read UPTIME_BEFORE _ < /proc/uptime
-  if settings put global "$SNAPKEY" "$SNAP" 2>>"$LOG"; then
-    read UPTIME_AFTER _ < /proc/uptime
-    echo "CONFIG_CHAIN_126 stage=ROOT_PUBLISHED start_uptime=$UPTIME_BEFORE end_uptime=$UPTIME_AFTER wall=$(date +%s)" >> "$LOG"
-    LASTSNAP="$SNAP"
-    echo "$(date) config snapshot published" >> "$LOG"
+  sed 's/.*) //' "/proc/$$/stat" 2>/dev/null | awk '{print $20}' > "$local_sync_lock/starttime"
+  result=0
+  if [ ! -s "$PREF" ] || ! grep -q 'name="enabled"' "$PREF" 2>/dev/null; then
+    echo "CONFIG_196 stage=PREF_MISSING" >> "$LOG"
+    result=3
   else
-    echo "$(date) config snapshot publish failed" >> "$LOG"
+    SNAP=$(make_snapshot125)
+    NF=$(printf '%s' "$SNAP" | awk -F '|' '{print NF}')
+    if [ "$NF" != 33 ] || ! printf '%s' "$SNAP" | grep -Eq '^LG1(\|-?[0-9]+){32}$'; then
+      echo "CONFIG_196 stage=REJECT_SCHEMA nf=$NF" >> "$LOG"
+      result=4
+    else
+      CURRENT=$(settings get global "$SNAPKEY" 2>/dev/null)
+      if [ "$SNAP" != "$CURRENT" ]; then
+        if settings put global "$SNAPKEY" "$SNAP" 2>>"$LOG"; then
+          echo "CONFIG_CHAIN_126 stage=ROOT_PUBLISHED wall=$(date +%s)" >> "$LOG"
+        else
+          echo "CONFIG_196 stage=WRITE_FAILED" >> "$LOG"
+          result=5
+        fi
+      fi
+      VERIFIED=$(settings get global "$SNAPKEY" 2>/dev/null)
+      if [ "$VERIFIED" != "$SNAP" ]; then
+        echo "CONFIG_196 stage=VERIFY_FAILED" >> "$LOG"
+        result=6
+      elif [ "$result" -eq 0 ]; then
+        LASTSNAP="$SNAP"
+        echo "CONFIG_196 stage=VERIFIED" >> "$LOG"
+      fi
+    fi
   fi
-  unlock_config195 2>/dev/null
-  # A file update may have arrived while this worker held the lock.
-  # Re-read once after release; the last writer wins.
-  if [ -e "$CONFIG_TRIGGER" ]; then
-    rm -f "$CONFIG_TRIGGER"
-    [ -s "$PREF" ] && sync_config
-  fi
+  unlock_config196
+  return "$result"
 }
 sync_once() {
   [ -f "$SRC" ] && [ -d "$DSTDIR" ] || return
@@ -255,7 +265,7 @@ sync_de_reference() {
 if [ "$1" = "--event-config" ]; then
   # Compatibility with legacy event callers: publish once, never touch daemon triggers.
   sync_config
-  exit 0
+  exit $?
 fi
 if [ "$1" = "--event-wallpaper" ]; then
   event_lock=/data/local/tmp/.liquidglass-wallpaper-event.lock

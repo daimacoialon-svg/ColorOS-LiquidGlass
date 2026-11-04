@@ -46,10 +46,10 @@ public final class MainActivity extends Activity {
             boolean completed=p.waitFor(8,java.util.concurrent.TimeUnit.SECONDS);
             if(!completed)p.destroyForcibly();
             published=completed && p.exitValue()==0;
-            android.util.Log.i("LiquidGlass195","ROOT_PUBLISH_FINISHED completed="+completed+
+            android.util.Log.i("LiquidGlass196","ROOT_PUBLISH_FINISHED completed="+completed+
                 " exit="+(completed?p.exitValue():-1));
         }catch(Throwable t){
-            android.util.Log.w("LiquidGlass195","ROOT_PUBLISH_FAILED "+t.getClass().getSimpleName());
+            android.util.Log.w("LiquidGlass196","ROOT_PUBLISH_FAILED "+t.getClass().getSimpleName());
         }
         // Never fall back to the stale Provider snapshot. Launcher will read Global only.
         // This notification happens after the publication attempt, not before it.
@@ -58,9 +58,9 @@ public final class MainActivity extends Activity {
                 android.content.Intent i=new android.content.Intent("top.liquidglass.vector.CONFIG_CHANGED_128");
                 i.setPackage("com.android.launcher");
                 sendBroadcast(i);
-                android.util.Log.i("LiquidGlass195","LAUNCHER_REFRESH_AFTER_PUBLISH");
+                android.util.Log.i("LiquidGlass196","LAUNCHER_REFRESH_AFTER_PUBLISH");
             }catch(Throwable t){
-                android.util.Log.w("LiquidGlass195","LAUNCHER_NOTIFY_FAILED "+t.getClass().getSimpleName());
+                android.util.Log.w("LiquidGlass196","LAUNCHER_NOTIFY_FAILED "+t.getClass().getSimpleName());
             }
         }
     },"LiquidGlass-Publish195").start();
