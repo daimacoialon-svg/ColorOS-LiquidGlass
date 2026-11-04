@@ -344,32 +344,41 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float length158=length(limited158);\n"+
         "    deltaLens=limited158*(17.0/sqrt(289.0+length158*length158));\n"+
         "  }\n"+
-        // V165: one continuous thickness potential, not an edge-only offset field.
-        // Use the V163 seam-safe polynomial gradient. q=ux^4+uy^4 is smooth
-        // at center and diagonals; no nearest-edge selection or unit normals.
-        // The potential combines a broad dome with a curved rim shoulder.
+        // V166: curvature redistribution with C-infinity superellipse potential.
+        // The interior shoulder is deliberately broad; the rim is a second
+        // region of the SAME scalar potential. Both share its exact gradient.
+        // No nearest-edge switch, no normalized gradient, no diagonal seam.
         "  if(unifiedLens159>0.5){\n"+
-        "    float2 sz165=max(bounds.zw-bounds.xy,float2(2.0));\n"+
-        "    float short165=min(sz165.x,sz165.y);\n"+
-        "    float2 uv165=(p-center136)/(sz165*0.5);\n"+
-        "    float2 u2165=uv165*uv165;\n"+
-        "    float2 u3165=u2165*uv165;\n"+
-        "    float q165=u2165.x*u2165.x+u2165.y*u2165.y;\n"+
-        "    float t165=max(1.0-q165,0.0);\n"+
-        "    float2 aspect165=short165/max(sz165,float2(1.0));\n"+
-        "    float2 grad165=u3165*aspect165;\n"+
-        "    float rimPx165=clamp(short165*0.12,10.0,26.0);\n"+
-        "    float band165=clamp(4.0*rimPx165/max(short165,2.0),0.10,0.72);\n"+
-        "    float x165=t165/max(band165,0.01);\n"+
-        "    float rimSlope165=exp(-x165*x165)*x165;\n"+
-        "    float domeSlope165=t165*t165;\n"+
-        "    float2 curved165=-grad165*(11.0*domeSlope165+34.0*rimSlope165);\n"+
-        "    float entrance165=smoothstep(0.0,2.4,max(-d,0.0));\n"+
-        "    float strength165=clamp(unifiedStrength162,0.0,1.0);\n"+
-        "    float gain165=(unifiedLens159>1.5)?1.18:1.0;\n"+
-        "    float2 raw165=curved165*strength165*entrance165*gain165;\n"+
-        "    float amp165=length(raw165);\n"+
-        "    deltaLens=raw165*(30.0/sqrt(900.0+amp165*amp165));\n"+
+        "    float2 sz166=max(bounds.zw-bounds.xy,float2(2.0));\n"+
+        "    float short166=min(sz166.x,sz166.y);\n"+
+        "    float2 uv166=(p-center136)/(sz166*0.5);\n"+
+        "    float2 sq166=uv166*uv166;\n"+
+        "    float2 cube166=sq166*uv166;\n"+
+        "    float q166=sq166.x*sq166.x+sq166.y*sq166.y;\n"+
+        "    float t166=clamp(1.0-q166,0.0,1.0);\n"+
+        "    float2 aspect166=short166/max(sz166,float2(1.0));\n"+
+        "    float2 g166=cube166*aspect166;\n"+
+        "    float edgePx166=clamp(short166*0.15,12.0,31.0);\n"+
+        "    float band166=clamp(4.0*edgePx166/max(short166,2.0),0.18,0.78);\n"+
+        "    float x166=t166/max(band166,0.01);\n"+
+        "    float edge166=exp(-x166*x166)*x166;\n"+
+        "    float shoulder166=t166*exp(-1.8*t166);\n"+
+        "    float dome166=t166*t166*(1.0-0.55*t166);\n"+
+        "    float slope166=12.0*dome166+25.0*shoulder166+21.0*edge166;\n"+
+        "    float2 raw166=-g166*slope166*clamp(unifiedStrength162,0.0,1.0);\n"+
+        "    raw166*=smoothstep(0.0,2.4,max(-d,0.0));\n"+
+        "    raw166*=(unifiedLens159>1.5)?1.16:1.0;\n"+
+        "    float amp166=length(raw166);\n"+
+        "    deltaLens=raw166*(26.0/sqrt(676.0+amp166*amp166));\n"+
+        "    if(opticalDiagnostic147>13.5 && opticalDiagnostic147<14.5){\n"+
+        "      float shoulderView166=clamp(shoulder166*3.8,0.0,1.0);\n"+
+        "      float rimView166=clamp(edge166*2.6,0.0,1.0);\n"+
+        "      return half4(half3(rimView166,shoulderView166,clamp(length(deltaLens)/16.0,0.0,1.0)),1.0);\n"+
+        "    }\n"+
+        "    if(opticalDiagnostic147>14.5 && opticalDiagnostic147<15.5){\n"+
+        "      float saturation166=clamp(amp166/26.0,0.0,1.0);\n"+
+        "      return half4(half3(saturation166,saturation166*0.3,1.0-saturation166),1.0);\n"+
+        "    }\n"+
         "  }\n"+
         // V147: visual truth map, calculated from the actual V146 field geometry.
         // Diagnostic returns BEFORE wallpaper sampling and overlays. Mode 8 is zero warp.
@@ -5593,7 +5602,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 try { opticalDiagnostic147=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_diagnostic_147",0); }
                                                 catch(Throwable e147){ if(lensPipelineLogs111<160)log("OPTICAL_DIAGNOSTIC_147_READ_FAILED "+e147.getClass().getSimpleName()); }
-                                                opticalDiagnostic147=Math.max(0,Math.min(13,opticalDiagnostic147));
+                                                opticalDiagnostic147=Math.max(0,Math.min(15,opticalDiagnostic147));
                                                 shader93.setFloatUniform("opticalDiagnostic147",(float)opticalDiagnostic147);
                                                 // V149: log only on configuration changes, not every Shader setup.
                                                 String opticalState149="model149="+opticalModel149+
