@@ -77,6 +77,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float centerStable170;\n"+
         "uniform float continuousThickness171;\n"+
         "uniform float effectiveCurvature172;\n"+
+        "uniform float continuousLens179;\n"+
         "uniform float opticalReflection153;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
@@ -121,6 +122,30 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // Smooth non-normalized derivatives keep the optical center and corners stable.
         // V172: smooth whole-container potential. No nearest-edge normal switches.
         // One monotonic strength drives a bounded displacement; preserve V171 via toggle.
+        // V179: one differentiable 2D scalar lens potential, not independent X/Y edge fields.
+        // Both axes and rounded corners share the SAME superelliptic level sets.
+        // No nearest-edge normals, no coordinate-dependent frame jitter.
+        "  if(continuousLens179>0.5){\n"+
+        "    float2 half179=max(sz*0.5,float2(1.0));\n"+
+        "    float2 u179=(pp-(bounds.xy+bounds.zw)*0.5)/half179;\n"+
+        "    float2 u2179=u179*u179;\n"+
+        "    float2 u4179=u2179*u2179;\n"+
+        "    float q179=u4179.x+u4179.y;\n"+
+        "    float r179=pow(max(q179,0.000001),0.25);\n"+
+        "    float t179=clamp(1.0-r179,0.0,1.0);\n"+
+        "    float2 grad179=(u2179*u179)/(max(r179*r179*r179,0.015)*half179);\n"+
+        "    float2 unit179=grad179*sh;\n"+
+        "    float edge179=exp(-pow(t179/0.135,2.0));\n"+
+        "    float shoulder179=exp(-pow((t179-0.18)/0.22,2.0));\n"+
+        "    float center179=t179*t179*(3.0-2.0*t179);\n"+
+        "    float profile179=3.8*edge179+5.6*shoulder179+2.0*center179;\n"+
+        "    float depth179=max(-glassSdf(pp),0.0);\n"+
+        "    float gate179=smoothstep(0.0,3.5,depth179);\n"+
+        "    float gain179=(continuousLens179>1.5)?1.30:1.0;\n"+
+        "    float2 raw179=-unit179*profile179*gate179*gain179*clamp(unifiedStrength162,0.0,1.0);\n"+
+        "    float cap179=clamp(sh*0.092,7.0,16.0);\n"+
+        "    return raw179*(cap179/sqrt(cap179*cap179+dot(raw179,raw179)));\n"+
+        "  }\n"+
         "  if(roundedContour169>0.5 && centerStable170>0.5 && effectiveCurvature172>0.5){\n"+
         "    float2 half172=max(sz*0.5,float2(1.0));\n"+
         "    float2 u172=(pp-(bounds.xy+bounds.zw)*0.5)/half172;\n"+
@@ -5835,6 +5860,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 int effectiveCurvature172=1;
                                                 try { effectiveCurvature172=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_effective_curvature_172",1); } catch(Throwable ignored) {}
                                                 shader93.setFloatUniform("effectiveCurvature172",(float)Math.max(0,Math.min(1,effectiveCurvature172)));
+                                                int continuousLens179=1;
+                                                try { continuousLens179=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_continuous_lens_179",1); } catch(Throwable ignored) {}
+                                                shader93.setFloatUniform("continuousLens179",(float)Math.max(0,Math.min(2,continuousLens179)));
                                                 int opticalReflection153=1;
                                                 try { opticalReflection153=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_reflection_153",1);
