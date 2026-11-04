@@ -344,32 +344,30 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float length158=length(limited158);\n"+
         "    deltaLens=limited158*(17.0/sqrt(289.0+length158*length158));\n"+
         "  }\n"+
-        // V162: one optical surface, one strength control; V161 retained in git baseline.
-        // Physical-space normal follows a smooth superellipse, no nearest-edge switch.
+        // V163: differentiable polynomial potential. No normalized gradient / axis switch.
+        // The old V162 unit normal amplified direction changes near the centre.
+        // Edge envelope depends on smooth L4 radius; SDF is only a soft coverage mask.
         "  if(unifiedLens159>0.5){\n"+
-        "    float2 sz162=max(bounds.zw-bounds.xy,float2(2.0));\n"+
-        "    float short162=min(sz162.x,sz162.y);\n"+
-        "    float2 uv162=(p-center136)/(sz162*0.5);\n"+
-        "    float2 a162=abs(uv162);\n"+
-        "    float r162=pow(max(pow(a162.x,4.0)+pow(a162.y,4.0),0.0000001),0.25);\n"+
-        "    float2 gr162=float2(uv162.x*uv162.x*uv162.x,uv162.y*uv162.y*uv162.y)/max(pow(r162,3.0),0.001);\n"+
-        "    float2 pg162=gr162/max(sz162*0.5,float2(1.0));\n"+
-        "    float2 n162=pg162/max(length(pg162),0.0001);\n"+
-        "    float depth162=max(-d,0.0);\n"+
-        "    float band162=clamp(short162*0.145,7.0,32.0);\n"+
-        "    float t162=depth162/max(band162,1.0);\n"+
-        "    float edge162=exp(-pow((t162-0.42)/0.46,2.0));\n"+
-        "    float shoulder162=1.0-smoothstep(0.24,0.93,r162);\n"+
-        "    float entrance162=smoothstep(0.0,2.4,depth162);\n"+
-        "    float center162=smoothstep(0.0,0.17,r162);\n"+
-        "    // Gradient of one convex optical profile: broad curvature + raised rim.\n"+
-        "    float slope162=(2.6+4.2*shoulder162+14.0*edge162)*center162;\n"+
-        "    float strength162=clamp(unifiedStrength162,0.0,1.0);\n"+
-        "    float2 raw162=-n162*slope162*strength162*entrance162;\n"+
-        "    float gain162=(unifiedLens159>1.5)?1.18:1.0;\n"+
-        "    float2 v162=raw162*gain162;\n"+
-        "    float len162=length(v162);\n"+
-        "    deltaLens=v162*(28.0/sqrt(784.0+len162*len162));\n"+
+        "    float2 sz163=max(bounds.zw-bounds.xy,float2(2.0));\n"+
+        "    float short163=min(sz163.x,sz163.y);\n"+
+        "    float2 uv163=(p-center136)/(sz163*0.5);\n"+
+        "    float2 u2163=uv163*uv163;\n"+
+        "    float2 u3163=u2163*uv163;\n"+
+        "    float q163=u2163.x*u2163.x+u2163.y*u2163.y;\n"+
+        "    float r2163=sqrt(sqrt(max(q163,0.0)+0.000001));\n"+
+        "    float inner163=1.0-smoothstep(0.30,0.95,r2163);\n"+
+        "    float rim163=exp(-pow((r2163-0.81)/0.19,2.0));\n"+
+        "    float2 aspect163=short163/max(sz163,float2(1.0));\n"+
+        "    float2 gradient163=u3163*aspect163;\n"+
+        "    float depth163=max(-d,0.0);\n"+
+        "    float entrance163=smoothstep(0.0,2.4,depth163);\n"+
+        "    float strength163=clamp(unifiedStrength162,0.0,1.0);\n"+
+        "    float slope163=5.8+5.2*inner163+19.0*rim163;\n"+
+        "    float2 raw163=-gradient163*slope163*strength163*entrance163;\n"+
+        "    float gain163=(unifiedLens159>1.5)?1.18:1.0;\n"+
+        "    float2 v163=raw163*gain163;\n"+
+        "    float len163=length(v163);\n"+
+        "    deltaLens=v163*(28.0/sqrt(784.0+len163*len163));\n"+
         "  }\n"+
         // V147: visual truth map, calculated from the actual V146 field geometry.
         // Diagnostic returns BEFORE wallpaper sampling and overlays. Mode 8 is zero warp.
