@@ -78,6 +78,29 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float2 q = abs(p-(bounds.xy+bounds.zw)*0.5)-(halfSize-r);\n"+
         "  return length(max(q,float2(0.0)))+min(max(q.x,q.y),0.0)-r;\n"+
         "}\n"+
+        // V167: diagnostic-only reproduction of V166's final unified-lens displacement.
+        // The exact glassSdf is re-evaluated for each finite-difference probe.
+        "float2 lensDelta167(float2 pp) {\n"+
+        "  float2 sz=max(bounds.zw-bounds.xy,float2(2.0));\n"+
+        "  float sh=min(sz.x,sz.y);\n"+
+        "  float2 uv=(pp-(bounds.xy+bounds.zw)*0.5)/(sz*0.5);\n"+
+        "  float2 sq=uv*uv;\n"+
+        "  float q=sq.x*sq.x+sq.y*sq.y;\n"+
+        "  float t=clamp(1.0-q,0.0,1.0);\n"+
+        "  float2 g=(sq*uv)*(sh/max(sz,float2(1.0)));\n"+
+        "  float edgePx=clamp(sh*0.15,12.0,31.0);\n"+
+        "  float band=clamp(4.0*edgePx/max(sh,2.0),0.18,0.78);\n"+
+        "  float x=t/max(band,0.01);\n"+
+        "  float edge=exp(-x*x)*x;\n"+
+        "  float shoulder=t*exp(-1.8*t);\n"+
+        "  float dome=t*t*(1.0-0.55*t);\n"+
+        "  float slope=12.0*dome+25.0*shoulder+21.0*edge;\n"+
+        "  float2 raw=-g*slope*clamp(unifiedStrength162,0.0,1.0);\n"+
+        "  raw*=smoothstep(0.0,2.4,max(-glassSdf(pp),0.0));\n"+
+        "  raw*=(unifiedLens159>1.5)?1.16:1.0;\n"+
+        "  float amp=length(raw);\n"+
+        "  return raw*(26.0/sqrt(676.0+amp*amp));\n"+
+        "}\n"+
         "half4 main(float2 p) {\n"+
         "  half4 base = wallpaper.eval(p);\n"+
         "  float d = glassSdf(p);\n"+
@@ -447,6 +470,34 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "   samplePos=p+delta;\n"+
         "  }\n"+
         "  samplePos=clamp(samplePos,validBounds.xy+float2(1.0),validBounds.zw-float2(1.0));\n"+
+        // V167: final-sampling diagnostics. Modes 16-18 do not alter normal rendering.
+        "  if(opticalDiagnostic147>15.5 && opticalDiagnostic147<18.5){\n"+
+        "    float2 dx167=float2(1.0,0.0);\n"+
+        "    float2 dy167=float2(0.0,1.0);\n"+
+        "    float2 lo167=validBounds.xy+float2(1.0);\n"+
+        "    float2 hi167=validBounds.zw-float2(1.0);\n"+
+        "    float2 ax167=clamp(p+dx167+lensDelta167(p+dx167),lo167,hi167);\n"+
+        "    float2 bx167=clamp(p-dx167+lensDelta167(p-dx167),lo167,hi167);\n"+
+        "    float2 ay167=clamp(p+dy167+lensDelta167(p+dy167),lo167,hi167);\n"+
+        "    float2 by167=clamp(p-dy167+lensDelta167(p-dy167),lo167,hi167);\n"+
+        "    float2 jx167=(ax167-bx167)*0.5;\n"+
+        "    float2 jy167=(ay167-by167)*0.5;\n"+
+        "    float det167=jx167.x*jy167.y-jy167.x*jx167.y;\n"+
+        "    if(opticalDiagnostic147<16.5){\n"+
+        "      float comp167=clamp((1.0-det167)*0.8,0.0,1.0);\n"+
+        "      float stretch167=clamp((det167-1.0)*0.8,0.0,1.0);\n"+
+        "      float flip167=(det167<=0.0)?1.0:0.0;\n"+
+        "      return half4(half3(max(comp167,flip167),stretch167*(1.0-flip167),flip167),1.0);\n"+
+        "    }\n"+
+        "    if(opticalDiagnostic147<17.5){\n"+
+        "      float shear167=length(jx167-float2(1.0,0.0))+length(jy167-float2(0.0,1.0));\n"+
+        "      float val167=clamp(shear167*0.65,0.0,1.0);\n"+
+        "      return half4(half3(val167,0.15+0.65*(1.0-val167),val167*0.4),1.0);\n"+
+        "    }\n"+
+        "    float2 unclamped167=p+delta;\n"+
+        "    float clipped167=clamp(length(unclamped167-samplePos)/8.0,0.0,1.0);\n"+
+        "    return half4(half3(clipped167,0.0,1.0-clipped167),1.0);\n"+
+        "  }\n"+
         "  float2 room = min(samplePos-validBounds.xy,validBounds.zw-samplePos);\n"+
         "  float safe = smoothstep(0.0,6.0,min(room.x,room.y));\n"+
         // V142: optical-only subpixel sampling test. Preserve original mode 0.
@@ -5602,7 +5653,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 try { opticalDiagnostic147=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_diagnostic_147",0); }
                                                 catch(Throwable e147){ if(lensPipelineLogs111<160)log("OPTICAL_DIAGNOSTIC_147_READ_FAILED "+e147.getClass().getSimpleName()); }
-                                                opticalDiagnostic147=Math.max(0,Math.min(15,opticalDiagnostic147));
+                                                opticalDiagnostic147=Math.max(0,Math.min(18,opticalDiagnostic147));
                                                 shader93.setFloatUniform("opticalDiagnostic147",(float)opticalDiagnostic147);
                                                 // V149: log only on configuration changes, not every Shader setup.
                                                 String opticalState149="model149="+opticalModel149+
