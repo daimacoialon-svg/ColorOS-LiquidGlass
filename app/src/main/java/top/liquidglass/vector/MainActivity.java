@@ -34,8 +34,17 @@ public final class MainActivity extends Activity {
     @Override protected void onResume(){super.onResume();rootStatusVisible=true;rootStatusHandler.removeCallbacks(rootStatusPoll);rootStatusHandler.post(rootStatusPoll);}
     @Override protected void onStop(){rootStatusVisible=false;rootStatusHandler.removeCallbacks(rootStatusPoll);super.onStop();}
 
-    // Event-only signal: no configuration data is carried by this broadcast.
-    // Launcher must fetch the authoritative values from the app provider.
+    // V194: event-only signal. Launcher must ONLY read the root-published Global snapshot.
+    private final Handler publishHandler194=new Handler(Looper.getMainLooper());
+    private final Runnable rootSignal194=()->new Thread(()->{
+        try {
+            // Signal the already-running root service; do not spawn another daemon.
+            Process p=new ProcessBuilder("su","-c","touch /data/local/tmp/.liquidglass-config-trigger")
+                .redirectErrorStream(true).start();
+            if(!p.waitFor(5,java.util.concurrent.TimeUnit.SECONDS))p.destroyForcibly();
+            android.util.Log.i("LiquidGlass194","ROOT_TRIGGER_SENT exit="+(p.isAlive()?"timeout":p.exitValue()));
+        }catch(Throwable t){android.util.Log.w("LiquidGlass194","ROOT_TRIGGER_UNAVAILABLE "+t.getClass().getSimpleName());}
+    },"LiquidGlass-Signal194").start();
     private void notifyConfigChanged128(){
         getContentResolver().notifyChange(GlassConfigProvider.URI,null);
         try {
@@ -43,6 +52,8 @@ public final class MainActivity extends Activity {
             i.setPackage("com.android.launcher");
             sendBroadcast(i);
         }catch(Throwable ignored){}
+        publishHandler194.removeCallbacks(rootSignal194);
+        publishHandler194.postDelayed(rootSignal194,220L);
     }
     private LinearLayout body;
     private final int ink=0xFF172635, muted=0xFF657587, blue=0xFF2979E5;
@@ -69,7 +80,7 @@ public final class MainActivity extends Activity {
         SeekBar bar=new SeekBar(this);bar.setMax(max-min);bar.setProgress(Math.max(0,Math.min(max-min,prefs.getInt(key,def)-min)));current.addView(bar);
         Runnable update=()->caption.setText(label+"  ·  "+(bar.getProgress()+min));update.run();
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){putIntIfChanged193(key,progress+min);}}
+            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();}
             public void onStartTrackingTouch(SeekBar b){}
             public void onStopTrackingTouch(SeekBar b){putIntIfChanged193(key,b.getProgress()+min);}
         });
@@ -83,7 +94,7 @@ public final class MainActivity extends Activity {
         SeekBar bar=new SeekBar(this);bar.setMax(400);bar.setProgress(initial);current.addView(bar);
         Runnable update=()->caption.setText(String.format(java.util.Locale.US,"桌面文件夹背景模糊半径  ·  %.1f dp",bar.getProgress()/10f));update.run();
         bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();if(fromUser){updateMicroBlur193(progress);}}
+            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();}
             public void onStartTrackingTouch(SeekBar b){}
             public void onStopTrackingTouch(SeekBar b){updateMicroBlur193(b.getProgress());}
         });
@@ -147,11 +158,13 @@ public final class MainActivity extends Activity {
         notifyConfigChanged128();
     }
     @Override public void onCreate(Bundle saved){
-        super.onCreate(saved);prefs=getSharedPreferences("glass",0);audit193("UI_ON_CREATE_READ_ONLY");
+        super.onCreate(saved);prefs=getSharedPreferences("glass",0);
+        ConfigMigration194.reconcileOnce(this,prefs);
+        audit193("UI_ON_CREATE_V194");
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.193  ·  配置只读初始化与状态追踪",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.194  ·  单一配置源与安全刷新",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -261,7 +274,7 @@ public final class MainActivity extends Activity {
             rootStatusHandler.removeCallbacks(rootStatusPoll);
             rootStatusHandler.postDelayed(rootStatusPoll,1000);
         }));
-        TextView serviceHint=text("安装或更新脚本后请重启手机：旧版服务进程不会因文件被覆盖而自动重启。重启后检查配置同步是否正常。",12,false);current.addView(serviceHint);
+        TextView serviceHint=text("V194 修复 Root 配置事件与主服务之间的同步竞态。请检查并更新脚本后重启一次，确保运行的服务脚本也是最新。拖动滑块时只更新显示，松手后才应用配置。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
         setContentView(scroll);

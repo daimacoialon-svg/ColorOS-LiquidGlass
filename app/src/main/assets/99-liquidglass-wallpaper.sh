@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# V1.9.100: fast event-driven sync and 4-second metadata fallback.
+# V1.9.205.194: single resident publisher; event workers never persist; validated snapshots.
 # Source is checked twice before atomic replacement; never expose partial copies.
 # Android toybox inotifyd is optional; fallback works without it.
 PKG=top.liquidglass.vector
@@ -21,7 +21,7 @@ WATCHER_PID=
 CONFIG_WATCHER_PID=
 CONFIG_TRIGGER=/data/local/tmp/.liquidglass-config-trigger
 cleanup() { [ -n "$WATCHER_PID" ] && kill "$WATCHER_PID" 2>/dev/null; [ -n "$CONFIG_WATCHER_PID" ] && kill "$CONFIG_WATCHER_PID" 2>/dev/null; rm -f "$TRIGGER" "$CONFIG_TRIGGER"; }
-trap cleanup EXIT INT TERM
+# Event workers must NOT clean the resident service's trigger files.
 # Only one service loop; avoid duplicates after manual testing/restarts.
 LOCK=/data/local/tmp/.liquidglass-wallpaper-sync.lock
 # Reject stale locks even when the old PID was reused by an unrelated service.
@@ -60,10 +60,14 @@ fi
 # V123: watch the app's private preferences directory. Android SharedPreferences
 # commonly persists via rename from glass.xml.bak, so monitor the directory.
 # This watcher only signals; the existing root loop publishes the snapshot.
-if [ -z "$1" ] && command -v inotifyd >/dev/null 2>&1 && [ -d "/data/user/0/$PKG/shared_prefs" ]; then
+start_config_watcher194() {
+  [ -d "/data/user/0/$PKG/shared_prefs" ] || return
+  command -v inotifyd >/dev/null 2>&1 || return
+  if [ -n "$CONFIG_WATCHER_PID" ] && kill -0 "$CONFIG_WATCHER_PID" 2>/dev/null; then return; fi
   inotifyd /data/adb/service.d/99-liquidglass-wallpaper-notify.sh "/data/user/0/$PKG/shared_prefs:cmw" >/dev/null 2>&1 &
   CONFIG_WATCHER_PID=$!
-fi
+}
+[ -z "$1" ] && start_config_watcher194
 # Persist a minimal non-secret configuration snapshot independent of the app provider.
 PREF=/data/user/0/$PKG/shared_prefs/glass.xml
 SNAPKEY=liquidglass_boot_snapshot_v1
@@ -73,7 +77,7 @@ LASTSNAP=""
 make_snapshot125() {
   awk '
   BEGIN {
-    n=split("enabled:0 alpha:210 tint:0 tint_strength:30 highlight:0 diagnostics:0 highlight_strength:25 probe_mode:0 highlight_width:2 directional_light:1 native_blur_experiment:0 blur_radius_percent:100 native_alpha_probe:1 wallpaper_compare:0 real_refraction:0 custom_blur_dp:14 refraction_percent:35 glass_tint_opacity:18 custom_blur_mode:1 clear_refraction:0 dynamic_sheen_mode:0 surface_mode_195:3 surface_strength_195:100 surface_softness_195:100 icon_optics_204:0 dock_glass_204:0 nonlinear_107:65 thickness_107:55 interior_107:20 focus_107:45 reflection_107:30", items, " ");
+    n=split("enabled:0 alpha:210 tint:0 tint_strength:30 highlight:0 diagnostics:0 highlight_strength:25 probe_mode:0 highlight_width:2 directional_light:1 native_blur_experiment:0 blur_radius_percent:100 native_alpha_probe:1 wallpaper_compare:0 real_refraction:0 custom_blur_dp:14 refraction_percent:35 glass_tint_opacity:18 custom_blur_mode:1 clear_refraction:0 dynamic_sheen_mode:0 surface_mode_195:3 surface_strength_195:100 surface_softness_195:100 icon_optics_204:0 dock_glass_204:0 nonlinear_107:65 thickness_107:55 interior_107:20 focus_107:45 reflection_107:30 optical_style_186:0", items, " ");
     for(i=1;i<=n;i++){split(items[i],pair,":"); keys[i]=pair[1]; values[pair[1]]=pair[2]}
   }
   /name="/ {
@@ -93,17 +97,38 @@ make_snapshot125() {
 }
 sync_config() {
   local_sync_lock=/data/local/tmp/.liquidglass-config-publish.lock
-  # V126: a busy publisher must not silently drop the newest event.
+  # V194: recover a crashed writer's stale lock; never remove an active writer.
   if ! mkdir "$local_sync_lock" 2>/dev/null; then
-    touch "$CONFIG_TRIGGER"
-    echo "CONFIG_CHAIN_126 stage=BUSY_REQUEUE time=$(date +%s)" >> "$LOG"
-    return
+    owner=$(cat "$local_sync_lock/pid" 2>/dev/null)
+    case "$owner" in ''|*[!0-9]*) owner=;; esac
+    if [ -n "$owner" ] && [ -d "/proc/$owner" ]; then
+      touch "$CONFIG_TRIGGER"
+      return
+    fi
+    modified=$(stat -c %Y "$local_sync_lock" 2>/dev/null)
+    now=$(date +%s)
+    case "$modified" in ''|*[!0-9]*) modified="$now";; esac
+    if [ $((now - modified)) -gt 10 ]; then
+      rm -rf "$local_sync_lock"
+      mkdir "$local_sync_lock" 2>/dev/null || { touch "$CONFIG_TRIGGER"; return; }
+      echo "CONFIG_194 stage=RECOVER_STALE_LOCK" >> "$LOG"
+    else
+      touch "$CONFIG_TRIGGER"
+      return
+    fi
   fi
+  printf '%s' "$$" > "$local_sync_lock/pid"
   [ -s "$PREF" ] || { rmdir "$local_sync_lock"; return; }
   grep -q 'name="enabled"' "$PREF" 2>/dev/null || { rmdir "$local_sync_lock"; return; }
   # Single-pass snapshot generation; preserve existing field order and defaults.
   SNAP=$(make_snapshot125)
   [ -n "$SNAP" ] || { rmdir "$local_sync_lock"; return; }
+  # V194: schema = LG1 plus 32 validated decimal fields; no partial publishes.
+  NF=$(printf '%s' "$SNAP" | awk -F '|' '{print NF}')
+  if [ "$NF" != 33 ] || ! printf '%s' "$SNAP" | grep -Eq '^LG1(\|-?[0-9]+){32}$'; then
+    echo "CONFIG_194 stage=REJECT_SCHEMA nf=$NF" >> "$LOG"
+    rmdir "$local_sync_lock"; return
+  fi
   # Compare with the system value, not a process-local variable: event workers
   # and the resident service are separate shell processes.
   CURRENT=$(settings get global "$SNAPKEY" 2>/dev/null)
@@ -224,6 +249,7 @@ sync_de_reference() {
 # storage / Launcher private files appear after Magisk service startup.
 # Run the first checks immediately; repeat quickly until both copies exist.
 if [ "$1" = "--event-config" ]; then
+  # Compatibility with legacy event callers: publish once, never touch daemon triggers.
   sync_config
   exit 0
 fi
@@ -246,6 +272,8 @@ CONFIG_TICKS=0
 BOOT_TICKS=0
 while true; do
   if [ "$BOOT_TICKS" -lt 180 ]; then sleep 1; else sleep 2; fi
+  # V194: restart a failed/missing preference watcher; APP may mount CE late.
+  if [ $((BOOT_TICKS % 10)) -eq 0 ]; then start_config_watcher194; fi
   # V123: event-first config publication. Fallback is deliberately infrequent
   # (roughly 5 minutes after boot) and never blocks wallpaper synchronization.
   if [ -e "$CONFIG_TRIGGER" ]; then

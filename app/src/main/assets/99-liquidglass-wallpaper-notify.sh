@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# V124: direct one-shot event handling. No second resident daemon.
+# V194: config events only set one trigger; the resident script does the publication.
 SERVICE=/data/adb/service.d/99-liquidglass-wallpaper.sh
 case "$3" in
   wallpaper_screenshot.png)
@@ -8,5 +8,5 @@ case "$3" in
   glass.xml|glass.xml.bak)
     touch /data/local/tmp/.liquidglass-config-trigger
     echo "CONFIG_CHAIN_126 stage=FS_EVENT wall=$(date +%s)" >> /data/local/tmp/liquidglass-wallpaper-sync.log
-    "$SERVICE" --event-config >/dev/null 2>&1 & ;;
+    ;;
 esac

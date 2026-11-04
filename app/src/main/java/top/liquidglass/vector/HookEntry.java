@@ -991,29 +991,25 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // which OplusAppStartupManager blocks on affected devices.
     private static final String BOOT_SNAPSHOT_KEY = "liquidglass_boot_snapshot_v1";
     private static volatile String lastBootSnapshot = "";
-    // V129: a successful direct Provider read takes precedence over delayed root snapshots.
-    // This is per-Launcher-process state; cold boot still restores the last known good snapshot.
-    private static volatile boolean directConfigAuthoritative129 = false;
-    private static volatile long directConfigAppliedAt129 = 0L;
-    private static volatile int opticalDiagnostics129 = 0;
+    private static volatile int opticalDiagnostics129 = 0; // Legacy diagnostic throttling; not a config authority.
     // Separate the user switch from the independent blur/wallpaper sampling pipeline.
     private static volatile long REFRACTION_CONFIG_EPOCH = 0L;
     private static volatile int REFRACTION_SWITCH_LOGS = 0;
-    private static boolean restoreBootSnapshot(android.content.Context context) {
-        if(directConfigAuthoritative129){
-            if(opticalDiagnostics129++<12)log("OPTICAL_AUTHORITY_129 stage=SKIP_STALE_GLOBAL directAt="+directConfigAppliedAt129);
-            return false;
-        }
+    private static synchronized boolean restoreBootSnapshot(android.content.Context context) {
+        // V194: Global snapshot is the only authoritative Launcher configuration.
+        // Never permanently lock out newer root publications after a UI event.
         try {
             String raw=android.provider.Settings.Global.getString(context.getContentResolver(),BOOT_SNAPSHOT_KEY);
             if(raw==null || !raw.startsWith("LG1|"))return false;
             // V127: unchanged snapshots must not be reparsed on every restore/draw.
             if(configEverLoaded && raw.equals(lastBootSnapshot))return false;
             String[] v=raw.split("\\|",-1);
-            if(v.length!=16 && v.length!=20 && v.length!=21 && v.length!=22 && v.length!=25 && v.length!=27 && v.length!=32){log("BOOT_SNAPSHOT_REJECT reason=field_count count="+v.length);return false;}
+            if(v.length!=16 && v.length!=20 && v.length!=21 && v.length!=22 && v.length!=25 && v.length!=27 && v.length!=32 && v.length!=33){log("BOOT_SNAPSHOT_REJECT reason=field_count count="+v.length);return false;}
             // Parse all fields first: never partially apply a corrupt snapshot.
-            int[] x=new int[15];
-            for(int i=0;i<x.length;i++)x[i]=Integer.parseInt(v[i+1]);
+            // V194: validate every field before mutating any renderer state.
+            int[] all=new int[v.length-1];
+            for(int i=0;i<all.length;i++)all[i]=Integer.parseInt(v[i+1]);
+            int[] x=all;
             if(x[0]<0||x[0]>1||x[1]<0||x[1]>255||x[2]<0||x[2]>3||x[3]<0||x[3]>90||x[6]<0||x[6]>100||x[8]<1||x[8]>5){log("BOOT_SNAPSHOT_REJECT reason=range alpha="+x[1]+" tint="+x[2]);return false;}
             boolean previousRefraction=REFRACTION_ENABLED;
             glassEnabled=x[0]==1;glassAlpha=x[1];tintMode=x[2];tintStrength=x[3];
@@ -1028,7 +1024,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
             if(v.length>=25){surfaceMode194=clampInt(Integer.parseInt(v[22]),0,3);surfaceStrength194=clampInt(Integer.parseInt(v[23]),0,200);surfaceSoftness194=clampInt(Integer.parseInt(v[24]),50,200);}
             if(v.length>=27){iconOptics204="1".equals(v[25]);dockGlass204="1".equals(v[26]);}
             // V122: optical parameters must reach Launcher via the root snapshot, not the blocked provider.
-            if(v.length>=32){nonlinear107=clampInt(Integer.parseInt(v[27]),0,100);thickness107=clampInt(Integer.parseInt(v[28]),0,100);interior107=clampInt(Integer.parseInt(v[29]),0,100);focus107=clampInt(Integer.parseInt(v[30]),0,100);reflection107=clampInt(Integer.parseInt(v[31]),0,100);}
+            if(v.length>=32){nonlinear107=clampInt(x[26],0,100);thickness107=clampInt(x[27],0,100);interior107=clampInt(x[28],0,100);focus107=clampInt(x[29],0,100);reflection107=clampInt(x[30],0,100);}
+            // V194: optical style was previously Provider-only; now in root snapshot.
+            opticalStyle186=v.length>=33?clampInt(x[31],0,2):0;
             syncCleanEdgeLighting177();
             configEverLoaded=true;
             CONFIG_READY_AT_146=android.os.SystemClock.uptimeMillis();
@@ -1040,7 +1038,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             }
             if(!raw.equals(lastBootSnapshot)){
                 lastBootSnapshot=raw;
-                log("BOOT_SNAPSHOT_APPLIED enabled="+glassEnabled+" highlight="+highlightEnabled+" refraction="+REFRACTION_ENABLED+" fields="+v.length+" surface="+surfaceMode194+" strength="+surfaceStrength194+" softness="+surfaceSoftness194);
+                log("CONFIG_APPLIED_194 source=GLOBAL_SNAPSHOT enabled="+glassEnabled+" highlight="+highlightEnabled+" refraction="+REFRACTION_ENABLED+" fields="+v.length+" surface="+surfaceMode194+" strength="+surfaceStrength194+" softness="+surfaceSoftness194+" style="+opticalStyle186);
                 log("OPTICAL_CONFIG_SYNC_122 source=GLOBAL_SNAPSHOT fields="+v.length+" legacyEnabled="+REFRACTION_ENABLED+" legacyPercent="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107+" synced="+(v.length>=32));
                 if(CONFIG_LOGS_146++<32)log("CONFIG_FIRST_FRAME_146 snapshotReady="+CONFIG_READY_AT_146+" unlockAt="+CONFIG_UNLOCK_AT_146+" blur="+customBlurDp+" alpha="+glassAlpha+" refract="+refractionPercent);
                 return true;
@@ -1056,9 +1054,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
         long now = android.os.SystemClock.uptimeMillis();
         if (!direct128 && configEverLoaded && now-lastRead < 1500) return;
         lastRead=now;
-        // V1.9.97: Launcher never cold-starts the module ContentProvider.
-        // ColorOS blocks that startup during boot; use the root-published snapshot.
-        if (!direct128 && "com.android.launcher".equals(context.getPackageName())) {
+        // V194: never read the APP provider from Launcher, including UI events.
+        // No provider call can overwrite the working boot configuration.
+        if ("com.android.launcher".equals(context.getPackageName())) {
             restoreBootSnapshot(context);
             return;
         }
@@ -1110,13 +1108,6 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 summary += " surfaceMode="+surfaceMode194+" surfaceStrength="+surfaceStrength194+" surfaceSoftness="+surfaceSoftness194;
                 summary += " realRefraction="+REFRACTION_ENABLED+" wallpaperCompare="+wallpaperCompare+" customBlurDp="+customBlurDp+" refractionPercent="+refractionPercent+" glassTintOpacity="+glassTintOpacity+" customBlurMode="+customBlurMode+" clearRefraction="+clearRefraction;
                 if(!summary.equals(lastConfigSummary)){lastConfigSummary=summary;log("CONFIG_SYNC_V193 source="+(direct128?"PROVIDER_DIRECT":"PROVIDER_FALLBACK")+" uptime="+android.os.SystemClock.uptimeMillis()+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107+" style="+opticalStyle186+" "+summary);}
-                if(direct128){
-                    directConfigAppliedAt129=android.os.SystemClock.uptimeMillis();
-                    directConfigAuthoritative129=true;
-                    log("OPTICAL_AUTHORITY_129 stage=DIRECT_APPLIED legacyEnabled="+REFRACTION_ENABLED+
-                        " legacyPercent="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+
-                        interior107+","+focus107+","+reflection107+" uptime="+directConfigAppliedAt129);
-                }
             }
         } catch(Throwable t) { if(direct128)log("CONFIG_DIRECT_128 stage=PROVIDER_FAILED reason="+t.getClass().getSimpleName()); if(alphaLogs++<8) log("CONFIG_READ_FAILED reason="+t.getClass().getSimpleName()); }
         if(!configEverLoaded)restoreBootSnapshot(context);
@@ -7755,34 +7746,28 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         }
                     };
                     restore.run();
-                    // V128: direct UI event attempts a provider read on a worker thread.
-                    // Keep the established Settings.Global snapshot as the fallback.
+                    // V194: broadcast is only a hint. Root publishes an atomic snapshot.
+                    // Coalesce bursts; apply/invalidate only when its contents changed.
+                    final Runnable hint194=()->restore.run();
                     try {
                         android.content.IntentFilter directFilter128=new android.content.IntentFilter(
                             "top.liquidglass.vector.CONFIG_CHANGED_128");
                         app.registerReceiver(new android.content.BroadcastReceiver(){
                             @Override public void onReceive(android.content.Context c,android.content.Intent i){
-                                final long notified=android.os.SystemClock.uptimeMillis();
-                                log("CONFIG_DIRECT_128 stage=SIGNAL_RECEIVED uptime="+notified+" V193_USER_EVENT");
-                                new Thread(()->{
-                                    refreshFromContext(app,true);
-                                    handler.post(()->{
-                                        invalidateGlassViews();
-                                        log("CONFIG_DIRECT_128 stage=INVALIDATE_REQUESTED elapsed_ms="+
-                                            (android.os.SystemClock.uptimeMillis()-notified));
-                                    });
-                                },"LiquidGlass-DirectConfig128").start();
+                                handler.removeCallbacks(hint194);
+                                handler.postDelayed(hint194,150L);
                             }
                         },directFilter128,android.content.Context.RECEIVER_EXPORTED);
-                        log("CONFIG_DIRECT_128 stage=RECEIVER_READY");
-                    }catch(Throwable t){log("CONFIG_DIRECT_128 stage=RECEIVER_FAILED reason="+t.getClass().getSimpleName());}
+                        log("CONFIG_194 stage=HINT_RECEIVER_READY authority=GLOBAL_SNAPSHOT");
+                    }catch(Throwable t){log("CONFIG_194 stage=HINT_RECEIVER_FAILED reason="+t.getClass().getSimpleName());}
                     watchReferenceChanges124(app,handler);
                     prewarmBootRefraction(app,handler);
                     try {
                         app.getContentResolver().registerContentObserver(CONFIG,false,new android.database.ContentObserver(handler){
                             @Override public void onChange(boolean selfChange){
                                 lastRead=0L;
-                                restore.run();
+                                handler.removeCallbacks(hint194);
+                                handler.postDelayed(hint194,150L);
                             }
                         });
                     } catch(Throwable t){log("CONFIG_OBSERVER_FAILED "+t.getClass().getSimpleName());}
@@ -7794,9 +7779,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             android.provider.Settings.Global.getUriFor(BOOT_SNAPSHOT_KEY),false,
                             new android.database.ContentObserver(handler){
                                 @Override public void onChange(boolean selfChange){
-                                    log("CONFIG_CHAIN_127 stage=SNAPSHOT_NOTIFIED uptime="+
-                                        android.os.SystemClock.uptimeMillis());
-                                    restore.run();
+                                    handler.removeCallbacks(hint194);
+                                    handler.postDelayed(hint194,80L);
                                 }
                             });
                         log("BOOT_SNAPSHOT_OBSERVER_READY");
