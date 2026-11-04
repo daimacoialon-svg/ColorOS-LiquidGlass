@@ -423,21 +423,24 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  float light=(opticalModel148>0.5)?reflection107*0.11*(0.32+0.68*lightBand)*max(0.0,0.62-0.32*n.x-0.22*n.y):((opticalModel146>0.5)?reflection107*0.16*lightBand*max(0.0,0.65-0.45*n.x-0.25*n.y):reflection107*0.065*lightBand+focus107*0.035*lightBand*max(0.0,n.y*-0.7+n.x*-0.3));\n"+
         "  // V153: reflection only. Keep V150/V152 wallpaper displacement untouched.\n"+
         "  if(opticalReflection153>0.5){\n"+
-        // V155: reflection gradient comes only from smooth four-edge weights.
-        // Never switch nearest-edge normals across the square's medial axes.
-        // V156: response uses smooth four-edge weights only; no nearest-edge normal switch.
-        // A soft rim and a broad, low-amplitude curved sheen remain visible at full strength.
-        "    float2 rn153=smoothN/max(length(smoothN),0.35);\n"+
-        "    float depth153=max(-d,0.0);\n"+
-        "    float rim153=1.0-smoothstep(0.0,12.0+min(thickness107*5.0,6.0),depth153);\n"+
-        "    float direction153=clamp(0.70-0.24*rn153.x-0.18*rn153.y,0.18,1.0);\n"+
-        "    float2 center156=(bounds.xy+bounds.zw)*0.5;\n"+
-        "    float2 extent156=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n"+
-        "    float2 uv156=(p-center156)/extent156;\n"+
-        "    float curved156=exp(-3.0*dot(uv156-float2(-0.38,-0.52),uv156-float2(-0.38,-0.52)));\n"+
-        "    float inside156=1.0-smoothstep(-2.0,1.0,d);\n"+
-        "    float sheen156=0.045*curved156*inside156;\n"+
-        "    light=reflection107*(0.19*rim153*direction153+sheen156);\n"+
+        // V157: continuous, broad curved-surface reflection. No nearest-edge switch.
+        // Reflection is a view-dependent surface sheen, not a hard white outline.
+        "    float2 center157=(bounds.xy+bounds.zw)*0.5;\n"+
+        "    float2 extent157=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n"+
+        "    float2 uv157=(p-center157)/extent157;\n"+
+        "    float2 norm157=smoothN/max(length(smoothN),0.45);\n"+
+        "    float depth157=max(-d,0.0);\n"+
+        "    float inside157=1.0-smoothstep(-1.5,1.0,d);\n"+
+        // Wide rolloff: the shoulder belongs to the glass surface, not a separate stroke.
+        "    float shoulder157=1.0-smoothstep(1.0,24.0+min(thickness107*0.22,20.0),depth157);\n"+
+        "    float grazing157=pow(clamp(0.58-0.30*norm157.x-0.22*norm157.y,0.0,1.0),1.7);\n"+
+        "    float2 glowDelta157=uv157-float2(-0.42,-0.48);\n"+
+        "    float broad157=exp(-1.8*dot(glowDelta157,glowDelta157));\n"+
+        // Smooth variation across the whole glass; never divide the plane into quadrants.
+        "    float sweep157=smoothstep(-1.2,1.2,-0.48*uv157.x-0.68*uv157.y+0.12);\n"+
+        "    float surface157=(0.080*shoulder157*grazing157+0.038*broad157*sweep157)*inside157;\n"+
+        // Suppress saturated white edges while retaining perceptible 0..100 response.
+        "    light=reflection107*surface157;\n"+
         "    if(opticalReflection153>1.5) light=0.0;\n"+
         "  }\n"+
         // V155: defer reflection until after the blur mix; no double counting.
