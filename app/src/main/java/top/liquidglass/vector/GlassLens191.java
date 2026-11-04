@@ -8,7 +8,7 @@ import android.graphics.RuntimeShader;
 import android.view.View;
 import java.util.WeakHashMap;
 
-/** V191 independent optical experiment. V190 stays intact for rollback. */
+/** V192 unified height-field lens experiment; previous renderer kept in GlassLens173. */
 final class GlassLens191 {
     private GlassLens191() {}
     private static final WeakHashMap<View, RuntimeShader> CACHE = new WeakHashMap<>();
@@ -26,94 +26,92 @@ final class GlassLens191 {
         "uniform float reflectionSoftness;\n" +
         "uniform float edgeStrength;\n" +
         "uniform float diagnostic;\n" +
-        "float roundedDepth(float2 p){\n" +
-        " float2 halfSize=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
-        " float r=clamp(radius,0.0,min(halfSize.x,halfSize.y));\n" +
-        " float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(halfSize-r);\n" +
+        "float depth(float2 p){\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float r=clamp(radius,0.0,min(h.x,h.y));\n" +
+        " float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(h-r);\n" +
         " return r-length(max(q,float2(0.0)))-min(max(q.x,q.y),0.0);\n" +
         "}\n" +
-        "float2 displacement(float2 p){\n" +
+        "// A single continuous height field drives transmission and lighting.\n" +
+        "// A broad low-curvature interior is joined smoothly to a meniscus near the rim.\n" +
+        "float heightAt(float2 p){\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/h;\n" +
+        " float radial=dot(uv,uv);\n" +
+        " float d=max(depth(p),0.0);\n" +
+        " float width=clamp(min(h.x,h.y)*0.76,18.0,75.0);\n" +
+        " float x=clamp(d/width,0.0,1.0);\n" +
+        " float shoulder=x*x*(3.0-2.0*x);\n" +
+        " float core=(1.0-0.23*radial);\n" +
+        " return (0.55*shoulder+0.45*shoulder*core);\n" +
+        "}\n" +
+        "float2 normalSlope(float2 p){\n" +
+        " float e=1.25;\n" +
+        " return float2(heightAt(p+float2(e,0.0))-heightAt(p-float2(e,0.0)),heightAt(p+float2(0.0,e))-heightAt(p-float2(0.0,e)))/(2.0*e);\n" +
+        "}\n" +
+        "float2 offsetAt(float2 p){\n" +
         " float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
-        " float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/(size*0.5);\n" +
-        " float minSide=min(size.x,size.y);\n" +
-        " float d=max(roundedDepth(p),0.0);\n" +
-        " float band=clamp(minSide*0.30,14.0,48.0);\n" +
-        " band=min(band,max(5.0,radius*0.95));\n" +
-        " float t=clamp(d/band,0.0,1.0);\n" +
-        " // Edge surface slope is zero at both ends: no medial-axis SDF seams.\n" +
-        " float2 grad=float2(0.5*(roundedDepth(p+float2(1.0,0.0))-roundedDepth(p-float2(1.0,0.0))),0.5*(roundedDepth(p+float2(0.0,1.0))-roundedDepth(p-float2(0.0,1.0))));\n" +
-        " float rimSlope=6.0*t*(1.0-t);\n" +
-        " float2 rim=grad*(band*0.115)*rimSlope;\n" +
-        " // Smooth whole-surface deformation: no central crown and no fixed glint.\n" +
-        " float2 inner=uv*(minSide*0.035)/(1.0+0.72*dot(uv,uv));\n" +
-        " float inside=smoothstep(0.04,0.92,t);\n" +
-        " float gain=style>1.5?1.0:0.73;\n" +
-        " float2 raw=(rim+inner*inside)*gain*clamp(strength,0.0,1.0);\n" +
-        " float cap=clamp(minSide*0.11,10.0,22.0);\n" +
+        " float2 h=size*0.5;\n" +
+        " float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/h;\n" +
+        " float small=min(size.x,size.y);\n" +
+        " float2 slope=normalSlope(p);\n" +
+        " float2 core=uv*(small*0.016)*heightAt(p);\n" +
+        " float gain=style>1.5?1.0:0.72;\n" +
+        " float2 raw=(slope*small*0.56+core)*gain*clamp(strength,0.0,1.0);\n" +
+        " float cap=clamp(small*0.085,6.0,18.0);\n" +
         " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
         "}\n" +
         "half4 main(float2 p){\n" +
-        " float d=max(roundedDepth(p),0.0);\n" +
-        " float2 delta=displacement(p);\n" +
-        " // Do not clamp the distorted sample to the last bitmap column: that creates\n" +
-        " // the stretched bands seen near the screen boundary. Fade displacement to\n" +
-        " // zero BEFORE reaching the valid sample domain.\n" +
+        " float d=max(depth(p),0.0);\n" +
+        " float2 delta=offsetAt(p);\n" +
         " float2 lo=validBounds.xy+float2(2.0);\n" +
         " float2 hi=max(lo+float2(1.0),validBounds.zw-float2(2.0));\n" +
         " float2 q=p+delta;\n" +
         " float margin=min(min(q.x-lo.x,hi.x-q.x),min(q.y-lo.y,hi.y-q.y));\n" +
-        " float safety=smoothstep(0.0,12.0,margin);\n" +
-        " float2 safeP=mix(p,q,safety);\n" +
-        " // The caller uses the same bitmap transform for both child shaders.\n" +
-        " half4 clear=wallpaper.eval(safeP);\n" +
-        " half4 blurred=blurredWallpaper.eval(safeP);\n" +
+        " float safety=smoothstep(0.0,14.0,margin);\n" +
+        " float2 sampleAt=mix(p,q,safety);\n" +
+        " half4 clear=wallpaper.eval(sampleAt);\n" +
+        " half4 blurred=blurredWallpaper.eval(sampleAt);\n" +
         " half4 result=mix(clear,blurred,half(clamp(blurMix,0.0,1.0)));\n" +
         " if(diagnostic>10.5 && diagnostic<11.5){\n" +
-        "   float2 uv=(safeP-validBounds.xy)/float2(16.0);\n" +
-        "   float2 f=abs(fract(uv)-0.5);\n" +
-        "   float line=1.0-smoothstep(0.45,0.49,max(f.x,f.y));\n" +
-        "   return half4(half3(1.0-line),1.0);\n" +
+        "  float2 f=abs(fract((sampleAt-validBounds.xy)/16.0)-0.5);\n" +
+        "  float line=1.0-smoothstep(0.45,0.49,max(f.x,f.y));\n" +
+        "  return half4(half3(1.0-line),1.0);\n" +
         " }\n" +
         " if(diagnostic>15.5 && diagnostic<16.5){\n" +
-        "   float v=clamp(length(delta)/9.0,0.0,1.0);\n" +
-        "   return half4(half3(v,1.0-v,0.0),1.0);\n" +
+        "  float v=clamp(length(delta)/9.0,0.0,1.0);\n" +
+        "  return half4(half3(v,1.0-v,0.0),1.0);\n" +
         " }\n" +
         " if(diagnostic>16.5 && diagnostic<17.5){\n" +
-        "   float v=clamp(length(delta)/9.0,0.0,1.0);\n" +
-        "   return half4(half3(0.0,v,1.0-v),1.0);\n" +
+        "  float v=clamp(length(delta)/9.0,0.0,1.0);\n" +
+        "  return half4(half3(0.0,v,1.0-v),1.0);\n" +
         " }\n" +
-        " // Lighting never affects the sample coordinates, regardless of mode.\n" +
-        " float2 norm=delta/max(4.0,9.0*max(strength,0.1));\n" +
-        " float curvature=clamp(length(norm)*2.3,0.0,1.0);\n" +
+        " // Reflection is driven by the same normal slope as the lens. No center crown/glow.\n" +
+        " float2 slope=normalSlope(p);\n" +
+        " float curvature=clamp(length(slope)*12.0,0.0,1.0);\n" +
         " float3 backdrop=float3(clear.rgb);\n" +
-        " float lum=dot(backdrop,float3(0.2126,0.7152,0.0722));\n" +
-        " float2 stepX=float2(5.0,0.0);\n" +
-        " float2 stepY=float2(0.0,5.0);\n" +
-        " float2 grad=float2(dot(float3(wallpaper.eval(clamp(safeP+stepX,lo,hi)).rgb)-backdrop,float3(0.2126,0.7152,0.0722)),dot(float3(wallpaper.eval(clamp(safeP+stepY,lo,hi)).rgb)-backdrop,float3(0.2126,0.7152,0.0722)));\n" +
+        " float2 grad=float2(\n" +
+        "  dot(float3(wallpaper.eval(sampleAt+float2(5.0,0.0)).rgb)-backdrop,float3(0.2126,0.7152,0.0722)),\n" +
+        "  dot(float3(wallpaper.eval(sampleAt+float2(0.0,5.0)).rgb)-backdrop,float3(0.2126,0.7152,0.0722)));\n" +
         " float gradLen=length(grad);\n" +
-        " float2 gradDir=grad/(0.02+gradLen);\n" +
-        " float2 normDir=norm/(0.02+length(norm));\n" +
-        " float angle=clamp(0.5+0.5*dot(gradDir,normDir),0.0,1.0);\n" +
-        " float t=clamp(d/max(8.0,min(bounds.z-bounds.x,bounds.w-bounds.y)*0.17),0.0,1.0);\n" +
-        " float response=clamp(0.15+0.42*lum+2.5*gradLen,0.0,0.75);\n" +
-        " float softness=clamp(reflectionSoftness,0.0,1.0);\n" +
-        " float spec=pow(angle,mix(16.0,4.0,softness))*clamp(gradLen*8.0,0.0,1.0);\n" +
+        " float alignment=clamp(dot(grad/(0.02+gradLen),slope/(0.02+length(slope))),0.0,1.0);\n" +
+        " float soft=clamp(reflectionSoftness,0.0,1.0);\n" +
+        " float spec=pow(alignment,mix(15.0,4.0,soft))*clamp(gradLen*9.0,0.0,1.0);\n" +
         " float enabled=reflectionMode>0.5?1.0:0.0;\n" +
         " float dynamic=reflectionMode>1.5?1.0:0.0;\n" +
         " float gain=clamp(reflectionStrength,0.0,2.0);\n" +
-        " float reflect=enabled*gain*response*curvature*(0.045+0.065*(1.0-t));\n" +
-        " float glint=dynamic*gain*response*curvature*spec*0.16;\n" +
-        " // Separate narrow optical contour from the broad reflection envelope.\n" +
-        " float rim=exp(-pow((d-2.8)/max(1.2,2.8+softness*3.0),2.0));\n" +
-        " float contour=clamp(edgeStrength,0.0,1.0)*rim*(0.035+0.11*spec);\n" +
-        " float shadow=smoothstep(0.0,1.7,d)*(1.0-smoothstep(2.2,7.0,d))*0.028;\n" +
+        " float reflect=enabled*gain*curvature*(0.018+0.048*clamp(gradLen*5.0,0.0,1.0));\n" +
+        " float glint=dynamic*gain*curvature*spec*0.13;\n" +
+        " // Optical boundary is a subpixel-to-1px line; thickness is in the lens slope,\n" +
+        " // not in a wide constant-width white outline.\n" +
+        " float contour=clamp(edgeStrength,0.0,1.0)*exp(-pow((d-0.8)/0.85,2.0))*0.16;\n" +
+        " float shadow=(1.0-smoothstep(1.0,5.0,d))*smoothstep(0.0,0.9,d)*0.025;\n" +
         " float3 color=float3(result.rgb);\n" +
-        " color+=(1.0-color)*clamp(reflect+glint+contour,0.0,0.23);\n" +
+        " color+=(1.0-color)*clamp(reflect+glint+contour,0.0,0.21);\n" +
         " color*=1.0-shadow;\n" +
         " result.rgb=half3(clamp(color,0.0,1.0));\n" +
         " return result;\n" +
-        "}\n" ;
-
+        "}\n";
     static void draw(View owner, Canvas canvas, RectF rect, float radius,
             BitmapShader wallpaper, BitmapShader blurredWallpaper, RectF valid,
             float strength, float blurMix, int diagnostic, boolean edgeEnabled,
