@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# V1.9.205.194: single resident publisher; event workers never persist; validated snapshots.
+# V1.9.205.195: synchronous UI publication and lock cleanup; event workers never persist; validated snapshots.
 # Source is checked twice before atomic replacement; never expose partial copies.
 # Android toybox inotifyd is optional; fallback works without it.
 PKG=top.liquidglass.vector
@@ -95,6 +95,10 @@ make_snapshot125() {
   END { result="LG1";for(i=1;i<=n;i++)result=result "|" values[keys[i]];print result }
   ' "$PREF"
 }
+unlock_config195() {
+  rm -f /data/local/tmp/.liquidglass-config-publish.lock/pid
+  rmdir /data/local/tmp/.liquidglass-config-publish.lock 2>/dev/null
+}
 sync_config() {
   local_sync_lock=/data/local/tmp/.liquidglass-config-publish.lock
   # V194: recover a crashed writer's stale lock; never remove an active writer.
@@ -118,21 +122,21 @@ sync_config() {
     fi
   fi
   printf '%s' "$$" > "$local_sync_lock/pid"
-  [ -s "$PREF" ] || { rmdir "$local_sync_lock"; return; }
-  grep -q 'name="enabled"' "$PREF" 2>/dev/null || { rmdir "$local_sync_lock"; return; }
+  [ -s "$PREF" ] || { unlock_config195; return; }
+  grep -q 'name="enabled"' "$PREF" 2>/dev/null || { unlock_config195; return; }
   # Single-pass snapshot generation; preserve existing field order and defaults.
   SNAP=$(make_snapshot125)
-  [ -n "$SNAP" ] || { rmdir "$local_sync_lock"; return; }
+  [ -n "$SNAP" ] || { unlock_config195; return; }
   # V194: schema = LG1 plus 32 validated decimal fields; no partial publishes.
   NF=$(printf '%s' "$SNAP" | awk -F '|' '{print NF}')
   if [ "$NF" != 33 ] || ! printf '%s' "$SNAP" | grep -Eq '^LG1(\|-?[0-9]+){32}$'; then
     echo "CONFIG_194 stage=REJECT_SCHEMA nf=$NF" >> "$LOG"
-    rmdir "$local_sync_lock"; return
+    unlock_config195; return
   fi
   # Compare with the system value, not a process-local variable: event workers
   # and the resident service are separate shell processes.
   CURRENT=$(settings get global "$SNAPKEY" 2>/dev/null)
-  if [ "$SNAP" = "$CURRENT" ]; then rmdir "$local_sync_lock"; return; fi
+  if [ "$SNAP" = "$CURRENT" ]; then unlock_config195; return; fi
   read UPTIME_BEFORE _ < /proc/uptime
   if settings put global "$SNAPKEY" "$SNAP" 2>>"$LOG"; then
     read UPTIME_AFTER _ < /proc/uptime
@@ -142,7 +146,7 @@ sync_config() {
   else
     echo "$(date) config snapshot publish failed" >> "$LOG"
   fi
-  rmdir "$local_sync_lock" 2>/dev/null
+  unlock_config195 2>/dev/null
   # A file update may have arrived while this worker held the lock.
   # Re-read once after release; the last writer wins.
   if [ -e "$CONFIG_TRIGGER" ]; then
