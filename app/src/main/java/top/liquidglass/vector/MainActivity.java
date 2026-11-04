@@ -121,8 +121,8 @@ public final class MainActivity extends Activity {
         toggle("启用 Dock 玻璃","dock_glass_204",false);
         TextView dockInfo=text("Dock 保持原有尺寸和位置；V132 与文件夹共用直接背景采样及透镜位移 Shader，并按容器几何自适应。",12,false);current.addView(dockInfo);
 
-        section("统一光学透镜","V162：整片曲面折射、边缘厚度与柔和反射由同一个强度控制。文件夹和 Dock 自动适配宽高。旧五项参数保留在配置中，供回退版本使用。 ");
-        slider("玻璃整体光学强度 (%)","nonlinear_107",65,0,100);
+        section("二维曲面透镜","统一曲面负责文件夹和 Dock 的背景折射与厚度。反射、高光和底色分别调整，避免把不同效果混在同一滑块。");
+        slider("二维曲面折射强度 (%)","nonlinear_107",65,0,100);
         TextView unifiedInfo162=text("0% 为无统一曲面位移；100% 为最强。建议先用 65% 比较 Dock 与各种文件夹。该滑块不控制背景模糊或底色透明度。",12,false);
         current.addView(unifiedInfo162);
         section("玻璃外观","背景模糊和底色独立于折射；应用图标不会被自定义壁纸模糊处理。");
@@ -142,10 +142,10 @@ public final class MainActivity extends Activity {
         TextView blurInfo=text("自定义模糊使用壁纸采样，不模糊应用图标。系统模糊开关不再强制开启；ColorOS 自身仍可能启用原生模糊。",12,false);current.addView(blurInfo);
         // V1.9.199: legacy soft-highlight controls removed from UI. Existing
         // preferences remain for compatibility; the unified surface owns reflection.
-        section("玻璃曲面反射","V178：默认使用局部、非均匀曲面反射；不再以均匀描边制造玻璃厚度。可通过 Termux 全局开关回退 V177 反射模型。");
-        TextView surfaceLabel=text("表面反射模式",13,false);current.addView(surfaceLabel);
+        section("曲面环境反射","V185：依据二维曲面方向与实时壁纸明暗计算柔和表面反射。不是仅沿容器轮廓绘制亮线；当前只能反映壁纸环境，不能捕获其他应用窗口。");
+        TextView surfaceLabel=text("环境反射与动态边缘高光",13,false);current.addView(surfaceLabel);
         Spinner surfaceSpinner=new Spinner(this);
-        String[] surfaceModes={"0 · 关闭曲面反射","1 · 柔和曲面反射","2 · 定向曲面反射","3 · 定向反射与柔和暗部"};
+        String[] surfaceModes={"0 · 关闭新增环境反射","1 · 柔和曲面环境反射","2 · 曲面反射 + 动态边缘高光","3 · 增强动态边缘高光"};
         surfaceSpinner.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,surfaceModes));
         surfaceSpinner.setSelection(Math.max(0,Math.min(3,prefs.getInt("surface_mode_195",3))));current.addView(surfaceSpinner);
         surfaceSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
@@ -155,9 +155,9 @@ public final class MainActivity extends Activity {
             }
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
         });
-        slider("边缘高光强度 (%)","surface_strength_195",100,0,200);
-        slider("高光过渡宽度 (%)","surface_softness_195",100,50,200);
-        TextView surfaceHint=text("V178：强度 0% 关闭反射，200% 为最大；过渡宽度控制边缘影响范围。当前是稳定的定向光照模型，不宣称能追踪真实环境光；不改变壁纸折射位移。",12,false);
+        slider("环境反射与高光强度 (%)","surface_strength_195",100,0,200);
+        slider("反射柔和度 (%)","surface_softness_195",100,50,200);
+        TextView surfaceHint=text("新反射使用 V182 曲面（实验模式 2），背景亮度与局部纹理影响高光。旧版轮廓明暗仍兼容，模式 0 只关闭新增环境反射。建议先将旧描边强度调低对比。",12,false);
         current.addView(surfaceHint);
         section("玻璃底色色调","选择玻璃底色的冷暖色调与叠加浓度；与模糊、折射、表面反射独立。");
         TextView tintLabel=text("色调",13,false);current.addView(tintLabel);

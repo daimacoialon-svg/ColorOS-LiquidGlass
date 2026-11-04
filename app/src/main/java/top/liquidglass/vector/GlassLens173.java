@@ -35,6 +35,9 @@ final class GlassLens173 {
         "uniform float directionalEdgeLight;\n" +
         "uniform float reflectionModel178;\n" +
         "uniform float activeCurvature180;\n" +
+        "uniform float surfaceMode185;\n" +
+        "uniform float environmentStrength185;\n" +
+        "uniform float environmentSoftness185;\n" +
         "\n" +
         "// Exact rounded-rectangle silhouette; positive depths point INTO glass.\n" +
         "float depth173(float2 p) {\n" +
@@ -216,6 +219,38 @@ final class GlassLens173 {
         "    }\n" +
         "  }\n" +
         "  half4 result=mix(sharp,soft,half(clamp(blurMix,0.0,1.0)));\n" +
+        "// V185: ambient reflection is computed from backdrop luminance and surface normals.\n" +
+        "// The original Fresnel rim remains separately available.\n" +
+        "  if(surfaceMode185>0.5 && activeCurvature180>1.5){\n" +
+        "    float2 disp185=delta182(p);\n" +
+        "    float2 slope185=disp185/max(2.0,9.0*max(glassStrength,0.05));\n" +
+        "    float3 N185=normalize(float3(-slope185.x,-slope185.y,1.0));\n" +
+        "    float3 L185=normalize(float3(-0.44,-0.54,0.71));\n" +
+        "    float3 H185=normalize(L185+float3(0.0,0.0,1.0));\n" +
+        "    float nDotV185=clamp(N185.z,0.0,1.0);\n" +
+        "    float fresnel185=0.04+0.96*pow(1.0-nDotV185,5.0);\n" +
+        "    float gloss185=pow(max(dot(N185,H185),0.0),mix(8.0,36.0,clamp(environmentSoftness185,0.0,1.0)));\n" +
+        "    float2 lo185=validBounds.xy+float2(2.0);\n" +
+        "    float2 hi185=validBounds.zw-float2(2.0);\n" +
+        "    float2 q185=clamp(s,float2(lo185),float2(hi185));\n" +
+        "    float3 bg185=float3(wallpaper.eval(q185).rgb);\n" +
+        "    float3 bx185=float3(wallpaper.eval(clamp(q185+float2(5.0,0.0),lo185,hi185)).rgb);\n" +
+        "    float3 by185=float3(wallpaper.eval(clamp(q185+float2(0.0,5.0),lo185,hi185)).rgb);\n" +
+        "    float lum185=dot(bg185,float3(0.2126,0.7152,0.0722));\n" +
+        "    float2 envGrad185=float2(dot(bx185-bg185,float3(0.2126,0.7152,0.0722)),dot(by185-bg185,float3(0.2126,0.7152,0.0722)));\n" +
+        "    float envResponse185=clamp(0.48+0.36*lum185+dot(envGrad185,N185.xy)*1.8,0.1,1.0);\n" +
+        "    float reflection185=environmentStrength185*(0.045+0.12*gloss185+0.19*fresnel185)*envResponse185;\n" +
+        "    float2 size185=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        "    float shell185=clamp(min(size185.x,size185.y)*0.13,11.0,36.0);\n" +
+        "    float edge185=1.0-smoothstep(0.0,shell185,max(depth173(p),0.0));\n" +
+        "    float dynamic185=clamp(0.40+lum185*0.36+dot(envGrad185,normalize(N185.xy+float2(0.001)))*2.0,0.05,1.0);\n" +
+        "    float highlight185=environmentStrength185*edge185*pow(max(dot(N185,H185),0.0),mix(4.0,18.0,environmentSoftness185))*dynamic185*0.22;\n" +
+        "    float env185=surfaceMode185>1.5?reflection185:reflection185*0.7;\n" +
+        "    float rim185=surfaceMode185>1.5?highlight185:0.0;\n" +
+        "    float3 lit185=float3(result.rgb);\n" +
+        "    lit185+=(1.0-lit185)*clamp(env185+rim185,0.0,0.42);\n" +
+        "    result.rgb=half3(clamp(lit185,0.0,1.0));\n" +
+        "  }\n" +
         "  // V174: material lighting is separate from lens displacement and blur.\n" +
         "  // Use the actual rounded-rectangle depth, not an elliptical outline.\n" +
         "  float2 size174=max(bounds.zw-bounds.xy,float2(2.0));\n" +
@@ -280,7 +315,7 @@ final class GlassLens173 {
     static void draw(View owner, Canvas canvas, RectF rect, float radius,
                      BitmapShader wallpaper, BitmapShader blurredWallpaper,
                      RectF validBounds, float strength, float blurMix, int diagnostic, int samplingMode,
-                     boolean edgeEnabled, int edgeStrength, int edgeWidth, boolean directional, int reflectionModel178, int activeCurvature180) {
+                     boolean edgeEnabled, int edgeStrength, int edgeWidth, boolean directional, int reflectionModel178, int activeCurvature180, int surfaceMode185, int surfaceStrength185, int surfaceSoftness185) {
         RuntimeShader shader;
         synchronized (CACHE173) {
             shader = CACHE173.get(owner);
@@ -306,6 +341,9 @@ final class GlassLens173 {
         shader.setFloatUniform("directionalEdgeLight", directional ? 1f : 0f);
         shader.setFloatUniform("reflectionModel178", reflectionModel178 > 0 ? 1f : 0f);
         shader.setFloatUniform("activeCurvature180", (float)Math.max(0,Math.min(2,activeCurvature180)));
+        shader.setFloatUniform("surfaceMode185", (float)Math.max(0,Math.min(3,surfaceMode185)));
+        shader.setFloatUniform("environmentStrength185", Math.max(0f,Math.min(2f,surfaceStrength185/100f)));
+        shader.setFloatUniform("environmentSoftness185", Math.max(0f,Math.min(1f,(surfaceSoftness185-50f)/150f)));
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         paint.setShader(shader);
         canvas.drawRoundRect(rect, radius, radius, paint);

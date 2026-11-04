@@ -5747,7 +5747,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     catch(Throwable ignored180) {}
                                                     GlassLens173.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
                                                         valid173,overall173,blend101,opticalDiagnostic173,opticalSampling173,
-                                                        highlightEnabled,highlightStrength,highlightWidth,directionalLight,reflectionModel178,activeCurvature180);
+                                                        highlightEnabled,highlightStrength,highlightWidth,directionalLight,reflectionModel178,activeCurvature180,surfaceMode194,surfaceStrength194,surfaceSoftness194);
                                                     if(newOpticalLog173++<120)log("OPTICAL_PIPELINE_173 path=CLEAN_SINGLE_SHADER"+
                                                         " container="+((view.getBackground() instanceof DockBackground204)?"DOCK":"FOLDER")+
                                                         " strength="+overall173+" diagnostic="+opticalDiagnostic173+
