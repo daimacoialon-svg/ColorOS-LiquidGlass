@@ -66,6 +66,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float unifiedLens159;\n"+
         "uniform float unifiedStrength162;\n"+
         "uniform float opticalMapping168;\n"+
+        "uniform float roundedContour169;\n"+
         "uniform float opticalReflection153;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
@@ -101,6 +102,31 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float transition168=t*(1.0-t);\n"+
         "    float weight168=0.62+0.48*transition168+0.32*inner168;\n"+
         "    slope=slope*weight168+5.0*inner168;\n"+
+        "  }\n"+
+        // V169: exact rounded-rectangle rim, smooth interior potential.
+        // The contour field is evaluated without nearest-edge switches in the center.
+        "  if(roundedContour169>0.5){\n"+
+        "    float depth169=max(-glassSdf(pp),0.0);\n"+
+        "    float band169=clamp(sh*0.17,11.0,35.0);\n"+
+        "    float eps169=clamp(sh*0.025,2.0,6.0);\n"+
+        "    float2 normal169=float2(glassSdf(pp+float2(eps169,0.0))-glassSdf(pp-float2(eps169,0.0)),glassSdf(pp+float2(0.0,eps169))-glassSdf(pp-float2(0.0,eps169)));\n"+
+        "    normal169/=max(length(normal169),0.0001);\n"+
+        "    float2 inner169=g/max(length(g),0.0001);\n"+
+        "    float blend169=smoothstep(band169*0.28,band169*1.55,depth169);\n"+
+        "    float2 direction169=mix(normal169,inner169,blend169);\n"+
+        "    direction169/=max(length(direction169),0.0001);\n"+
+        "    float rim169=exp(-pow((depth169-band169*0.37)/max(band169*0.43,1.0),2.0));\n"+
+        "    float shoulder169=exp(-depth169/max(band169*1.85,1.0));\n"+
+        "    float interior169=clamp(1.0-q,0.0,1.0);\n"+
+        "    float profile169=11.0*rim169+6.5*shoulder169+5.0*interior169*(1.0-interior169*0.35);\n"+
+        "    float edgeGate169=smoothstep(0.0,2.5,depth169);\n"+
+        "    float2 raw169=-direction169*profile169*edgeGate169*clamp(unifiedStrength162,0.0,1.0);\n"+
+        "    raw169*=(unifiedLens159>1.5)?1.16:1.0;\n"+
+        "    float amp169=length(raw169);\n"+
+        "    float2 disp169=raw169*(24.0/sqrt(576.0+amp169*amp169));\n"+
+        "    float cap169=clamp(sh*0.11,5.0,17.0);\n"+
+        "    disp169*=cap169/sqrt(cap169*cap169+dot(disp169,disp169));\n"+
+        "    return disp169;\n"+
         "  }\n"+
         "  float2 raw=-g*slope*clamp(unifiedStrength162,0.0,1.0);\n"+
         "  raw*=smoothstep(0.0,2.4,max(-glassSdf(pp),0.0));\n"+
@@ -5667,6 +5693,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     view.getContext().getContentResolver(),"liquidglass_optical_mapping_168",1); }
                                                 catch(Throwable e168){ log("OPTICAL_MAPPING_168_READ_FAILED "+e168.getClass().getSimpleName()); }
                                                 shader93.setFloatUniform("opticalMapping168",(float)Math.max(0,Math.min(1,opticalMapping168)));
+                                                int roundedContour169=1;
+                                                try { roundedContour169=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_rounded_contour_169",1); }
+                                                catch(Throwable ignored){}
+                                                shader93.setFloatUniform("roundedContour169",(float)Math.max(0,Math.min(1,roundedContour169)));
                                                 int opticalReflection153=1;
                                                 try { opticalReflection153=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_reflection_153",1);
