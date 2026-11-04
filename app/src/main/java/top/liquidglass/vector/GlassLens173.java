@@ -92,8 +92,34 @@ final class GlassLens173 {
         "  float cap=clamp(min(size.x,size.y)*0.13,11.0,25.0);\n" +
         "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
         "}\n" +
+        "// V182: shared meniscus surface: rounded-rect rim + smooth elliptical crown.\\n" +
+        "// Rim height and its gradient vanish before the rounded SDF medial axis.\\n" +
+        "float2 delta182(float2 p) {\\n" +
+        "  float2 size=max(bounds.zw-bounds.xy,float2(2.0));\\n" +
+        "  float2 mid=(bounds.xy+bounds.zw)*0.5;\\n" +
+        "  float2 uv=(p-mid)/max(size*0.5,float2(1.0));\\n" +
+        "  float minSide=min(size.x,size.y);\\n" +
+        "  float band=min(clamp(minSide*0.235,14.0,37.0),max(5.0,radius*0.82));\\n" +
+        "  float d=max(depth173(p),0.0);\\n" +
+        "  float t=clamp(d/band,0.0,1.0);\\n" +
+        "  float2 gradD=float2(0.5*(depth173(p+float2(1.0,0.0))-depth173(p-float2(1.0,0.0))),0.5*(depth173(p+float2(0.0,1.0))-depth173(p-float2(0.0,1.0))));\\n" +
+        "  // A raised meniscus: h(t)=t^2(3-2t), dh/dt=6t(1-t).\\n" +
+        "  float rimSlope=6.0*t*(1.0-t);\\n" +
+        "  float2 rimNormal=gradD*rimSlope;\\n" +
+        "  // Shared interior crown is C-infinity, including the central axes.\\n" +
+        "  float r2=dot(uv,uv);\\n" +
+        "  float crown=exp(-1.15*r2);\\n" +
+        "  float2 crownGrad=-2.30*crown*uv/max(size*0.5,float2(1.0));\\n" +
+        "  float interior=smoothstep(0.0,band,d);\\n" +
+        "  float interiorSlope=6.0*t*(1.0-t)/band;\\n" +
+        "  float2 surfaceGrad=rimNormal*0.95 + crownGrad*(minSide*1.45)*interior + gradD*(crown*interiorSlope)*0.24*minSide;\\n" +
+        "  // One unified surface normal drives x/y refraction; no axis-wise stacking.\\n" +
+        "  float2 raw=surfaceGrad*min(band*0.23,9.0)*clamp(glassStrength,0.0,1.0);\\n" +
+        "  float cap=clamp(minSide*0.105,9.0,19.0);\\n" +
+        "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\\n" +
+        "}\\n" +
         "float2 opticalDelta180(float2 p) {\n" +
-        "  return activeCurvature180>0.5?delta180(p):delta173(p);\n" +
+        "  return activeCurvature180>1.5?delta182(p):activeCurvature180>0.5?delta180(p):delta173(p);\n" +
         "}\n" +
         "float2 sample173(float2 p) {\n" +
         "  float2 lo=validBounds.xy+float2(1.0);\n" +
@@ -106,12 +132,12 @@ final class GlassLens173 {
         "  float d=max(depth173(p),0.0);\n" +
         "  float2 disp=s-p;\n" +
         "  float strength=clamp(glassStrength,0.0,1.0);\n" +
-        "  if(diagnostic>31.5 && diagnostic<32.5){\n" +
-        "    float diff=length(delta180(p)-delta173(p));\n" +
+        "  if(diagnostic>40.5 && diagnostic<41.5){\n" +
+        "    float diff=length(delta182(p)-delta180(p));\n" +
         "    float t=clamp(diff/7.0,0.0,1.0);\n" +
         "    return half4(half3(t,0.1,1.0-t),1.0);\n" +
         "  }\n" +
-        "  if(diagnostic>32.5 && diagnostic<33.5){\n" +
+        "  if(diagnostic>41.5 && diagnostic<42.5){\n" +
         "    float2 v=s-p;\n" +
         "    return half4(half3(clamp(0.5+v.x/18.0,0.0,1.0),clamp(0.5+v.y/18.0,0.0,1.0),clamp(length(v)/12.0,0.0,1.0)),1.0);\n" +
         "  }\n" +
@@ -216,7 +242,7 @@ final class GlassLens173 {
         "    float directional178=clamp(directionalEdgeLight,0.0,1.0);\n" +
         "    float glint178=reflect178*(0.014+0.13*bright178)*(0.70+0.30*directional178);\n" +
         "    float shade178=reflect178*(0.004+0.045*dark178);\n" +
-        "    if(diagnostic>31.5 && diagnostic<32.5){return half4(half3(bright178,shoulder178,dark178),1.0); }\n" +
+        "    if(diagnostic>40.5 && diagnostic<41.5){return half4(half3(bright178,shoulder178,dark178),1.0); }\n" +
         "    half3 lit178=result.rgb+half3(glint178)*(half3(1.0)-result.rgb);\n" +
         "    result.rgb=clamp(lit178*(half(1.0)-half(shade178)),half3(0.0),half3(1.0));\n" +
         "    return result;\n" +
