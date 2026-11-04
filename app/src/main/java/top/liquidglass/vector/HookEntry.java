@@ -5747,7 +5747,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     try { activeCurvature180=android.provider.Settings.Global.getInt(
                                                         view.getContext().getContentResolver(),"liquidglass_active_curvature_180",0); }
                                                     catch(Throwable ignored180) {}
-                                                    if(opticalStyle186>0)activeCurvature180=2;
+                                                    if(opticalStyle186>0)activeCurvature180=3;
                                                     GlassLens173.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
                                                         valid173,overall173,blend101,opticalDiagnostic173,opticalSampling173,
                                                         highlightEnabled,highlightStrength,highlightWidth,directionalLight,reflectionModel178,activeCurvature180,surfaceMode194,surfaceStrength194,surfaceSoftness194,opticalStyle186);

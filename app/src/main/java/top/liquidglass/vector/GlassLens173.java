@@ -123,8 +123,22 @@ final class GlassLens173 {
         "  float cap=clamp(minSide*0.105,9.0,19.0);\n" +
         "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
         "}\n" +
+        "// V188: zero-crown meniscus; edge height has zero slope at both ends.\n" +
+        "float2 delta188(float2 p) {\n" +
+        "  float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        "  float minSide=min(size.x,size.y);\n" +
+        "  float band=min(clamp(minSide*0.235,15.0,38.0),max(5.0,radius*0.82));\n" +
+        "  float d=max(depth173(p),0.0);\n" +
+        "  float t=clamp(d/band,0.0,1.0);\n" +
+        "  float2 g=float2(0.5*(depth173(p+float2(1.0,0.0))-depth173(p-float2(1.0,0.0))),0.5*(depth173(p+float2(0.0,1.0))-depth173(p-float2(0.0,1.0))));\n" +
+        "  float meniscus=6.0*t*(1.0-t);\n" +
+        "  float style=opticalStyle186>1.5?1.0:0.70;\n" +
+        "  float2 raw=g*(band*0.115)*meniscus*style*clamp(glassStrength,0.0,1.0);\n" +
+        "  float cap=clamp(minSide*0.11,10.0,20.0);\n" +
+        "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
+        "}\n" +
         "float2 opticalDelta180(float2 p) {\n" +
-        "  return activeCurvature180>1.5?delta182(p):activeCurvature180>0.5?delta180(p):delta173(p);\n" +
+        "  return activeCurvature180>2.5?delta188(p):activeCurvature180>1.5?delta182(p):activeCurvature180>0.5?delta180(p):delta173(p);\n" +
         "}\n" +
         "float2 sample173(float2 p) {\n" +
         "  float2 lo=validBounds.xy+float2(1.0);\n" +
@@ -224,14 +238,14 @@ final class GlassLens173 {
         "// V185: ambient reflection is computed from backdrop luminance and surface normals.\n" +
         "// The original Fresnel rim remains separately available.\n" +
         "  if(surfaceMode185>0.5 && activeCurvature180>1.5){\n" +
-        "    float2 disp185=delta182(p);\n" +
+        "    float2 disp185=activeCurvature180>2.5?delta188(p):delta182(p);\n" +
         "    float2 slope185=disp185/max(2.0,9.0*max(glassStrength,0.05));\n" +
         "    float3 N185=normalize(float3(-slope185.x,-slope185.y,1.0));\n" +
         "    float3 L185=normalize(float3(-0.44,-0.54,0.71));\n" +
         "    float3 H185=normalize(L185+float3(0.0,0.0,1.0));\n" +
         "    float nDotV185=clamp(N185.z,0.0,1.0);\n" +
         "    float fresnel185=0.04+0.96*pow(1.0-nDotV185,5.0);\n" +
-        "    float gloss185=pow(max(dot(N185,H185),0.0),mix(8.0,36.0,clamp(environmentSoftness185,0.0,1.0)));\n" +
+        "    float gloss185=activeCurvature180>2.5?0.0:pow(max(dot(N185,H185),0.0),mix(8.0,36.0,clamp(environmentSoftness185,0.0,1.0)));\n" +
         "    float2 lo185=validBounds.xy+float2(2.0);\n" +
         "    float2 hi185=validBounds.zw-float2(2.0);\n" +
         "    float2 q185=clamp(s,float2(lo185),float2(hi185));\n" +
@@ -241,12 +255,12 @@ final class GlassLens173 {
         "    float lum185=dot(bg185,float3(0.2126,0.7152,0.0722));\n" +
         "    float2 envGrad185=float2(dot(bx185-bg185,float3(0.2126,0.7152,0.0722)),dot(by185-bg185,float3(0.2126,0.7152,0.0722)));\n" +
         "    float envResponse185=clamp(0.48+0.36*lum185+dot(envGrad185,N185.xy)*1.8,0.1,1.0);\n" +
-        "    float reflection185=environmentStrength185*(opticalStyle186>1.5?1.23:opticalStyle186>0.5?0.77:1.0)*(0.045+0.12*gloss185+0.19*fresnel185)*envResponse185;\n" +
+        "    float reflection185=environmentStrength185*(opticalStyle186>1.5?1.23:opticalStyle186>0.5?0.77:1.0)*(activeCurvature180>2.5?(0.015+0.15*fresnel185):(0.045+0.12*gloss185+0.19*fresnel185))*envResponse185;\n" +
         "    float2 size185=max(bounds.zw-bounds.xy,float2(2.0));\n" +
         "    float shell185=clamp(min(size185.x,size185.y)*0.13,11.0,36.0);\n" +
         "    float edge185=1.0-smoothstep(0.0,shell185,max(depth173(p),0.0));\n" +
         "    float dynamic185=clamp(0.40+lum185*0.36+dot(envGrad185,normalize(N185.xy+float2(0.001)))*2.0,0.05,1.0);\n" +
-        "    float highlight185=environmentStrength185*(opticalStyle186>1.5?1.33:opticalStyle186>0.5?0.67:1.0)*edge185*pow(max(dot(N185,H185),0.0),mix(4.0,18.0,environmentSoftness185))*dynamic185*0.22;\n" +
+        "    float highlight185=environmentStrength185*(opticalStyle186>1.5?1.33:opticalStyle186>0.5?0.67:1.0)*edge185*(activeCurvature180>2.5?pow(max(dot(N185.xy,normalize(float2(-0.65,-0.76))),0.0),2.0):pow(max(dot(N185,H185),0.0),mix(4.0,18.0,environmentSoftness185)))*dynamic185*0.22;\n" +
         "    float env185=surfaceMode185>1.5?reflection185:reflection185*0.7;\n" +
         "    float rim185=surfaceMode185>1.5?highlight185:0.0;\n" +
         "    float3 lit185=float3(result.rgb);\n" +
@@ -265,7 +279,7 @@ final class GlassLens173 {
         "    depth173(p+float2(0.75,0.0))-depth173(p-float2(0.75,0.0)),\n" +
         "    depth173(p+float2(0.0,0.75))-depth173(p-float2(0.0,0.75)));\n" +
         "  if(activeCurvature180>1.5){\n" +
-        "    float2 surfaceNormal184=delta182(p);\n" +
+        "    float2 surfaceNormal184=activeCurvature180>2.5?delta188(p):delta182(p);\n" +
         "    float surfaceLen184=length(surfaceNormal184);\n" +
         "    if(surfaceLen184>0.0001){normal174=surfaceNormal184/surfaceLen184;}\n" +
         "  }\n" +
@@ -342,7 +356,7 @@ final class GlassLens173 {
         shader.setFloatUniform("edgeLightWidth", (float) Math.max(1, Math.min(5, edgeWidth)));
         shader.setFloatUniform("directionalEdgeLight", directional ? 1f : 0f);
         shader.setFloatUniform("reflectionModel178", reflectionModel178 > 0 ? 1f : 0f);
-        shader.setFloatUniform("activeCurvature180", (float)Math.max(0,Math.min(2,activeCurvature180)));
+        shader.setFloatUniform("activeCurvature180", (float)Math.max(0,Math.min(3,activeCurvature180)));
         shader.setFloatUniform("opticalStyle186", (float)Math.max(0,Math.min(2,opticalStyle186)));
         shader.setFloatUniform("surfaceMode185", (float)Math.max(0,Math.min(3,surfaceMode185)));
         shader.setFloatUniform("environmentStrength185", Math.max(0f,Math.min(2f,surfaceStrength185/100f)));
