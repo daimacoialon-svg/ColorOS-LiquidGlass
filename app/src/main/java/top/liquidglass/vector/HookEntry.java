@@ -7878,6 +7878,24 @@ public final class HookEntry implements IXposedHookLoadPackage {
     }
     private static volatile java.lang.ref.WeakReference<android.app.Activity> LAUNCHER_ACTIVITY_205=
         new java.lang.ref.WeakReference<android.app.Activity>(null);
+    private static View findHotseat198(View root,int depth){
+        if(root==null||depth>14)return null;
+        try{
+            int id=root.getId();
+            if(id!=View.NO_ID){
+                String name=root.getResources().getResourceEntryName(id);
+                if("hotseat".equalsIgnoreCase(name))return root;
+            }
+        }catch(Throwable ignored){}
+        if(root instanceof android.view.ViewGroup){
+            android.view.ViewGroup group=(android.view.ViewGroup)root;
+            for(int i=0;i<group.getChildCount();i++){
+                View found=findHotseat198(group.getChildAt(i),depth+1);
+                if(found!=null)return found;
+            }
+        }
+        return null;
+    }
     private static void refreshLauncherOptics204(android.app.Activity activity){
         try{
             if(activity==null)return;
@@ -7885,7 +7903,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
             refreshFromContext(activity);
             int id=activity.getResources().getIdentifier("hotseat","id","com.android.launcher");
             View hotseat=id==0?null:activity.findViewById(id);
-            if(hotseat==null)return;
+            if(hotseat==null){
+                // OEM launcher resource packages vary. Search the actual hierarchy by resource entry name.
+                hotseat=findHotseat198(activity.getWindow().getDecorView(),0);
+            }
+            if(hotseat==null){log("DOCK_198_HOTSEAT_NOT_FOUND");return;}
             if(dockGlass204){
                 if(!(hotseat.getBackground() instanceof DockBackground204)){
                     DOCK_ORIGINAL_204.put(hotseat,hotseat.getBackground());
@@ -7941,7 +7963,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             a.getContentResolver().registerContentObserver(CONFIG,false,observer);
             // Snapshot is asynchronously updated by the root helper.
             a.getContentResolver().registerContentObserver(
-                android.provider.Settings.Global.getUriFor("liquidglass_config_snapshot"),
+                android.provider.Settings.Global.getUriFor(BOOT_SNAPSHOT_KEY),
                 false,observer);
             DOCK_OBSERVERS_205.put(a,observer);
             log("DOCK_2052_CONFIG_OBSERVER_READY");

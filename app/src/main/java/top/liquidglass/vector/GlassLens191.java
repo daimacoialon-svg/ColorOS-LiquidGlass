@@ -72,6 +72,20 @@ final class GlassLens191 {
         " float2 sampleAt=mix(p,q,safety);\n" +
         " half4 clear=wallpaper.eval(sampleAt);\n" +
         " half4 blurred=blurredWallpaper.eval(sampleAt);\n" +
+        " // V198: derivative-based adaptive subpixel supersampling. Preserve V197 offsetAt.\n" +
+        " float2 dx=dFdx(sampleAt);\n" +
+        " float2 dy=dFdy(sampleAt);\n" +
+        " float footprint=max(length(dx),length(dy));\n" +
+        " float aa=smoothstep(1.30,2.40,footprint)*smoothstep(0.5,2.5,d);\n" +
+        " if(aa>0.001){\n" +
+        "  half4 c4=half4(0.0),b4=half4(0.0);\n" +
+        "  for(int i=0;i<4;i++){\n" +
+        "   float2 v=float2((i%2==0?-0.25:0.25),(i<2?-0.25:0.25));\n" +
+        "   float2 at=clamp(sampleAt+dx*v.x+dy*v.y,lo,hi);\n" +
+        "   c4+=wallpaper.eval(at); b4+=blurredWallpaper.eval(at);\n" +
+        "  }\n" +
+        "  clear=mix(clear,c4*0.25,half(aa)); blurred=mix(blurred,b4*0.25,half(aa));\n" +
+        " }\n" +
         " half4 result=mix(clear,blurred,half(clamp(blurMix,0.0,1.0)));\n" +
         " if(diagnostic>10.5 && diagnostic<11.5){\n" +
         "  float2 f=abs(fract((sampleAt-validBounds.xy)/16.0)-0.5);\n" +
@@ -104,10 +118,12 @@ final class GlassLens191 {
         " float glint=dynamic*gain*curvature*spec*0.18;\n" +
         " // Optical boundary is a subpixel-to-1px line; thickness is in the lens slope,\n" +
         " // not in a wide constant-width white outline.\n" +
-        " float contour=clamp(edgeStrength,0.0,1.0)*exp(-pow((d-0.8)/0.85,2.0))*0.16;\n" +
-        " float shadow=(1.0-smoothstep(1.0,5.0,d))*smoothstep(0.0,0.9,d)*0.025;\n" +
+        " float rim=exp(-pow((d-1.35)/1.5,2.0));\n" +
+        " float fresnel=pow(1.0-clamp(1.0/sqrt(1.0+dot(slope*3.5,slope*3.5)),0.0,1.0),1.5);\n" +
+        " float contour=clamp(edgeStrength,0.0,1.0)*(0.09*rim+0.075*fresnel*smoothstep(0.0,7.0,d));\n" +
+        " float shadow=(1.0-smoothstep(1.0,6.0,d))*smoothstep(0.0,1.1,d)*0.055;\n" +
         " float3 color=float3(result.rgb);\n" +
-        " color+=(1.0-color)*clamp(reflect+glint+contour,0.0,0.21);\n" +
+        " color+=(1.0-color)*clamp(reflect+glint+contour,0.0,0.28);\n" +
         " color*=1.0-shadow;\n" +
         " result.rgb=half3(clamp(color,0.0,1.0));\n" +
         " return result;\n" +
