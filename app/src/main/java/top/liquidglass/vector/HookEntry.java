@@ -7903,11 +7903,51 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static final java.util.Map<android.app.Activity,Boolean> DOCK_RETRY_200=
         java.util.Collections.synchronizedMap(new java.util.WeakHashMap<android.app.Activity,Boolean>());
     private static volatile int DOCK_DRAW_COUNT_200=0;
+    // V201: OEM subclasses may have names outside com.android.launcher3.
+    // Verify inheritance rather than only matching the runtime class name.
     private static boolean isLauncherActivity200(android.app.Activity a){
         if(a==null)return false;
-        String n=a.getClass().getName();
-        return n.startsWith("com.android.launcher3.") &&
-            (n.endsWith("Launcher") || n.contains("LauncherActivity") || n.contains("OplusLauncher"));
+        for(Class<?> c=a.getClass();c!=null;c=c.getSuperclass()){
+            String n=c.getName();
+            if("com.android.launcher3.Launcher".equals(n) ||
+               "com.android.launcher3.OplusLauncher".equals(n))return true;
+        }
+        return false;
+    }
+    private static final java.util.Set<String> DOCK_CALLBACK_DIAG_201=
+        java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+    private static void dockCallback201(android.app.Activity a,String trigger){
+        if(a==null)return;
+        String type=a.getClass().getName();
+        boolean matched=isLauncherActivity200(a);
+        String key=trigger+"|"+type;
+        if(DOCK_CALLBACK_DIAG_201.add(key))
+            log("DOCK_201_CALLBACK trigger="+trigger+" class="+type+" matched="+matched);
+        if(matched)scheduleDock200(a,trigger);
+    }
+    private static void installDockFallback201(){
+        // Activity.onCreate executes even when the Launcher was already running
+        // before a later onResume hook would be invoked.
+        try{
+            java.lang.reflect.Method create=android.app.Activity.class.getDeclaredMethod("onCreate",android.os.Bundle.class);
+            XposedBridge.hookMethod(create,new XC_MethodHook(){
+                @Override protected void afterHookedMethod(MethodHookParam p){
+                    if(p.thisObject instanceof android.app.Activity)
+                        dockCallback201((android.app.Activity)p.thisObject,"Activity.onCreate");
+                }
+            });
+            log("DOCK_201_CREATE_HOOK_READY");
+        }catch(Throwable t){log("DOCK_201_CREATE_HOOK_FAILED "+t.getClass().getSimpleName());}
+        try{
+            java.lang.reflect.Method focus=android.app.Activity.class.getDeclaredMethod("onWindowFocusChanged",boolean.class);
+            XposedBridge.hookMethod(focus,new XC_MethodHook(){
+                @Override protected void afterHookedMethod(MethodHookParam p){
+                    if(p.thisObject instanceof android.app.Activity && p.args.length>0 && Boolean.TRUE.equals(p.args[0]))
+                        dockCallback201((android.app.Activity)p.thisObject,"Activity.windowFocus");
+                }
+            });
+            log("DOCK_201_FOCUS_HOOK_READY");
+        }catch(Throwable t){log("DOCK_201_FOCUS_HOOK_FAILED "+t.getClass().getSimpleName());}
     }
     private static View findDock200(View root,int depth){
         if(root==null||depth>18)return null;
@@ -7956,7 +7996,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     }
     private static void scheduleDock200(android.app.Activity a,String trigger){
         if(!isLauncherActivity200(a))return;
-        log("DOCK_200_LIFECYCLE trigger="+trigger+" activity="+a.getClass().getName());
+        log("DOCK_201_SCHEDULE trigger="+trigger+" activity="+a.getClass().getName());
         try{
             View root=a.getWindow().getDecorView();
             root.post(()->{
@@ -7988,7 +8028,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             XposedBridge.hookMethod(m,new XC_MethodHook(){
                                 @Override protected void afterHookedMethod(MethodHookParam p){
                                     if(p.thisObject instanceof android.app.Activity)
-                                        scheduleDock200((android.app.Activity)p.thisObject,"onResume");
+                                        dockCallback201((android.app.Activity)p.thisObject,"onResume");
                                 }
                             });
                             hooked++;
@@ -8005,13 +8045,14 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 XposedBridge.hookMethod(post,new XC_MethodHook(){
                     @Override protected void afterHookedMethod(MethodHookParam p){
                         if(p.thisObject instanceof android.app.Activity)
-                            scheduleDock200((android.app.Activity)p.thisObject,"onPostResume");
+                            dockCallback201((android.app.Activity)p.thisObject,"onPostResume");
                     }
                 });
                 hooked++;
                 log("DOCK_200_FALLBACK_READY Activity#onPostResume");
             }
         }catch(Throwable t){log("DOCK_200_FALLBACK_FAILED "+t.getClass().getSimpleName());}
+        installDockFallback201();
         log("DOCK_200_HOOK_SUMMARY count="+hooked);
     }
     private static final java.util.Map<android.app.Activity,android.database.ContentObserver> DOCK_OBSERVERS_205=
