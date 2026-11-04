@@ -123,19 +123,25 @@ final class GlassLens173 {
         "  float cap=clamp(minSide*0.105,9.0,19.0);\n" +
         "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
         "}\n" +
-        "// V189: continuous four-layer optical geometry. One SDF, no center crown.\n" +
+        "// V190: meniscus + low-amplitude interior lens. Smooth across the SDF medial axis.\n" +
         "float2 delta188(float2 p) {\n" +
         "  float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        "  float2 mid=(bounds.xy+bounds.zw)*0.5;\n" +
+        "  float2 uv=(p-mid)/max(size*0.5,float2(1.0));\n" +
         "  float minSide=min(size.x,size.y);\n" +
         "  float band=min(clamp(minSide*0.26,16.0,42.0),max(6.0,radius*0.88));\n" +
         "  float d=max(depth173(p),0.0);\n" +
         "  float t=clamp(d/band,0.0,1.0);\n" +
         "  float2 g=float2(0.5*(depth173(p+float2(1.0,0.0))-depth173(p-float2(1.0,0.0))),0.5*(depth173(p+float2(0.0,1.0))-depth173(p-float2(0.0,1.0))));\n" +
-        "  // Raised meniscus derivative vanishes at the rim and at the interior.\n" +
         "  float slope=6.0*t*(1.0-t);\n" +
         "  float style=opticalStyle186>1.5?1.0:0.72;\n" +
-        "  float2 raw=g*(band*0.160)*slope*style*clamp(glassStrength,0.0,1.0);\n" +
-        "  // Smooth cap; reduce compression before local folds can form.\n" +
+        "  float2 rim=g*(band*0.148)*slope*style;\n" +
+        "  // Elliptical interior deformation has zero displacement at the center,\n" +
+        "  // a smooth gradient everywhere and no SDF medial-axis seams.\n" +
+        "  float r2=dot(uv,uv);\n" +
+        "  float interior=smoothstep(0.18,0.92,t);\n" +
+        "  float2 core=uv*(1.0/(1.0+0.75*r2))*interior*(minSide*0.013)*style;\n" +
+        "  float2 raw=(rim+core)*clamp(glassStrength,0.0,1.0);\n" +
         "  float cap=clamp(minSide*0.105,10.0,21.0);\n" +
         "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
         "}\n" +
@@ -239,6 +245,49 @@ final class GlassLens173 {
         "  half4 result=mix(sharp,soft,half(clamp(blurMix,0.0,1.0)));\n" +
         "// V185: ambient reflection is computed from backdrop luminance and surface normals.\n" +
         "// The original Fresnel rim remains separately available.\n" +
+        "  // V190: same wallpaper inputs and geometry regardless of environment mode.\n" +
+        "  // Only final reflection weight changes; mode 0 never disables refraction.\n" +
+        "  if(activeCurvature180>2.5){\n" +
+        "    float2 lens190=delta188(p);\n" +
+        "    float2 normal190=lens190/max(2.0,9.0*max(glassStrength,0.05));\n" +
+        "    float2 size190=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        "    float minSide190=min(size190.x,size190.y);\n" +
+        "    float d190=max(depth173(p),0.0);\n" +
+        "    float band190=min(clamp(minSide190*0.26,16.0,42.0),max(6.0,radius*0.88));\n" +
+        "    float t190=clamp(d190/band190,0.0,1.0);\n" +
+        "    float2 lo190=validBounds.xy+float2(2.0);\n" +
+        "    float2 hi190=max(lo190+float2(2.0),validBounds.zw-float2(2.0));\n" +
+        "    float2 q190=clamp(s,lo190,hi190);\n" +
+        "    float3 bg190=float3(wallpaper.eval(q190).rgb);\n" +
+        "    float3 bx190=float3(wallpaper.eval(clamp(q190+float2(7.0,0.0),lo190,hi190)).rgb);\n" +
+        "    float3 by190=float3(wallpaper.eval(clamp(q190+float2(0.0,7.0),lo190,hi190)).rgb);\n" +
+        "    float3 weight190=float3(0.2126,0.7152,0.0722);\n" +
+        "    float lum190=dot(bg190,weight190);\n" +
+        "    float2 grad190=float2(dot(bx190-bg190,weight190),dot(by190-bg190,weight190));\n" +
+        "    float gradMag190=length(grad190);\n" +
+        "    float2 gradDir190=grad190/(0.018+gradMag190);\n" +
+        "    float2 nDir190=normal190/(0.035+length(normal190));\n" +
+        "    float response190=clamp(0.22+0.52*lum190+0.55*gradMag190,0.0,1.0);\n" +
+        "    // Reflection energy follows actual curvature, not a center-brightening floor.\n" +
+        "    float curve190=clamp(length(normal190)*1.8,0.0,1.0);\n" +
+        "    float internal190=0.10*curve190*(1.0-smoothstep(0.6,1.0,t190));\n" +
+        "    float rim190=curve190*(0.22+0.78*(1.0-t190));\n" +
+        "    float sharp190=mix(9.0,2.0,clamp(environmentSoftness185,0.0,1.0));\n" +
+        "    float aligned190=clamp(0.5+0.5*dot(nDir190,gradDir190),0.0,1.0);\n" +
+        "    float glint190=pow(aligned190,sharp190)*clamp(gradMag190*9.0,0.0,1.0);\n" +
+        "    float style190=opticalStyle186>1.5?1.0:0.72;\n" +
+        "    float mode190=surfaceMode185>0.5?1.0:0.0;\n" +
+        "    float dynamic190=surfaceMode185>1.5?1.0:0.0;\n" +
+        "    float gain190=clamp(environmentStrength185,0.0,2.0)*style190;\n" +
+        "    float reflection190=mode190*gain190*response190*(0.13*rim190+internal190);\n" +
+        "    float highlight190=dynamic190*gain190*response190*rim190*glint190*0.27;\n" +
+        "    float contact190=smoothstep(0.0,2.0,d190)*(1.0-smoothstep(3.0,11.0,d190));\n" +
+        "    float shadow190=contact190*(0.018+0.025*(1.0-lum190))*style190;\n" +
+        "    float3 color190=float3(result.rgb);\n" +
+        "    color190+=(1.0-color190)*clamp(reflection190+highlight190,0.0,0.30);\n" +
+        "    color190*=1.0-shadow190;\n" +
+        "    result.rgb=half3(clamp(color190,0.0,1.0));\n" +
+        "  }else{\n" +
         "  if(surfaceMode185>0.5 && activeCurvature180>1.5){\n" +
         "    float2 disp185=activeCurvature180>2.5?delta188(p):delta182(p);\n" +
         "    float2 slope185=disp185/max(2.0,9.0*max(glassStrength,0.05));\n" +
@@ -284,6 +333,7 @@ final class GlassLens173 {
         "    }\n" +
 
         "    result.rgb=half3(clamp(lit185,0.0,1.0));\n" +
+        "  }\n" +
         "  }\n" +
         "  // V174: material lighting is separate from lens displacement and blur.\n" +
         "  // Use the actual rounded-rectangle depth, not an elliptical outline.\n" +

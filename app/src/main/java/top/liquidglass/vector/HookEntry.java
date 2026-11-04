@@ -3333,7 +3333,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // V177: the visible surface controls are authoritative for the clean lens pipeline.
     // Legacy highlight preferences are retained only for older renderers.
     private static void syncCleanEdgeLighting177(){
-        highlightEnabled=surfaceMode194!=0 && surfaceStrength194>0;
+        // V190: keep the edge-renderer path stable while switching ambient mode.
+        // The new reflection shader independently applies surfaceMode185=0.
+        highlightEnabled=surfaceStrength194>0;
         highlightStrength=clampInt(Math.round(surfaceStrength194*0.5f),0,100);
         highlightWidth=clampInt(Math.round(1f+(surfaceSoftness194-50f)*4f/150f),1,5);
         directionalLight=surfaceMode194>=2;

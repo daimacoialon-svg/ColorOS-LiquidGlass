@@ -118,7 +118,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.189  ·  双风格光学设置",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.190  ·  双风格光学设置",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -181,14 +181,16 @@ public final class MainActivity extends Activity {
         surfaceSpinner.setSelection(Math.max(0,Math.min(3,prefs.getInt("surface_mode_195",3))));current.addView(surfaceSpinner);
         surfaceSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
             public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){
-                prefs.edit().putInt("surface_mode_195",pos).commit();
-                notifyConfigChanged128();
+                if(prefs.getInt("surface_mode_195",3)!=pos){
+                    prefs.edit().putInt("surface_mode_195",pos).commit();
+                    notifyConfigChanged128();
+                }
             }
             public void onNothingSelected(android.widget.AdapterView<?> parent){}
         });
         slider("环境反射与高光强度 (%)","surface_strength_195",100,0,200);
         slider("反射柔和度 (%)","surface_softness_195",100,50,200);
-        TextView surfaceHint=text("新反射使用 V182 曲面（实验模式 2），背景亮度与局部纹理影响高光。旧版轮廓明暗仍兼容，模式 0 只关闭新增环境反射。建议先将旧描边强度调低对比。",12,false);
+        TextView surfaceHint=text("V190 模式 3：环境反射开关仅控制反射光学层，不关闭二维折射与壁纸采样；柔和度控制局部高光的方向性，轮廓清晰度仍受曲面坡度影响。",12,false);
         current.addView(surfaceHint);
         section("玻璃底色色调","选择玻璃底色的冷暖色调与叠加浓度；与模糊、折射、表面反射独立。");
         TextView tintLabel=text("色调",13,false);current.addView(tintLabel);
