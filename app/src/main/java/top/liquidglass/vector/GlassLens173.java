@@ -123,18 +123,20 @@ final class GlassLens173 {
         "  float cap=clamp(minSide*0.105,9.0,19.0);\n" +
         "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
         "}\n" +
-        "// V188: zero-crown meniscus; edge height has zero slope at both ends.\n" +
+        "// V189: continuous four-layer optical geometry. One SDF, no center crown.\n" +
         "float2 delta188(float2 p) {\n" +
         "  float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
         "  float minSide=min(size.x,size.y);\n" +
-        "  float band=min(clamp(minSide*0.235,15.0,38.0),max(5.0,radius*0.82));\n" +
+        "  float band=min(clamp(minSide*0.26,16.0,42.0),max(6.0,radius*0.88));\n" +
         "  float d=max(depth173(p),0.0);\n" +
         "  float t=clamp(d/band,0.0,1.0);\n" +
         "  float2 g=float2(0.5*(depth173(p+float2(1.0,0.0))-depth173(p-float2(1.0,0.0))),0.5*(depth173(p+float2(0.0,1.0))-depth173(p-float2(0.0,1.0))));\n" +
-        "  float meniscus=6.0*t*(1.0-t);\n" +
-        "  float style=opticalStyle186>1.5?1.0:0.70;\n" +
-        "  float2 raw=g*(band*0.115)*meniscus*style*clamp(glassStrength,0.0,1.0);\n" +
-        "  float cap=clamp(minSide*0.11,10.0,20.0);\n" +
+        "  // Raised meniscus derivative vanishes at the rim and at the interior.\n" +
+        "  float slope=6.0*t*(1.0-t);\n" +
+        "  float style=opticalStyle186>1.5?1.0:0.72;\n" +
+        "  float2 raw=g*(band*0.160)*slope*style*clamp(glassStrength,0.0,1.0);\n" +
+        "  // Smooth cap; reduce compression before local folds can form.\n" +
+        "  float cap=clamp(minSide*0.105,10.0,21.0);\n" +
         "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
         "}\n" +
         "float2 opticalDelta180(float2 p) {\n" +
@@ -248,23 +250,39 @@ final class GlassLens173 {
         "    float gloss185=activeCurvature180>2.5?0.0:pow(max(dot(N185,H185),0.0),mix(8.0,36.0,clamp(environmentSoftness185,0.0,1.0)));\n" +
         "    float2 lo185=validBounds.xy+float2(2.0);\n" +
         "    float2 hi185=validBounds.zw-float2(2.0);\n" +
-        "    float2 q185=clamp(s,float2(lo185),float2(hi185));\n" +
+        "    float2 q185=clamp(s,lo185,hi185);\n" +
         "    float3 bg185=float3(wallpaper.eval(q185).rgb);\n" +
-        "    float3 bx185=float3(wallpaper.eval(clamp(q185+float2(5.0,0.0),lo185,hi185)).rgb);\n" +
-        "    float3 by185=float3(wallpaper.eval(clamp(q185+float2(0.0,5.0),lo185,hi185)).rgb);\n" +
+        "    float3 bx185=float3(wallpaper.eval(clamp(q185+float2(7.0,0.0),lo185,hi185)).rgb);\n" +
+        "    float3 by185=float3(wallpaper.eval(clamp(q185+float2(0.0,7.0),lo185,hi185)).rgb);\n" +
         "    float lum185=dot(bg185,float3(0.2126,0.7152,0.0722));\n" +
         "    float2 envGrad185=float2(dot(bx185-bg185,float3(0.2126,0.7152,0.0722)),dot(by185-bg185,float3(0.2126,0.7152,0.0722)));\n" +
         "    float envResponse185=clamp(0.48+0.36*lum185+dot(envGrad185,N185.xy)*1.8,0.1,1.0);\n" +
-        "    float reflection185=environmentStrength185*(opticalStyle186>1.5?1.23:opticalStyle186>0.5?0.77:1.0)*(activeCurvature180>2.5?(0.015+0.15*fresnel185):(0.045+0.12*gloss185+0.19*fresnel185))*envResponse185;\n" +
         "    float2 size185=max(bounds.zw-bounds.xy,float2(2.0));\n" +
-        "    float shell185=clamp(min(size185.x,size185.y)*0.13,11.0,36.0);\n" +
+        "    float shell185=clamp(min(size185.x,size185.y)*0.18,13.0,42.0);\n" +
         "    float edge185=1.0-smoothstep(0.0,shell185,max(depth173(p),0.0));\n" +
-        "    float dynamic185=clamp(0.40+lum185*0.36+dot(envGrad185,normalize(N185.xy+float2(0.001)))*2.0,0.05,1.0);\n" +
-        "    float highlight185=environmentStrength185*(opticalStyle186>1.5?1.33:opticalStyle186>0.5?0.67:1.0)*edge185*(activeCurvature180>2.5?pow(max(dot(N185.xy,normalize(float2(-0.65,-0.76))),0.0),2.0):pow(max(dot(N185,H185),0.0),mix(4.0,18.0,environmentSoftness185)))*dynamic185*0.22;\n" +
+        "    // V189: background gradient sets a locally varying reflection direction;\n" +
+        "    // no fixed point light, no central crown. Motion changes the sampled backdrop.\n" +
+        "    float2 envDir189=envGrad185/(0.018+length(envGrad185));\n" +
+        "    float2 rimNormal189=normalize(N185.xy+float2(0.0001,0.0002));\n" +
+        "    float angular189=0.5+0.5*dot(rimNormal189,envDir189);\n" +
+        "    float variation189=clamp(length(envGrad185)*8.0,0.0,1.0);\n" +
+        "    float broad189=clamp(0.35+0.50*lum185+0.28*angular189*variation189,0.0,1.0);\n" +
+        "    float style189=opticalStyle186>1.5?1.0:0.70;\n" +
+        "    float fresnelRim189=pow(clamp(1.0-N185.z,0.0,1.0),1.5);\n" +
+        "    float reflection185=environmentStrength185*(opticalStyle186>1.5?1.23:opticalStyle186>0.5?0.77:1.0)*(activeCurvature180>2.5?(0.026+0.19*fresnelRim189*edge185)*broad189:(0.045+0.12*gloss185+0.19*fresnel185)*envResponse185);\n" +
+        "    float dynamic185=clamp(0.40+lum185*0.36+dot(envGrad185,rimNormal189)*2.0,0.05,1.0);\n" +
+        "    float highlight185=environmentStrength185*(opticalStyle186>1.5?1.33:opticalStyle186>0.5?0.67:1.0)*edge185*(activeCurvature180>2.5?(0.08+0.45*pow(angular189,3.0)*variation189)*style189:pow(max(dot(N185,H185),0.0),mix(4.0,18.0,environmentSoftness185)))*dynamic185*0.22;\n" +
         "    float env185=surfaceMode185>1.5?reflection185:reflection185*0.7;\n" +
         "    float rim185=surfaceMode185>1.5?highlight185:0.0;\n" +
         "    float3 lit185=float3(result.rgb);\n" +
         "    lit185+=(1.0-lit185)*clamp(env185+rim185,0.0,0.42);\n" +
+        "    if(activeCurvature180>2.5){\n" +
+        "      float d189=max(depth173(p),0.0);\n" +
+        "      float contact189=smoothstep(0.0,3.0,d189)*(1.0-smoothstep(3.0,13.0,d189));\n" +
+        "      float shadow189=contact189*(0.022+0.026*(1.0-lum185))*style189;\n" +
+        "      lit185*=1.0-shadow189;\n" +
+        "    }\n" +
+
         "    result.rgb=half3(clamp(lit185,0.0,1.0));\n" +
         "  }\n" +
         "  // V174: material lighting is separate from lens displacement and blur.\n" +
