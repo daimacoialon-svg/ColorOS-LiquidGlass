@@ -72,20 +72,6 @@ final class GlassLens191 {
         " float2 sampleAt=mix(p,q,safety);\n" +
         " half4 clear=wallpaper.eval(sampleAt);\n" +
         " half4 blurred=blurredWallpaper.eval(sampleAt);\n" +
-        " // V198: derivative-based adaptive subpixel supersampling. Preserve V197 offsetAt.\n" +
-        " float2 dx=dFdx(sampleAt);\n" +
-        " float2 dy=dFdy(sampleAt);\n" +
-        " float footprint=max(length(dx),length(dy));\n" +
-        " float aa=smoothstep(1.30,2.40,footprint)*smoothstep(0.5,2.5,d);\n" +
-        " if(aa>0.001){\n" +
-        "  half4 c4=half4(0.0),b4=half4(0.0);\n" +
-        "  for(int i=0;i<4;i++){\n" +
-        "   float2 v=float2((i%2==0?-0.25:0.25),(i<2?-0.25:0.25));\n" +
-        "   float2 at=clamp(sampleAt+dx*v.x+dy*v.y,lo,hi);\n" +
-        "   c4+=wallpaper.eval(at); b4+=blurredWallpaper.eval(at);\n" +
-        "  }\n" +
-        "  clear=mix(clear,c4*0.25,half(aa)); blurred=mix(blurred,b4*0.25,half(aa));\n" +
-        " }\n" +
         " half4 result=mix(clear,blurred,half(clamp(blurMix,0.0,1.0)));\n" +
         " if(diagnostic>10.5 && diagnostic<11.5){\n" +
         "  float2 f=abs(fract((sampleAt-validBounds.xy)/16.0)-0.5);\n" +
