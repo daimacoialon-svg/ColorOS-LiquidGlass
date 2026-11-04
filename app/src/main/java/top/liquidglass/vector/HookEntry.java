@@ -68,6 +68,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float opticalMapping168;\n"+
         "uniform float roundedContour169;\n"+
         "uniform float centerStable170;\n"+
+        "uniform float continuousThickness171;\n"+
         "uniform float opticalReflection153;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
@@ -108,6 +109,25 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // The contour field is evaluated without nearest-edge switches in the center.
         // V170: non-normalized smooth potential gradient. Zero vector at the center,
         // with a bounded spatial Jacobian; no nearest-edge direction switches.
+        // V171: continuous thickness profile, reversible to the V170 field.
+        // Smooth non-normalized derivatives keep the optical center and corners stable.
+        "  if(roundedContour169>0.5 && centerStable170>0.5 && continuousThickness171>0.5){\n"+
+        "    float2 half171=max(sz*0.5,float2(1.0));\n"+
+        "    float2 v171=(pp-(bounds.xy+bounds.zw)*0.5)/half171;\n"+
+        "    float depth171=max(-glassSdf(pp),0.0);\n"+
+        "    float band171=clamp(sh*0.19,11.0,35.0);\n"+
+        "    float2 ed171=float2(exp(-max(pp.x-bounds.x,0.0)/band171)-exp(-max(bounds.z-pp.x,0.0)/band171),exp(-max(pp.y-bounds.y,0.0)/band171)-exp(-max(bounds.w-pp.y,0.0)/band171));\n"+
+        "    float2 interior171=v171*(0.38+0.62*v171*v171);\n"+
+        "    interior171*=float2(sh/max(sz.x,1.0),sh/max(sz.y,1.0));\n"+
+        "    float rim171=exp(-pow((depth171-band171*0.46)/max(band171*0.83,1.0),2.0));\n"+
+        "    float shoulder171=exp(-depth171/max(band171*2.6,1.0));\n"+
+        "    float center171=1.0-smoothstep(0.58,1.10,length(v171));\n"+
+        "    float2 field171=ed171*(4.8*rim171+2.4*shoulder171)+interior171*(3.5+2.5*center171);\n"+
+        "    float boundary171=smoothstep(0.0,3.5,depth171);\n"+
+        "    float2 raw171=-field171*boundary171*clamp(unifiedStrength162,0.0,1.0);\n"+
+        "    float cap171=clamp(sh*0.075,6.0,12.0);\n"+
+        "    return raw171*(cap171/sqrt(cap171*cap171+dot(raw171,raw171)));\n"+
+        "  }\n"+
         "  if(roundedContour169>0.5 && centerStable170>0.5){\n"+
         "    float2 half170=max(sz*0.5,float2(1.0));\n"+
         "    float2 v170=(pp-(bounds.xy+bounds.zw)*0.5)/half170;\n"+
@@ -5725,6 +5745,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 int centerStable170=1;
                                                 try { centerStable170=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_center_stable_170",1); } catch(Throwable ignored) {}
                                                 shader93.setFloatUniform("centerStable170",(float)Math.max(0,Math.min(1,centerStable170)));
+                                                int continuousThickness171=1;
+                                                try { continuousThickness171=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_continuous_thickness_171",1); } catch(Throwable ignored) {}
+                                                shader93.setFloatUniform("continuousThickness171",(float)Math.max(0,Math.min(1,continuousThickness171)));
                                                 int opticalReflection153=1;
                                                 try { opticalReflection153=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_reflection_153",1);
