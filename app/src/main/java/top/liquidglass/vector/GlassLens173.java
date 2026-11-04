@@ -28,6 +28,9 @@ final class GlassLens173 {
         "uniform float blurMix;\n" +
         "uniform float diagnostic;\n" +
         "uniform float opticalSampling;\n" +
+        "uniform float edgeLightStrength;\n" +
+        "uniform float edgeLightWidth;\n" +
+        "uniform float directionalEdgeLight;\n" +
         "\n" +
         "// Exact rounded-rectangle silhouette; positive depths point INTO glass.\n" +
         "float depth173(float2 p) {\n" +
@@ -137,19 +140,34 @@ final class GlassLens173 {
         "  }\n" +
         "  half4 soft=blurredWallpaper.eval(s);\n" +
         "  half4 result=mix(sharp,soft,half(clamp(blurMix,0.0,1.0)));\n" +
-        "  // Soft, low-energy surface reflection; no independent painted rim.\n" +
-        "  // The shell uses a continuous radial roll-off from actual contour depth.\n" +
-        "  float rim=exp(-d/max(12.0,min(bounds.z-bounds.x,bounds.w-bounds.y)*0.16));\n" +
-        "  float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
-        "  float broad=exp(-2.0*dot(uv-float2(-0.25,-0.38),uv-float2(-0.25,-0.38)));\n" +
-        "  float light=(0.028*rim+0.014*broad)*strength;\n" +
-        "  result.rgb=clamp(result.rgb+half3(light),half3(0.0),half3(1.0));\n" +
+        "  // V174: material lighting is separate from lens displacement and blur.\n" +
+        "  // Use the actual rounded-rectangle depth, not an elliptical outline.\n" +
+        "  float2 size174=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        "  float minSide174=min(size174.x,size174.y);\n" +
+        "  float width174=clamp(edgeLightWidth,1.0,5.0);\n" +
+        "  float shell174=clamp(minSide174*(0.052+0.011*width174),7.0,27.0);\n" +
+        "  float t174=clamp(d/shell174,0.0,1.0);\n" +
+        "  float envelope174=(1.0-t174)*(1.0-t174)*(1.0+2.0*t174);\n" +
+        "  float2 normal174=float2(\n" +
+        "    depth173(p+float2(0.75,0.0))-depth173(p-float2(0.75,0.0)),\n" +
+        "    depth173(p+float2(0.0,0.75))-depth173(p-float2(0.0,0.75)));\n" +
+        "  normal174=normal174/max(length(normal174),0.0001);\n" +
+        "  float direction174=clamp(directionalEdgeLight,0.0,1.0);\n" +
+        "  float directional174=dot(normal174,normalize(float2(-0.62,-0.78)));\n" +
+        "  float diffuse174=mix(0.45,0.5+0.5*directional174,direction174);\n" +
+        "  float dark174=mix(0.25,0.5-0.5*directional174,direction174);\n" +
+        "  float energy174=clamp(edgeLightStrength,0.0,1.0)*envelope174;\n" +
+        "  // Light and shade smoothly fade INTO the same glass surface.\n" +
+        "  float lift174=energy174*(0.10*diffuse174+0.014);\n" +
+        "  float shade174=energy174*(0.085*dark174+0.008);\n" +
+        "  result.rgb=clamp(result.rgb*(half(1.0)-half(shade174))+half3(lift174),half3(0.0),half3(1.0));\n" +
         "  return result;\n" +
         "}\n";
 
     static void draw(View owner, Canvas canvas, RectF rect, float radius,
                      BitmapShader wallpaper, BitmapShader blurredWallpaper,
-                     RectF validBounds, float strength, float blurMix, int diagnostic, int samplingMode) {
+                     RectF validBounds, float strength, float blurMix, int diagnostic, int samplingMode,
+                     boolean edgeEnabled, int edgeStrength, int edgeWidth, boolean directional) {
         RuntimeShader shader;
         synchronized (CACHE173) {
             shader = CACHE173.get(owner);
@@ -168,6 +186,9 @@ final class GlassLens173 {
         shader.setFloatUniform("blurMix", Math.max(0f, Math.min(1f, blurMix)));
         shader.setFloatUniform("diagnostic", (float) diagnostic);
         shader.setFloatUniform("opticalSampling", (float) Math.max(0, Math.min(2, samplingMode)));
+        shader.setFloatUniform("edgeLightStrength", edgeEnabled ? Math.max(0f, Math.min(1f, edgeStrength / 100f)) : 0f);
+        shader.setFloatUniform("edgeLightWidth", (float) Math.max(1, Math.min(5, edgeWidth)));
+        shader.setFloatUniform("directionalEdgeLight", directional ? 1f : 0f);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         paint.setShader(shader);
         canvas.drawRoundRect(rect, radius, radius, paint);

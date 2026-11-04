@@ -5693,7 +5693,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                         view.getContext().getContentResolver(),"liquidglass_optical_sampling_142",0); }
                                                     catch(Throwable ignored173b) {}
                                                     GlassLens173.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
-                                                        valid173,overall173,blend101,opticalDiagnostic173,opticalSampling173);
+                                                        valid173,overall173,blend101,opticalDiagnostic173,opticalSampling173,
+                                                        highlightEnabled,highlightStrength,highlightWidth,directionalLight);
                                                     if(newOpticalLog173++<120)log("OPTICAL_PIPELINE_173 path=CLEAN_SINGLE_SHADER"+
                                                         " container="+((view.getBackground() instanceof DockBackground204)?"DOCK":"FOLDER")+
                                                         " strength="+overall173+" diagnostic="+opticalDiagnostic173+
@@ -6070,7 +6071,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     " rimMode="+rimMode190()+
                     " blurDp="+customBlurDp+
                     " direction="+state.visualDirection188);
-            // V173 owns a subtle view-local highlight; disable duplicate painted rims.
+            // V174: the independent shader owns edge light and shade; prevent duplicate painted rims.
             final int rim190=(pipeline173==1)?0:effectiveRim192();
             if(surface194Logs++<24)log("SURFACE_MODE_194 mode="+surfaceMode194()+
                 " rollback="+(!surface194Enabled())+" strength="+surfaceStrength194()+
