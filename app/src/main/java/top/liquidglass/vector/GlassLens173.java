@@ -36,6 +36,7 @@ final class GlassLens173 {
         "uniform float reflectionModel178;\n" +
         "uniform float activeCurvature180;\n" +
         "uniform float surfaceMode185;\n" +
+        "uniform float opticalStyle186;\n" +
         "uniform float environmentStrength185;\n" +
         "uniform float environmentSoftness185;\n" +
         "\n" +
@@ -109,15 +110,16 @@ final class GlassLens173 {
         "  // A raised meniscus: h(t)=t^2(3-2t), dh/dt=6t(1-t).\n" +
         "  float rimSlope=6.0*t*(1.0-t);\n" +
         "  float2 rimNormal=gradD*rimSlope;\n" +
+        "  float styleRim186=opticalStyle186>1.5?1.40:opticalStyle186>0.5?0.79:1.0;\n" +
         "  // Shared interior crown is C-infinity, including the central axes.\n" +
         "  float r2=dot(uv,uv);\n" +
         "  float crown=exp(-1.15*r2);\n" +
         "  float2 crownGrad=-2.30*crown*uv/max(size*0.5,float2(1.0));\n" +
         "  float interior=smoothstep(0.0,band,d);\n" +
         "  float interiorSlope=6.0*t*(1.0-t)/band;\n" +
-        "  float2 surfaceGrad=rimNormal*0.95 + crownGrad*(minSide*1.45)*interior + gradD*(crown*interiorSlope)*0.24*minSide;\n" +
+        "  float2 surfaceGrad=rimNormal*(0.95*styleRim186) + crownGrad*(minSide*1.45)*interior + gradD*(crown*interiorSlope)*0.24*minSide;\n" +
         "  // One unified surface normal drives x/y refraction; no axis-wise stacking.\n" +
-        "  float2 raw=surfaceGrad*min(band*0.23,9.0)*clamp(glassStrength,0.0,1.0);\n" +
+        "  float2 raw=surfaceGrad*min(band*0.23,9.0)*clamp(glassStrength,0.0,1.0)*(opticalStyle186>1.5?1.24:opticalStyle186>0.5?0.83:1.0);\n" +
         "  float cap=clamp(minSide*0.105,9.0,19.0);\n" +
         "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
         "}\n" +
@@ -239,12 +241,12 @@ final class GlassLens173 {
         "    float lum185=dot(bg185,float3(0.2126,0.7152,0.0722));\n" +
         "    float2 envGrad185=float2(dot(bx185-bg185,float3(0.2126,0.7152,0.0722)),dot(by185-bg185,float3(0.2126,0.7152,0.0722)));\n" +
         "    float envResponse185=clamp(0.48+0.36*lum185+dot(envGrad185,N185.xy)*1.8,0.1,1.0);\n" +
-        "    float reflection185=environmentStrength185*(0.045+0.12*gloss185+0.19*fresnel185)*envResponse185;\n" +
+        "    float reflection185=environmentStrength185*(opticalStyle186>1.5?1.23:opticalStyle186>0.5?0.77:1.0)*(0.045+0.12*gloss185+0.19*fresnel185)*envResponse185;\n" +
         "    float2 size185=max(bounds.zw-bounds.xy,float2(2.0));\n" +
         "    float shell185=clamp(min(size185.x,size185.y)*0.13,11.0,36.0);\n" +
         "    float edge185=1.0-smoothstep(0.0,shell185,max(depth173(p),0.0));\n" +
         "    float dynamic185=clamp(0.40+lum185*0.36+dot(envGrad185,normalize(N185.xy+float2(0.001)))*2.0,0.05,1.0);\n" +
-        "    float highlight185=environmentStrength185*edge185*pow(max(dot(N185,H185),0.0),mix(4.0,18.0,environmentSoftness185))*dynamic185*0.22;\n" +
+        "    float highlight185=environmentStrength185*(opticalStyle186>1.5?1.33:opticalStyle186>0.5?0.67:1.0)*edge185*pow(max(dot(N185,H185),0.0),mix(4.0,18.0,environmentSoftness185))*dynamic185*0.22;\n" +
         "    float env185=surfaceMode185>1.5?reflection185:reflection185*0.7;\n" +
         "    float rim185=surfaceMode185>1.5?highlight185:0.0;\n" +
         "    float3 lit185=float3(result.rgb);\n" +
@@ -315,7 +317,7 @@ final class GlassLens173 {
     static void draw(View owner, Canvas canvas, RectF rect, float radius,
                      BitmapShader wallpaper, BitmapShader blurredWallpaper,
                      RectF validBounds, float strength, float blurMix, int diagnostic, int samplingMode,
-                     boolean edgeEnabled, int edgeStrength, int edgeWidth, boolean directional, int reflectionModel178, int activeCurvature180, int surfaceMode185, int surfaceStrength185, int surfaceSoftness185) {
+                     boolean edgeEnabled, int edgeStrength, int edgeWidth, boolean directional, int reflectionModel178, int activeCurvature180, int surfaceMode185, int surfaceStrength185, int surfaceSoftness185, int opticalStyle186) {
         RuntimeShader shader;
         synchronized (CACHE173) {
             shader = CACHE173.get(owner);
@@ -341,6 +343,7 @@ final class GlassLens173 {
         shader.setFloatUniform("directionalEdgeLight", directional ? 1f : 0f);
         shader.setFloatUniform("reflectionModel178", reflectionModel178 > 0 ? 1f : 0f);
         shader.setFloatUniform("activeCurvature180", (float)Math.max(0,Math.min(2,activeCurvature180)));
+        shader.setFloatUniform("opticalStyle186", (float)Math.max(0,Math.min(2,opticalStyle186)));
         shader.setFloatUniform("surfaceMode185", (float)Math.max(0,Math.min(3,surfaceMode185)));
         shader.setFloatUniform("environmentStrength185", Math.max(0f,Math.min(2f,surfaceStrength185/100f)));
         shader.setFloatUniform("environmentSoftness185", Math.max(0f,Math.min(1f,(surfaceSoftness185-50f)/150f)));

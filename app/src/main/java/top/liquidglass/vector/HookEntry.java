@@ -1104,6 +1104,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 ci=c.getColumnIndex("surface_mode_195");if(ci>=0)surfaceMode194=clampInt(c.getInt(ci),0,3);
                 ci=c.getColumnIndex("surface_strength_195");if(ci>=0)surfaceStrength194=clampInt(c.getInt(ci),0,200);
                 ci=c.getColumnIndex("surface_softness_195");if(ci>=0)surfaceSoftness194=clampInt(c.getInt(ci),50,200);
+                ci=c.getColumnIndex("optical_style_186");if(ci>=0)opticalStyle186=clampInt(c.getInt(ci),0,2);
                 syncCleanEdgeLighting177();
                 String summary="enabled="+glassEnabled+" alpha="+glassAlpha+" tint="+tintMode+" tintStrength="+tintStrength+" highlight="+highlightEnabled+" highlightStrength="+highlightStrength+" highlightWidth="+highlightWidth+" directional="+directionalLight+" probeMode="+probeMode+" nativeBlurExperiment="+nativeBlurExperiment+" blurRadiusPercent="+blurRadiusPercent+" nativeAlphaProbe="+nativeAlphaProbe;
                 summary += " surfaceMode="+surfaceMode194+" surfaceStrength="+surfaceStrength194+" surfaceSoftness="+surfaceSoftness194;
@@ -3327,6 +3328,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // 0=off, 1=static rounded reflection, 2=dynamic reflection,
     // 3=dynamic reflection + inner depth (default).
     // Legacy experiment switches are only used when explicit rollback=1.
+    private static volatile int opticalStyle186=0;
     private static volatile int surfaceMode194=3;
     // V177: the visible surface controls are authoritative for the clean lens pipeline.
     // Legacy highlight preferences are retained only for older renderers.
@@ -5745,9 +5747,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     try { activeCurvature180=android.provider.Settings.Global.getInt(
                                                         view.getContext().getContentResolver(),"liquidglass_active_curvature_180",0); }
                                                     catch(Throwable ignored180) {}
+                                                    if(opticalStyle186>0)activeCurvature180=2;
                                                     GlassLens173.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
                                                         valid173,overall173,blend101,opticalDiagnostic173,opticalSampling173,
-                                                        highlightEnabled,highlightStrength,highlightWidth,directionalLight,reflectionModel178,activeCurvature180,surfaceMode194,surfaceStrength194,surfaceSoftness194);
+                                                        highlightEnabled,highlightStrength,highlightWidth,directionalLight,reflectionModel178,activeCurvature180,surfaceMode194,surfaceStrength194,surfaceSoftness194,opticalStyle186);
                                                     if(newOpticalLog173++<120)log("OPTICAL_PIPELINE_173 path=CLEAN_SINGLE_SHADER"+
                                                         " container="+((view.getBackground() instanceof DockBackground204)?"DOCK":"FOLDER")+
                                                         " strength="+overall173+" diagnostic="+opticalDiagnostic173+

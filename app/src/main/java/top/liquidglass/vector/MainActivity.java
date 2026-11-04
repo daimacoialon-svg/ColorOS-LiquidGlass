@@ -92,13 +92,44 @@ public final class MainActivity extends Activity {
     private void action(String label,Runnable run){
         Button b=new Button(this);b.setAllCaps(false);b.setText(label);b.setTextColor(blue);b.setOnClickListener(v->run.run());current.addView(b,new LinearLayout.LayoutParams(-1,dp(52)));
     }
+    private String styleLabel186(){
+        int style=prefs.getInt("optical_style_186",0);
+        return style==2?"泡泡液态玻璃":style==1?"iOS 27 风格":"自定义 / 旧版";
+    }
+    private void applyOpticalStyle186(int style){
+        SharedPreferences.Editor e=prefs.edit();
+        e.putInt("optical_style_186",style)
+         .putInt("nonlinear_107",style==2?86:68)
+         .putInt("thickness_107",style==2?82:60)
+         .putInt("glass_tint_opacity",style==2?7:9)
+         .putInt("surface_mode_195",style==2?3:2)
+         .putInt("surface_strength_195",style==2?95:58)
+         .putInt("surface_softness_195",style==2?92:145)
+         .putInt("custom_blur_tenths_95",style==2?5:12)
+         .putInt("custom_blur_dp",style==2?1:1)
+         .putInt("custom_blur_mode",1).commit();
+        notifyConfigChanged128();
+        Toast.makeText(this,"已应用风格；模块会在下次配置刷新时切换光学曲面",Toast.LENGTH_LONG).show();
+        recreate();
+    }
     @Override protected void onPause(){super.onPause();notifyConfigChanged128();}
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);prefs=getSharedPreferences("glass",0);
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.138  ·  统一玻璃材质设置",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.186  ·  双风格光学设置",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
+        TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
+        LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
+        Button bubble186=new Button(this);bubble186.setAllCaps(false);bubble186.setText("泡泡液态玻璃");
+        Button ios186=new Button(this);ios186.setAllCaps(false);ios186.setText("iOS 27 风格");
+        styleButtons186.addView(bubble186,new LinearLayout.LayoutParams(0,dp(58),1));
+        styleButtons186.addView(ios186,new LinearLayout.LayoutParams(0,dp(58),1));
+        bubble186.setOnClickListener(v->applyOpticalStyle186(2));
+        ios186.setOnClickListener(v->applyOpticalStyle186(1));
+        TextView styleNote186=text("泡泡：饱满边缘与较强动态高光。iOS 风格：更清透、柔和的曲面与反射。两者均为模拟光学风格，并非苹果原生渲染。手动调整下方参数不会自动覆盖这两套预设。",12,false);
+        current.addView(styleNote186);
         section("玻璃材质总览","文件夹与 Dock 共用光学参数；两者可分别启用。预设不会强制打开旧版实验模式。");
         toggle("启用桌面文件夹玻璃", "enabled",false);
         TextView presetInfo=text("玻璃预设仅在手动点击时应用；文件夹与 Dock 共用玻璃渲染参数，不改变功能开关。",12,false);current.addView(presetInfo);
