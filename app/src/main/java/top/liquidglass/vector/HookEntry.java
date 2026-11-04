@@ -63,6 +63,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float opticalModel151;\n"+
         "uniform float opticalModel152;\n"+
         "uniform float motionGradient158;\n"+
+        "uniform float unifiedLens159;\n"+
         "uniform float opticalReflection153;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
@@ -341,6 +342,32 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float2 limited158=float2(deltaLens.x*(1.0-0.43*lateral158),deltaLens.y);\n"+
         "    float length158=length(limited158);\n"+
         "    deltaLens=limited158*(17.0/sqrt(289.0+length158*length158));\n"+
+        "  }\n"+
+        // V159: one smooth superelliptic height potential for the entire surface.
+        // Its analytic gradient is continuous on diagonals and rounded corners.
+        // 0=V158 exact path; 1=moderate; 2=stronger lens for grid diagnosis.
+        "  if(unifiedLens159>0.5){\n"+
+        "    float2 sz159=max(bounds.zw-bounds.xy,float2(2.0));\n"+
+        "    float2 uv159=(p-center136)/(sz159*0.5);\n"+
+        "    float2 a159=abs(uv159);\n"+
+        "    float x4159=a159.x*a159.x*a159.x*a159.x;\n"+
+        "    float y4159=a159.y*a159.y*a159.y*a159.y;\n"+
+        "    float r159=pow(max(x4159+y4159,0.000001),0.25);\n"+
+        "    float inv159=1.0/max(r159*r159*r159,0.045);\n"+
+        "    float2 grad159=float2(uv159.x*uv159.x*uv159.x,uv159.y*uv159.y*uv159.y)*inv159;\n"+
+        "    float depth159=max(-d,0.0);\n"+
+        "    float inside159=smoothstep(0.0,3.0,depth159);\n"+
+        "    float shoulder159=1.0-smoothstep(0.69,1.03,r159);\n"+
+        "    float curved159=exp(-pow((r159-0.82)/0.19,2.0));\n"+
+        "    float2 curvedField159=-grad159*(3.0+7.0*curved159)*nonlinear107;\n"+
+        "    float2 coreField159=-uv159*(1.0+2.2*r159*r159)*interior107*shoulder159;\n"+
+        "    float2 thicknessField159=grad159*(2.0+7.0*curved159)*thickness107;\n"+
+        "    float2 focusField159=grad159*(2.8*curved159-1.2*shoulder159)*focus107;\n"+
+        "    float2 raw159=(curvedField159+coreField159+thicknessField159+focusField159)*inside159;\n"+
+        "    float gain159=(unifiedLens159>1.5)?1.27:1.0;\n"+
+        "    float2 shaped159=raw159*gain159;\n"+
+        "    float amp159=length(shaped159);\n"+
+        "    deltaLens=shaped159*(16.0/sqrt(256.0+amp159*amp159));\n"+
         "  }\n"+
         // V147: visual truth map, calculated from the actual V146 field geometry.
         // Diagnostic returns BEFORE wallpaper sampling and overlays. Mode 8 is zero warp.
@@ -5544,6 +5571,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable e158){ log("MOTION_GRADIENT_158_READ_FAILED "+e158.getClass().getSimpleName()); }
                                                 motionGradient158=Math.max(0,Math.min(1,motionGradient158));
                                                 shader93.setFloatUniform("motionGradient158",(float)motionGradient158);
+                                                // V159 reversible unified curved-surface displacement.
+                                                int unifiedLens159=1;
+                                                try { unifiedLens159=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_unified_lens_159",1); }
+                                                catch(Throwable e159){ log("UNIFIED_LENS_159_READ_FAILED "+e159.getClass().getSimpleName()); }
+                                                unifiedLens159=Math.max(0,Math.min(2,unifiedLens159));
+                                                shader93.setFloatUniform("unifiedLens159",(float)unifiedLens159);
                                                 int opticalReflection153=1;
                                                 try { opticalReflection153=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_reflection_153",1);
