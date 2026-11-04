@@ -62,6 +62,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float opticalModel150;\n"+
         "uniform float opticalModel151;\n"+
         "uniform float opticalModel152;\n"+
+        "uniform float motionGradient158;\n"+
         "uniform float opticalReflection153;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
@@ -326,6 +327,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float gain152=(opticalModel152>1.5)?1.45:1.0;\n"+
         "    float2 raw152=(whole152+center152+rim152+focus152)*gain152;\n"+
         "    deltaLens=raw152*(19.0/sqrt(361.0+dot(raw152,raw152)));\n"+
+        "  }\n"+
+        // V158: motion-safe optical field shaping. This modifies only wallpaper
+        // displacement; reflection and blur remain independent. 0=V157 baseline,
+        // 1=gradient-limited lateral refraction. The attenuation is smooth in
+        // both coordinates and never selects the nearest side of the rectangle.
+        "  if(motionGradient158>0.5){\n"+
+        "    float2 extent158=max(bounds.zw-bounds.xy,float2(2.0));\n"+
+        "    float2 uv158=(p-center136)/(extent158*0.5);\n"+
+        "    float ax158=abs(uv158.x);\n"+
+        "    float ay158=abs(uv158.y);\n"+
+        "    float lateral158=smoothstep(0.52,0.94,ax158)*(1.0-0.28*smoothstep(0.66,1.0,ay158));\n"+
+        "    float2 limited158=float2(deltaLens.x*(1.0-0.43*lateral158),deltaLens.y);\n"+
+        "    float length158=length(limited158);\n"+
+        "    deltaLens=limited158*(17.0/sqrt(289.0+length158*length158));\n"+
         "  }\n"+
         // V147: visual truth map, calculated from the actual V146 field geometry.
         // Diagnostic returns BEFORE wallpaper sampling and overlays. Mode 8 is zero warp.
@@ -5522,6 +5537,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable e152){ log("OPTICAL_MODEL_152_READ_FAILED "+e152.getClass().getSimpleName()); }
                                                 opticalModel152=Math.max(0,Math.min(2,opticalModel152));
                                                 shader93.setFloatUniform("opticalModel152",(float)opticalModel152);
+                                                // V158 opt-in by default, reversible without reflashing.
+                                                int motionGradient158=1;
+                                                try { motionGradient158=android.provider.Settings.Global.getInt(
+                                                    view.getContext().getContentResolver(),"liquidglass_motion_gradient_158",1); }
+                                                catch(Throwable e158){ log("MOTION_GRADIENT_158_READ_FAILED "+e158.getClass().getSimpleName()); }
+                                                motionGradient158=Math.max(0,Math.min(1,motionGradient158));
+                                                shader93.setFloatUniform("motionGradient158",(float)motionGradient158);
                                                 int opticalReflection153=1;
                                                 try { opticalReflection153=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_reflection_153",1);
