@@ -74,27 +74,27 @@ final class GlassLens173 {
         "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
         "}\n" +
         "\n" +
-        "// V180: curvature applied to the ACTIVE independent renderer, not legacy HookEntry AGSL.\\n" +
-        "float2 delta180(float2 p) {\\n" +
-        "  float2 size=max(bounds.zw-bounds.xy,float2(2.0));\\n" +
-        "  float2 mid=(bounds.xy+bounds.zw)*0.5;\\n" +
-        "  float2 uv=(p-mid)/(size*0.5);\\n" +
-        "  float d=max(depth173(p),0.0);\\n" +
-        "  float band=min(clamp(min(size.x,size.y)*0.26,13.0,42.0),max(5.0,radius*0.88));\\n" +
-        "  float t=clamp(d/band,0.0,1.0);\\n" +
-        "  float profile=sin(3.14159265*t);\\n" +
-        "  float2 g=float2(0.5*(depth173(p+float2(1.0,0.0))-depth173(p-float2(1.0,0.0))),0.5*(depth173(p+float2(0.0,1.0))-depth173(p-float2(0.0,1.0))));\\n" +
-        "  float2 rim=g*band*0.19*profile*profile;\\n" +
-        "  float inner=smoothstep(0.0,band*1.3,d);\\n" +
-        "  float2 core=-uv*min(min(size.x,size.y)*0.072,19.0)*exp(-0.68*dot(uv,uv))*inner;\\n" +
-        "  float gain=activeCurvature180>1.5?1.28:1.0;\\n" +
-        "  float2 raw=(rim+core)*gain*clamp(glassStrength,0.0,1.0);\\n" +
-        "  float cap=clamp(min(size.x,size.y)*0.13,11.0,25.0);\\n" +
-        "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\\n" +
-        "}\\n" +
-        "float2 opticalDelta180(float2 p) {\\n" +
-        "  return activeCurvature180>0.5?delta180(p):delta173(p);\\n" +
-        "}\\n" +
+        "// V180: curvature applied to the ACTIVE independent renderer, not legacy HookEntry AGSL.\n" +
+        "float2 delta180(float2 p) {\n" +
+        "  float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        "  float2 mid=(bounds.xy+bounds.zw)*0.5;\n" +
+        "  float2 uv=(p-mid)/(size*0.5);\n" +
+        "  float d=max(depth173(p),0.0);\n" +
+        "  float band=min(clamp(min(size.x,size.y)*0.26,13.0,42.0),max(5.0,radius*0.88));\n" +
+        "  float t=clamp(d/band,0.0,1.0);\n" +
+        "  float profile=sin(3.14159265*t);\n" +
+        "  float2 g=float2(0.5*(depth173(p+float2(1.0,0.0))-depth173(p-float2(1.0,0.0))),0.5*(depth173(p+float2(0.0,1.0))-depth173(p-float2(0.0,1.0))));\n" +
+        "  float2 rim=g*band*0.19*profile*profile;\n" +
+        "  float inner=smoothstep(0.0,band*1.3,d);\n" +
+        "  float2 core=-uv*min(min(size.x,size.y)*0.072,19.0)*exp(-0.68*dot(uv,uv))*inner;\n" +
+        "  float gain=activeCurvature180>1.5?1.28:1.0;\n" +
+        "  float2 raw=(rim+core)*gain*clamp(glassStrength,0.0,1.0);\n" +
+        "  float cap=clamp(min(size.x,size.y)*0.13,11.0,25.0);\n" +
+        "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
+        "}\n" +
+        "float2 opticalDelta180(float2 p) {\n" +
+        "  return activeCurvature180>0.5?delta180(p):delta173(p);\n" +
+        "}\n" +
         "float2 sample173(float2 p) {\n" +
         "  float2 lo=validBounds.xy+float2(1.0);\n" +
         "  float2 hi=max(lo+float2(2.0),validBounds.zw-float2(1.0));\n" +
@@ -106,16 +106,16 @@ final class GlassLens173 {
         "  float d=max(depth173(p),0.0);\n" +
         "  float2 disp=s-p;\n" +
         "  float strength=clamp(glassStrength,0.0,1.0);\n" +
-        "  if(diagnostic>31.5 && diagnostic<32.5){\\n" +
-        "    float diff=length(delta180(p)-delta173(p));\\n" +
-        "    float t=clamp(diff/7.0,0.0,1.0);\\n" +
-        "    return half4(half3(t,0.1,1.0-t),1.0);\\n" +
-        "  }\\n" +
-        "  if(diagnostic>32.5 && diagnostic<33.5){\\n" +
-        "    float2 v=s-p;\\n" +
-        "    return half4(half3(clamp(0.5+v.x/18.0,0.0,1.0),clamp(0.5+v.y/18.0,0.0,1.0),clamp(length(v)/12.0,0.0,1.0)),1.0);\\n" +
-        "  }\\n" +
-        "  if(diagnostic>10.5 && diagnostic<11.5){\\n" +
+        "  if(diagnostic>31.5 && diagnostic<32.5){\n" +
+        "    float diff=length(delta180(p)-delta173(p));\n" +
+        "    float t=clamp(diff/7.0,0.0,1.0);\n" +
+        "    return half4(half3(t,0.1,1.0-t),1.0);\n" +
+        "  }\n" +
+        "  if(diagnostic>32.5 && diagnostic<33.5){\n" +
+        "    float2 v=s-p;\n" +
+        "    return half4(half3(clamp(0.5+v.x/18.0,0.0,1.0),clamp(0.5+v.y/18.0,0.0,1.0),clamp(length(v)/12.0,0.0,1.0)),1.0);\n" +
+        "  }\n" +
+        "  if(diagnostic>10.5 && diagnostic<11.5){\n" +
         "    float2 cell=abs(fract(s/23.0)-0.5);\n" +
         "    float line=1.0-smoothstep(0.457,0.492,max(cell.x,cell.y));\n" +
         "    return half4(half3(line),1.0);\n" +
