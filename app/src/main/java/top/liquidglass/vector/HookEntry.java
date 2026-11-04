@@ -69,6 +69,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float roundedContour169;\n"+
         "uniform float centerStable170;\n"+
         "uniform float continuousThickness171;\n"+
+        "uniform float effectiveCurvature172;\n"+
         "uniform float opticalReflection153;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
@@ -111,6 +112,26 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // with a bounded spatial Jacobian; no nearest-edge direction switches.
         // V171: continuous thickness profile, reversible to the V170 field.
         // Smooth non-normalized derivatives keep the optical center and corners stable.
+        // V172: smooth whole-container potential. No nearest-edge normal switches.
+        // One monotonic strength drives a bounded displacement; preserve V171 via toggle.
+        "  if(roundedContour169>0.5 && centerStable170>0.5 && effectiveCurvature172>0.5){\n"+
+        "    float2 half172=max(sz*0.5,float2(1.0));\n"+
+        "    float2 u172=(pp-(bounds.xy+bounds.zw)*0.5)/half172;\n"+
+        "    float2 u2172=u172*u172;\n"+
+        "    float4 ds172=max(float4(pp.x-bounds.x,bounds.z-pp.x,pp.y-bounds.y,bounds.w-pp.y),float4(0.0));\n"+
+        "    float band172=clamp(sh*0.23,14.0,43.0);\n"+
+        "    float4 e172=exp(-ds172/band172);\n"+
+        "    float2 edge172=float2(e172.y-e172.x,e172.w-e172.z);\n"+
+        "    float2 inner172=u172*(0.72+0.28*u2172);\n"+
+        "    float2 aspect172=float2(sh/max(sz.x,1.0),sh/max(sz.y,1.0));\n"+
+        "    float depth172=max(-glassSdf(pp),0.0);\n"+
+        "    float rim172=exp(-pow((depth172-band172*0.55)/max(band172*0.75,1.0),2.0));\n"+
+        "    float2 field172=(edge172*(3.5+3.0*rim172)+inner172*4.5)*aspect172;\n"+
+        "    float gate172=smoothstep(0.0,3.0,depth172);\n"+
+        "    float2 raw172=-field172*gate172*clamp(unifiedStrength162,0.0,1.0);\n"+
+        "    float cap172=clamp(sh*0.095,8.0,17.0);\n"+
+        "    return raw172*(cap172/sqrt(cap172*cap172+dot(raw172,raw172)));\n"+
+        "  }\n"+
         "  if(roundedContour169>0.5 && centerStable170>0.5 && continuousThickness171>0.5){\n"+
         "    float2 half171=max(sz*0.5,float2(1.0));\n"+
         "    float2 v171=(pp-(bounds.xy+bounds.zw)*0.5)/half171;\n"+
@@ -547,6 +568,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  }\n"+
         "  samplePos=clamp(samplePos,validBounds.xy+float2(1.0),validBounds.zw-float2(1.0));\n"+
         // V167: final-sampling diagnostics. Modes 16-18 do not alter normal rendering.
+        // V172: distinguish calculated and actually applied displacement.
+        // 21 = final displacement magnitude; 22 = fraction removed by domain handling.
+        "  if(opticalDiagnostic147>20.5 && opticalDiagnostic147<22.5){\n"+
+        "    float2 effective172=samplePos-p;\n"+
+        "    float final172=clamp(length(effective172)/12.0,0.0,1.0);\n"+
+        "    if(opticalDiagnostic147<21.5) return half4(half3(final172,final172*0.45,1.0-final172),1.0);\n"+
+        "    float removed172=clamp(length(delta-effective172)/max(length(delta),0.001),0.0,1.0);\n"+
+        "    return half4(half3(removed172,1.0-removed172,0.0),1.0);\n"+
+        "  }\n"+
         "  if(opticalDiagnostic147>15.5 && opticalDiagnostic147<18.5){\n"+
         "    float2 dx167=float2(1.0,0.0);\n"+
         "    float2 dy167=float2(0.0,1.0);\n"+
@@ -5748,6 +5778,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 int continuousThickness171=1;
                                                 try { continuousThickness171=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_continuous_thickness_171",1); } catch(Throwable ignored) {}
                                                 shader93.setFloatUniform("continuousThickness171",(float)Math.max(0,Math.min(1,continuousThickness171)));
+                                                int effectiveCurvature172=1;
+                                                try { effectiveCurvature172=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_effective_curvature_172",1); } catch(Throwable ignored) {}
+                                                shader93.setFloatUniform("effectiveCurvature172",(float)Math.max(0,Math.min(1,effectiveCurvature172)));
                                                 int opticalReflection153=1;
                                                 try { opticalReflection153=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_reflection_153",1);
