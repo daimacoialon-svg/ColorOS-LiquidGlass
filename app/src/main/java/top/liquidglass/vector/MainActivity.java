@@ -121,12 +121,10 @@ public final class MainActivity extends Activity {
         toggle("启用 Dock 玻璃","dock_glass_204",false);
         TextView dockInfo=text("Dock 保持原有尺寸和位置；V132 与文件夹共用直接背景采样及透镜位移 Shader，并按容器几何自适应。",12,false);current.addView(dockInfo);
 
-        section("统一曲面透镜","主折射路径：文件夹与 Dock 共用光学参数。厚度、内部形变和聚焦分别控制不同计算项。");
-        slider("整体非线性折射 (%)","nonlinear_107",65,0,100);
-        slider("边缘玻璃厚度 (%)","thickness_107",55,0,100);
-        slider("内部透镜形变 (%)","interior_107",20,0,100);
-        slider("边缘纹理聚焦 (%)","focus_107",45,0,100);
-        slider("透镜反射权重 (%)","reflection_107",30,0,100);
+        section("统一光学透镜","V162：整片曲面折射、边缘厚度与柔和反射由同一个强度控制。文件夹和 Dock 自动适配宽高。旧五项参数保留在配置中，供回退版本使用。 ");
+        slider("玻璃整体光学强度 (%)","nonlinear_107",65,0,100);
+        TextView unifiedInfo162=text("0% 为无统一曲面位移；100% 为最强。建议先用 65% 比较 Dock 与各种文件夹。该滑块不控制背景模糊或底色透明度。",12,false);
+        current.addView(unifiedInfo162);
         section("玻璃外观","背景模糊和底色独立于折射；应用图标不会被自定义壁纸模糊处理。");
         slider("玻璃底色不透明度 (%)","glass_tint_opacity",18,0,100);
         microBlurSlider95();

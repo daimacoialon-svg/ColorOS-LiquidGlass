@@ -64,6 +64,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "uniform float opticalModel152;\n"+
         "uniform float motionGradient158;\n"+
         "uniform float unifiedLens159;\n"+
+        "uniform float unifiedStrength162;\n"+
         "uniform float opticalReflection153;\n"+
         "uniform float reflection107;\n"+
         "uniform float opticalProbe118;\n"+
@@ -343,46 +344,32 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "    float length158=length(limited158);\n"+
         "    deltaLens=limited158*(17.0/sqrt(289.0+length158*length158));\n"+
         "  }\n"+
-        // V161 geometry-adaptive lens, same existing Shader uniforms and fallback switch.
-        "  // V161: geometry-adaptive optical field. Pixel-space edge thickness is\n"+
-        "  // tied to the container short side and corner radius, not stretched axes.\n"+
-        "  // The field remains smooth across diagonals and all four rounded corners.\n"+
+        // V162: one optical surface, one strength control; V161 retained in git baseline.
+        // Physical-space normal follows a smooth superellipse, no nearest-edge switch.
         "  if(unifiedLens159>0.5){\n"+
-        "    float2 size161=max(bounds.zw-bounds.xy,float2(2.0));\n"+
-        "    float short161=min(size161.x,size161.y);\n"+
-        "    float2 uv161=(p-center136)/(size161*0.5);\n"+
-        "    float2 a161=abs(uv161);\n"+
-        "    float x4161=a161.x*a161.x*a161.x*a161.x;\n"+
-        "    float y4161=a161.y*a161.y*a161.y*a161.y;\n"+
-        "    float r161=pow(max(x4161+y4161,0.000001),0.25);\n"+
-        "    float inv161=1.0/max(r161*r161*r161,0.045);\n"+
-        "    float2 grad161=float2(uv161.x*uv161.x*uv161.x,uv161.y*uv161.y*uv161.y)*inv161;\n"+
-        "    // Normalize the physical-space gradient, not the stretched UV gradient.\n"+
-        "    float2 physical161=grad161/max(size161*0.5,float2(1.0));\n"+
-        "    float2 normal161=physical161/max(length(physical161),0.0001);\n"+
-        "    // At the exact center use zero displacement, not an arbitrary normal.\n"+
-        "    normal161*=smoothstep(0.0,0.10,r161);\n"+
-        "    float depth161=max(-d,0.0);\n"+
-        "    float inside161=smoothstep(0.0,2.5,depth161);\n"+
-        "    // Physical edge-band width scales with short side and rounded corners.\n"+
-        "    float band161=clamp(short161*0.105,5.0,23.0);\n"+
-        "    float edge161=exp(-pow(depth161/max(band161,1.0),2.0));\n"+
-        "    float shoulder161=1.0-smoothstep(0.30,0.94,r161);\n"+
-        "    // Nonlinear: broad coherent curved-lens bending.\n"+
-        "    float2 nonlinearField161=-normal161*(1.0+3.4*r161*r161)*nonlinear107*shoulder161;\n"+
-        "    // Interior: radial, smoothly fading central magnification (not edge width).\n"+
-        "    float2 interiorField161=-uv161*(1.0+0.7*r161*r161)*interior107*(1.0-smoothstep(0.38,0.90,r161))*2.8;\n"+
-        "    // Thickness: strong, physically width-limited edge displacement.\n"+
-        "    float2 thicknessField161=-normal161*(2.0+7.0*edge161)*thickness107;\n"+
-        "    // Focus: changes the concentration profile of the edge displacement,\n"+
-        "    // without simply adding another same-shaped thickness term.\n"+
-        "    float focusShape161=exp(-pow((depth161-band161*0.48)/max(band161*0.27,1.0),2.0));\n"+
-        "    float2 focusField161=-normal161*(3.8*focusShape161)*focus107;\n"+
-        "    float2 raw161=(nonlinearField161+interiorField161+thicknessField161+focusField161)*inside161;\n"+
-        "    float gain161=(unifiedLens159>1.5)?1.20:1.0;\n"+
-        "    float2 shaped161=raw161*gain161;\n"+
-        "    float amplitude161=length(shaped161);\n"+
-        "    deltaLens=shaped161*(22.0/sqrt(484.0+amplitude161*amplitude161));\n"+
+        "    float2 sz162=max(bounds.zw-bounds.xy,float2(2.0));\n"+
+        "    float short162=min(sz162.x,sz162.y);\n"+
+        "    float2 uv162=(p-center136)/(sz162*0.5);\n"+
+        "    float2 a162=abs(uv162);\n"+
+        "    float r162=pow(max(pow(a162.x,4.0)+pow(a162.y,4.0),0.0000001),0.25);\n"+
+        "    float2 gr162=float2(uv162.x*uv162.x*uv162.x,uv162.y*uv162.y*uv162.y)/max(pow(r162,3.0),0.001);\n"+
+        "    float2 pg162=gr162/max(sz162*0.5,float2(1.0));\n"+
+        "    float2 n162=pg162/max(length(pg162),0.0001);\n"+
+        "    float depth162=max(-d,0.0);\n"+
+        "    float band162=clamp(short162*0.145,7.0,32.0);\n"+
+        "    float t162=depth162/max(band162,1.0);\n"+
+        "    float edge162=exp(-pow((t162-0.42)/0.46,2.0));\n"+
+        "    float shoulder162=1.0-smoothstep(0.24,0.93,r162);\n"+
+        "    float entrance162=smoothstep(0.0,2.4,depth162);\n"+
+        "    float center162=smoothstep(0.0,0.17,r162);\n"+
+        "    // Gradient of one convex optical profile: broad curvature + raised rim.\n"+
+        "    float slope162=(2.6+4.2*shoulder162+14.0*edge162)*center162;\n"+
+        "    float strength162=clamp(unifiedStrength162,0.0,1.0);\n"+
+        "    float2 raw162=-n162*slope162*strength162*entrance162;\n"+
+        "    float gain162=(unifiedLens159>1.5)?1.18:1.0;\n"+
+        "    float2 v162=raw162*gain162;\n"+
+        "    float len162=length(v162);\n"+
+        "    deltaLens=v162*(28.0/sqrt(784.0+len162*len162));\n"+
         "  }\n"+
         // V147: visual truth map, calculated from the actual V146 field geometry.
         // Diagnostic returns BEFORE wallpaper sampling and overlays. Mode 8 is zero warp.
@@ -5593,6 +5580,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 catch(Throwable e159){ log("UNIFIED_LENS_159_READ_FAILED "+e159.getClass().getSimpleName()); }
                                                 unifiedLens159=Math.max(0,Math.min(2,unifiedLens159));
                                                 shader93.setFloatUniform("unifiedLens159",(float)unifiedLens159);
+                                                shader93.setFloatUniform("unifiedStrength162",residualMode120==2?0f:Math.max(0f,Math.min(1f,nonlinear107/100f)));
                                                 int opticalReflection153=1;
                                                 try { opticalReflection153=android.provider.Settings.Global.getInt(
                                                     view.getContext().getContentResolver(),"liquidglass_optical_reflection_153",1);
@@ -5654,7 +5642,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 shader93.setFloatUniform("thickness107",residualMode120==2?0f:thickness107/100f);
                                                 shader93.setFloatUniform("interior107",residualMode120==2?0f:interior107/100f);
                                                 shader93.setFloatUniform("focus107",residualMode120==2?0f:focus107/100f);
-                                                shader93.setFloatUniform("reflection107",residualMode120==2?0f:reflection107/100f);
+                                                shader93.setFloatUniform("reflection107",residualMode120==2?0f:(unifiedLens159>0?Math.max(0f,Math.min(1f,nonlinear107/100f))*0.36f:reflection107/100f));
                                                 int opticalProbe118=0;
                                                 try { opticalProbe118=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_optical_probe_118",0); }catch(Throwable ignored118){}
                                                 opticalProbe118=Math.max(0,Math.min(2,opticalProbe118));
