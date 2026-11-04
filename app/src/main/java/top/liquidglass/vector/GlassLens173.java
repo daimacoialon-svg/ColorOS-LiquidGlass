@@ -199,6 +199,22 @@ final class GlassLens173 {
         "    }\n" +
         "  }\n" +
         "  half4 soft=blurredWallpaper.eval(s);\n" +
+        "  if(opticalSampling>0.5){\n" +
+        "    float2 lo=validBounds.xy+float2(1.0);\n" +
+        "    float2 hi=validBounds.zw-float2(1.0);\n" +
+        "    half4 softFour=blurredWallpaper.eval(clamp(s+float2(-0.38,-0.38),lo,hi));\n" +
+        "    softFour+=blurredWallpaper.eval(clamp(s+float2(0.38,-0.38),lo,hi));\n" +
+        "    softFour+=blurredWallpaper.eval(clamp(s+float2(-0.38,0.38),lo,hi));\n" +
+        "    softFour+=blurredWallpaper.eval(clamp(s+float2(0.38,0.38),lo,hi));\n" +
+        "    soft=softFour*half(0.25);\n" +
+        "    if(opticalSampling>1.5){\n" +
+        "      half4 softAxes=blurredWallpaper.eval(clamp(s+float2(-0.75,0.0),lo,hi));\n" +
+        "      softAxes+=blurredWallpaper.eval(clamp(s+float2(0.75,0.0),lo,hi));\n" +
+        "      softAxes+=blurredWallpaper.eval(clamp(s+float2(0.0,-0.75),lo,hi));\n" +
+        "      softAxes+=blurredWallpaper.eval(clamp(s+float2(0.0,0.75),lo,hi));\n" +
+        "      soft=(softFour+softAxes+blurredWallpaper.eval(s))*half(1.0/9.0);\n" +
+        "    }\n" +
+        "  }\n" +
         "  half4 result=mix(sharp,soft,half(clamp(blurMix,0.0,1.0)));\n" +
         "  // V174: material lighting is separate from lens displacement and blur.\n" +
         "  // Use the actual rounded-rectangle depth, not an elliptical outline.\n" +
@@ -211,6 +227,11 @@ final class GlassLens173 {
         "  float2 normal174=float2(\n" +
         "    depth173(p+float2(0.75,0.0))-depth173(p-float2(0.75,0.0)),\n" +
         "    depth173(p+float2(0.0,0.75))-depth173(p-float2(0.0,0.75)));\n" +
+        "  if(activeCurvature180>1.5){\n" +
+        "    float2 surfaceNormal184=delta182(p);\n" +
+        "    float surfaceLen184=length(surfaceNormal184);\n" +
+        "    if(surfaceLen184>0.0001){normal174=surfaceNormal184/surfaceLen184;}\n" +
+        "  }\n" +
         "  normal174=normal174/max(length(normal174),0.0001);\n" +
         "  float direction174=clamp(directionalEdgeLight,0.0,1.0);\n" +
         "  float directional174=dot(normal174,normalize(float2(-0.62,-0.78)));\n" +
@@ -237,12 +258,12 @@ final class GlassLens173 {
         "    float incidence178=dot(normal174,lightDir178);\n" +
         "    float bright178=pow(max(incidence178,0.0),3.0);\n" +
         "    float dark178=pow(max(-incidence178,0.0),3.0);\n" +
-        "    float shoulder178=pow(max(1.0-t174,0.0),2.2)*(0.5+0.5*smoothstep(0.0,0.18,t174));\n" +
+        "    float shoulder178=pow(max(1.0-t174,0.0),1.3+1.2*(1.0-(width174-1.0)/4.0))*(0.5+0.5*smoothstep(0.0,0.18,t174));\n" +
         "    float reflect178=clamp(edgeLightStrength,0.0,1.0)*shoulder178;\n" +
         "    float directional178=clamp(directionalEdgeLight,0.0,1.0);\n" +
-        "    float glint178=reflect178*(0.014+0.13*bright178)*(0.70+0.30*directional178);\n" +
-        "    float shade178=reflect178*(0.004+0.045*dark178);\n" +
-        "    if(diagnostic>40.5 && diagnostic<41.5){return half4(half3(bright178,shoulder178,dark178),1.0); }\n" +
+        "    float glint178=reflect178*(0.025+0.23*bright178)*(0.70+0.30*directional178);\n" +
+        "    float shade178=reflect178*(0.008+0.085*dark178);\n" +
+
         "    half3 lit178=result.rgb+half3(glint178)*(half3(1.0)-result.rgb);\n" +
         "    result.rgb=clamp(lit178*(half(1.0)-half(shade178)),half3(0.0),half3(1.0));\n" +
         "    return result;\n" +
