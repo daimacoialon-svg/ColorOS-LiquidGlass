@@ -7838,6 +7838,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         DockBackground204(View v){target=v;}
         @Override public void draw(Canvas c){
             if(!dockGlass204)return;
+            if(DOCK_DRAW_COUNT_200++<8)log("DOCK_200_DRAW bounds="+getBounds().width()+"x"+getBounds().height());
             final float density=target.getResources().getDisplayMetrics().density;
             final Rect b=getBounds();
             // Use Hotseat's native bounds; clamp horizontal edge inset to keep all corners on screen.
@@ -7896,54 +7897,122 @@ public final class HookEntry implements IXposedHookLoadPackage {
         }
         return null;
     }
+    // V200: Dock diagnostics are intentionally independent from the folder shader.
+    private static final java.util.Set<String> DOCK_HOOKED_200=
+        java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+    private static final java.util.Map<android.app.Activity,Boolean> DOCK_RETRY_200=
+        java.util.Collections.synchronizedMap(new java.util.WeakHashMap<android.app.Activity,Boolean>());
+    private static volatile int DOCK_DRAW_COUNT_200=0;
+    private static boolean isLauncherActivity200(android.app.Activity a){
+        if(a==null)return false;
+        String n=a.getClass().getName();
+        return n.startsWith("com.android.launcher3.") &&
+            (n.endsWith("Launcher") || n.contains("LauncherActivity") || n.contains("OplusLauncher"));
+    }
+    private static View findDock200(View root,int depth){
+        if(root==null||depth>18)return null;
+        try{
+            String cn=root.getClass().getName().toLowerCase(java.util.Locale.ROOT);
+            if(cn.endsWith(".hotseat") || cn.contains("hotseatview") || cn.contains("hotseatlayout"))return root;
+        }catch(Throwable ignored){}
+        if(root instanceof android.view.ViewGroup){
+            android.view.ViewGroup group=(android.view.ViewGroup)root;
+            for(int i=0;i<group.getChildCount();i++){
+                View found=findDock200(group.getChildAt(i),depth+1);
+                if(found!=null)return found;
+            }
+        }
+        return null;
+    }
     private static void refreshLauncherOptics204(android.app.Activity activity){
         try{
-            if(activity==null)return;
+            if(activity==null||activity.isFinishing()||activity.isDestroyed())return;
             LAUNCHER_ACTIVITY_205=new java.lang.ref.WeakReference<android.app.Activity>(activity);
             refreshFromContext(activity);
-            int id=activity.getResources().getIdentifier("hotseat","id","com.android.launcher");
+            int id=activity.getResources().getIdentifier("hotseat","id",activity.getPackageName());
             View hotseat=id==0?null:activity.findViewById(id);
+            if(hotseat==null)hotseat=findHotseat198(activity.getWindow().getDecorView(),0);
+            if(hotseat==null)hotseat=findDock200(activity.getWindow().getDecorView(),0);
             if(hotseat==null){
-                // OEM launcher resource packages vary. Search the actual hierarchy by resource entry name.
-                hotseat=findHotseat198(activity.getWindow().getDecorView(),0);
+                log("DOCK_200_NOT_FOUND activity="+activity.getClass().getName()+" enabled="+dockGlass204);
+                return;
             }
-            if(hotseat==null){log("DOCK_198_HOTSEAT_NOT_FOUND");return;}
+            log("DOCK_200_FOUND class="+hotseat.getClass().getName()+" id="+hotseat.getId()+
+                " bounds="+hotseat.getWidth()+"x"+hotseat.getHeight()+" enabled="+dockGlass204+
+                " glass="+glassEnabled);
             if(dockGlass204){
                 if(!(hotseat.getBackground() instanceof DockBackground204)){
                     DOCK_ORIGINAL_204.put(hotseat,hotseat.getBackground());
                     hotseat.setBackground(new DockBackground204(hotseat));
+                    log("DOCK_200_ATTACHED class="+hotseat.getClass().getName());
                 }
             }else if(hotseat.getBackground() instanceof DockBackground204){
                 hotseat.setBackground(DOCK_ORIGINAL_204.remove(hotseat));
+                log("DOCK_200_DETACHED");
             }
             hotseat.invalidate();
-            if(dockGlass204 && glassEnabled){
-                scheduleReferenceLoad(hotseat);
-            }
-            // The icon optics path is diagnostic-only until per-icon drawable bounds
-            // are confirmed. Do not add a full-cell overlay that covers icon labels.
-            if(diagnostics)log("HOTSEAT_204 bounds="+hotseat.getWidth()+"x"+hotseat.getHeight()+
-                " dock="+dockGlass204+" iconRequested="+iconOptics204);
-        }catch(Throwable t){log("HOTSEAT_204_FAILED "+t.getClass().getSimpleName());}
+            if(dockGlass204 && glassEnabled)scheduleReferenceLoad(hotseat);
+        }catch(Throwable t){log("DOCK_200_ATTACH_FAILED "+t.getClass().getName()+" "+t.getMessage());}
     }
-    private static void hookLauncherOptics204(ClassLoader loader){
+    private static void scheduleDock200(android.app.Activity a,String trigger){
+        if(!isLauncherActivity200(a))return;
+        log("DOCK_200_LIFECYCLE trigger="+trigger+" activity="+a.getClass().getName());
         try{
-            Class<?> launcher=find("com.android.launcher3.Launcher",loader);
-            if(launcher==null){log("HOTSEAT_204_LAUNCHER_NOT_FOUND");return;}
-            java.lang.reflect.Method m=launcher.getDeclaredMethod("onResume");
-            XposedBridge.hookMethod(m,new XC_MethodHook(){
-                @Override protected void afterHookedMethod(MethodHookParam p){
-                    if(p.thisObject instanceof android.app.Activity){
-                        android.app.Activity a=(android.app.Activity)p.thisObject;
-                        a.getWindow().getDecorView().post(()->{
-                            refreshLauncherOptics204(a);
-                            attachDockConfigObserver205(a);
-                        });
-                    }
+            View root=a.getWindow().getDecorView();
+            root.post(()->{
+                refreshLauncherOptics204(a);
+                attachDockConfigObserver205(a);
+                if(DOCK_RETRY_200.put(a,Boolean.TRUE)==null){
+                    root.postDelayed(()->refreshLauncherOptics204(a),350L);
+                    root.postDelayed(()->refreshLauncherOptics204(a),1300L);
+                    root.postDelayed(()->DOCK_RETRY_200.remove(a),1800L);
                 }
             });
-            log("HOTSEAT_204_HOOK_READY");
-        }catch(Throwable t){log("HOTSEAT_204_HOOK_FAILED "+t.getClass().getSimpleName());}
+        }catch(Throwable t){log("DOCK_200_SCHEDULE_FAILED "+t.getClass().getSimpleName());}
+    }
+    private static void hookLauncherOptics204(ClassLoader loader){
+        int hooked=0;
+        // Hook the first declaring implementation along the OEM Launcher inheritance chain.
+        String[] names={"com.android.launcher3.Launcher","com.android.launcher3.OplusLauncher",
+            "com.android.launcher3.LauncherActivity"};
+        for(String name:names){
+            try{
+                Class<?> type=find(name,loader);
+                if(type==null)continue;
+                for(Class<?> c=type;c!=null&&android.app.Activity.class.isAssignableFrom(c);c=c.getSuperclass()){
+                    for(java.lang.reflect.Method m:c.getDeclaredMethods()){
+                        if(!"onResume".equals(m.getName())||m.getParameterTypes().length!=0)continue;
+                        String key=c.getName()+"#onResume";
+                        if(!DOCK_HOOKED_200.add(key))continue;
+                        try{
+                            XposedBridge.hookMethod(m,new XC_MethodHook(){
+                                @Override protected void afterHookedMethod(MethodHookParam p){
+                                    if(p.thisObject instanceof android.app.Activity)
+                                        scheduleDock200((android.app.Activity)p.thisObject,"onResume");
+                                }
+                            });
+                            hooked++;
+                            log("DOCK_200_HOOK_READY "+key);
+                        }catch(Throwable t){DOCK_HOOKED_200.remove(key);log("DOCK_200_HOOK_FAILED "+key+" "+t.getClass().getSimpleName());}
+                    }
+                }
+            }catch(Throwable t){log("DOCK_200_CLASS_FAILED "+name+" "+t.getClass().getSimpleName());}
+        }
+        // Framework fallback catches Launcher variants whose onResume is declared elsewhere.
+        try{
+            java.lang.reflect.Method post=android.app.Activity.class.getDeclaredMethod("onPostResume");
+            if(DOCK_HOOKED_200.add("Activity#onPostResume")){
+                XposedBridge.hookMethod(post,new XC_MethodHook(){
+                    @Override protected void afterHookedMethod(MethodHookParam p){
+                        if(p.thisObject instanceof android.app.Activity)
+                            scheduleDock200((android.app.Activity)p.thisObject,"onPostResume");
+                    }
+                });
+                hooked++;
+                log("DOCK_200_FALLBACK_READY Activity#onPostResume");
+            }
+        }catch(Throwable t){log("DOCK_200_FALLBACK_FAILED "+t.getClass().getSimpleName());}
+        log("DOCK_200_HOOK_SUMMARY count="+hooked);
     }
     private static final java.util.Map<android.app.Activity,android.database.ContentObserver> DOCK_OBSERVERS_205=
         java.util.Collections.synchronizedMap(new java.util.WeakHashMap<android.app.Activity,android.database.ContentObserver>());
@@ -7954,6 +8023,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             android.database.ContentObserver observer=new android.database.ContentObserver(handler){
                 @Override public void onChange(boolean selfChange){
                     lastRead=0L;
+                    log("DOCK_200_CONFIG_CHANGED");
                     handler.postDelayed(()->{
                         if(a.isFinishing() || a.isDestroyed())return;
                         refreshLauncherOptics204(a);
