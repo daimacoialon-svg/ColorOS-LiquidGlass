@@ -29,6 +29,8 @@ final class GlassLens173 {
         "uniform float diagnostic;\n" +
         "uniform float opticalSampling;\n" +
         "uniform float edgeLightStrength;\n" +
+        "uniform float edgeLightRawStrength;\n" +
+        "uniform float edgeLightEnabled;\n" +
         "uniform float edgeLightWidth;\n" +
         "uniform float directionalEdgeLight;\n" +
         "\n" +
@@ -163,10 +165,16 @@ final class GlassLens173 {
         "    return half4(half3(energy174*diffuse174,0.0,energy174*dark174),1.0);\n" +
         "  }\n" +
         "  if(diagnostic>27.5 && diagnostic<28.5){\n" +
-        "    return half4(half3(envelope174,clamp(edgeLightStrength,0.0,1.0),0.0),1.0);\n" +
+        "    return half4(half3(envelope174,clamp(edgeLightRawStrength,0.0,1.0),clamp(edgeLightEnabled,0.0,1.0)),1.0);\n" +
         "  }\n" +
+        // V176: full-field diagnostic channels; no edge masking or compositing.
+        // 29: red=raw slider, green=effective strength, blue=enabled switch.
+        "  if(diagnostic>28.5 && diagnostic<29.5){return half4(half3(clamp(edgeLightRawStrength,0.0,1.0),clamp(edgeLightStrength,0.0,1.0),clamp(edgeLightEnabled,0.0,1.0)),1.0); }\n" +
+        // 30: red=width normalized 1..5, green=shell pixels normalized 0..27.
+        "  if(diagnostic>29.5 && diagnostic<30.5){return half4(half3(clamp((edgeLightWidth-1.0)/4.0,0.0,1.0),clamp(shell174/27.0,0.0,1.0),0.0),1.0); }\n" +
         "  float lift175=energy174*(0.21*diffuse174+0.022);\n" +
         "  float shade175=energy174*(0.18*dark174+0.018);\n" +
+        "  if(diagnostic>30.5 && diagnostic<31.5){return half4(half3(clamp(lift175*4.0,0.0,1.0),clamp(edgeLightStrength,0.0,1.0),clamp(shade175*4.0,0.0,1.0)),1.0); }\n" +
         "  // Blend independent signed light and shadow without mutual cancellation.\n" +
         "  half3 lit175=result.rgb+half3(lift175)*(half3(1.0)-result.rgb);\n" +
         "  result.rgb=clamp(lit175*(half(1.0)-half(shade175)),half3(0.0),half3(1.0));\n" +
@@ -196,6 +204,8 @@ final class GlassLens173 {
         shader.setFloatUniform("diagnostic", (float) diagnostic);
         shader.setFloatUniform("opticalSampling", (float) Math.max(0, Math.min(2, samplingMode)));
         shader.setFloatUniform("edgeLightStrength", edgeEnabled ? Math.max(0f, Math.min(1f, edgeStrength / 100f)) : 0f);
+        shader.setFloatUniform("edgeLightRawStrength", Math.max(0f, Math.min(1f, edgeStrength / 100f)));
+        shader.setFloatUniform("edgeLightEnabled", edgeEnabled ? 1f : 0f);
         shader.setFloatUniform("edgeLightWidth", (float) Math.max(1, Math.min(5, edgeWidth)));
         shader.setFloatUniform("directionalEdgeLight", directional ? 1f : 0f);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);

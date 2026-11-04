@@ -827,6 +827,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static volatile int glassAlpha = 210, tintMode = 0, tintStrength = 30;
     private static volatile boolean highlightEnabled = false;
     private static volatile int highlightStrength = 25;
+    private static volatile String edgeAudit176Last = "";
     private static volatile int highlightWidth = 2;
     private static volatile boolean directionalLight = true;
     // V1.9.23: Do not mutate LayerBlurDrawable.mRadius: it is also used as
@@ -5692,6 +5693,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     try { opticalSampling173=android.provider.Settings.Global.getInt(
                                                         view.getContext().getContentResolver(),"liquidglass_optical_sampling_142",0); }
                                                     catch(Throwable ignored173b) {}
+                                                    // V176: log only when the actual Launcher-side config changes.
+                                                    String audit176=highlightEnabled+"/"+highlightStrength+"/"+highlightWidth+"/"+directionalLight+"/"+opticalDiagnostic173;
+                                                    if(!audit176.equals(edgeAudit176Last)){
+                                                        edgeAudit176Last=audit176;
+                                                        log("EDGE_UNIFORM_AUDIT_176 enabled="+highlightEnabled+
+                                                            " rawStrength="+highlightStrength+" effectiveStrength="+(highlightEnabled?highlightStrength:0)+
+                                                            " width="+highlightWidth+" directional="+directionalLight+
+                                                            " diagnostic="+opticalDiagnostic173+" configSource=LAUNCHER_SNAPSHOT");
+                                                    }
                                                     GlassLens173.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
                                                         valid173,overall173,blend101,opticalDiagnostic173,opticalSampling173,
                                                         highlightEnabled,highlightStrength,highlightWidth,directionalLight);
