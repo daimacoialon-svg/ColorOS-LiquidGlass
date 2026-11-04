@@ -33,6 +33,7 @@ final class GlassLens173 {
         "uniform float edgeLightEnabled;\n" +
         "uniform float edgeLightWidth;\n" +
         "uniform float directionalEdgeLight;\n" +
+        "uniform float reflectionModel178;\n" +
         "\n" +
         "// Exact rounded-rectangle silhouette; positive depths point INTO glass.\n" +
         "float depth173(float2 p) {\n" +
@@ -172,6 +173,23 @@ final class GlassLens173 {
         "  if(diagnostic>28.5 && diagnostic<29.5){return half4(half3(clamp(edgeLightRawStrength,0.0,1.0),clamp(edgeLightStrength,0.0,1.0),clamp(edgeLightEnabled,0.0,1.0)),1.0); }\n" +
         // 30: red=width normalized 1..5, green=shell pixels normalized 0..27.
         "  if(diagnostic>29.5 && diagnostic<30.5){return half4(half3(clamp((edgeLightWidth-1.0)/4.0,0.0,1.0),clamp(shell174/27.0,0.0,1.0),0.0),1.0); }\n" +
+        // V178: optical surface response is an anisotropic Fresnel-like rim, not a uniform outline.
+        // Preserve the old V177 material path behind a reversible global setting.
+        "  if(reflectionModel178>0.5){\n" +
+        "    float2 lightDir178=normalize(float2(-0.72,-0.69));\n" +
+        "    float incidence178=dot(normal174,lightDir178);\n" +
+        "    float bright178=pow(max(incidence178,0.0),3.0);\n" +
+        "    float dark178=pow(max(-incidence178,0.0),3.0);\n" +
+        "    float shoulder178=pow(max(1.0-t174,0.0),2.2)*(0.5+0.5*smoothstep(0.0,0.18,t174));\n" +
+        "    float reflect178=clamp(edgeLightStrength,0.0,1.0)*shoulder178;\n" +
+        "    float directional178=clamp(directionalEdgeLight,0.0,1.0);\n" +
+        "    float glint178=reflect178*(0.014+0.13*bright178)*(0.70+0.30*directional178);\n" +
+        "    float shade178=reflect178*(0.004+0.045*dark178);\n" +
+        "    if(diagnostic>31.5 && diagnostic<32.5){return half4(half3(bright178,shoulder178,dark178),1.0); }\n" +
+        "    half3 lit178=result.rgb+half3(glint178)*(half3(1.0)-result.rgb);\n" +
+        "    result.rgb=clamp(lit178*(half(1.0)-half(shade178)),half3(0.0),half3(1.0));\n" +
+        "    return result;\n" +
+        "  }\n" +
         "  float lift175=energy174*(0.21*diffuse174+0.022);\n" +
         "  float shade175=energy174*(0.18*dark174+0.018);\n" +
         "  if(diagnostic>30.5 && diagnostic<31.5){return half4(half3(clamp(lift175*4.0,0.0,1.0),clamp(edgeLightStrength,0.0,1.0),clamp(shade175*4.0,0.0,1.0)),1.0); }\n" +
@@ -184,7 +202,7 @@ final class GlassLens173 {
     static void draw(View owner, Canvas canvas, RectF rect, float radius,
                      BitmapShader wallpaper, BitmapShader blurredWallpaper,
                      RectF validBounds, float strength, float blurMix, int diagnostic, int samplingMode,
-                     boolean edgeEnabled, int edgeStrength, int edgeWidth, boolean directional) {
+                     boolean edgeEnabled, int edgeStrength, int edgeWidth, boolean directional, int reflectionModel178) {
         RuntimeShader shader;
         synchronized (CACHE173) {
             shader = CACHE173.get(owner);
@@ -208,6 +226,7 @@ final class GlassLens173 {
         shader.setFloatUniform("edgeLightEnabled", edgeEnabled ? 1f : 0f);
         shader.setFloatUniform("edgeLightWidth", (float) Math.max(1, Math.min(5, edgeWidth)));
         shader.setFloatUniform("directionalEdgeLight", directional ? 1f : 0f);
+        shader.setFloatUniform("reflectionModel178", reflectionModel178 > 0 ? 1f : 0f);
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         paint.setShader(shader);
         canvas.drawRoundRect(rect, radius, radius, paint);

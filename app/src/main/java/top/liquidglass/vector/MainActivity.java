@@ -142,10 +142,10 @@ public final class MainActivity extends Activity {
         TextView blurInfo=text("自定义模糊使用壁纸采样，不模糊应用图标。系统模糊开关不再强制开启；ColorOS 自身仍可能启用原生模糊。",12,false);current.addView(blurInfo);
         // V1.9.199: legacy soft-highlight controls removed from UI. Existing
         // preferences remain for compatibility; the unified surface owns reflection.
-        section("边缘高光与暗边","模式 0 关闭；模式 1–3 开启。强度与宽度直接控制独立玻璃渲染器的边缘光照。");
+        section("玻璃曲面反射","V178：默认使用局部、非均匀曲面反射；不再以均匀描边制造玻璃厚度。可通过 Termux 全局开关回退 V177 反射模型。");
         TextView surfaceLabel=text("表面反射模式",13,false);current.addView(surfaceLabel);
         Spinner surfaceSpinner=new Spinner(this);
-        String[] surfaceModes={"0 · 关闭描边","1 · 静态柔和高光","2 · 动态柔和高光","3 · 动态高光 + 柔和暗边"};
+        String[] surfaceModes={"0 · 关闭曲面反射","1 · 柔和曲面反射","2 · 定向曲面反射","3 · 定向反射与柔和暗部"};
         surfaceSpinner.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,surfaceModes));
         surfaceSpinner.setSelection(Math.max(0,Math.min(3,prefs.getInt("surface_mode_195",3))));current.addView(surfaceSpinner);
         surfaceSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
@@ -157,7 +157,7 @@ public final class MainActivity extends Activity {
         });
         slider("边缘高光强度 (%)","surface_strength_195",100,0,200);
         slider("高光过渡宽度 (%)","surface_softness_195",100,50,200);
-        TextView surfaceHint=text("V177：强度 0% 关闭光照，200% 为最大；过渡宽度 50% 最窄、200% 最宽。仅改变边缘光照，不改变壁纸折射位移。",12,false);
+        TextView surfaceHint=text("V178：强度 0% 关闭反射，200% 为最大；过渡宽度控制边缘影响范围。当前是稳定的定向光照模型，不宣称能追踪真实环境光；不改变壁纸折射位移。",12,false);
         current.addView(surfaceHint);
         section("玻璃底色色调","选择玻璃底色的冷暖色调与叠加浓度；与模糊、折射、表面反射独立。");
         TextView tintLabel=text("色调",13,false);current.addView(tintLabel);
