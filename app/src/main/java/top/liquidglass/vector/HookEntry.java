@@ -425,11 +425,19 @@ public final class HookEntry implements IXposedHookLoadPackage {
         "  if(opticalReflection153>0.5){\n"+
         // V155: reflection gradient comes only from smooth four-edge weights.
         // Never switch nearest-edge normals across the square's medial axes.
+        // V156: response uses smooth four-edge weights only; no nearest-edge normal switch.
+        // A soft rim and a broad, low-amplitude curved sheen remain visible at full strength.
         "    float2 rn153=smoothN/max(length(smoothN),0.35);\n"+
         "    float depth153=max(-d,0.0);\n"+
-        "    float rim153=1.0-smoothstep(0.0,6.0+min(thickness107*3.0,3.0),depth153);\n"+
-        "    float direction153=clamp(0.62-0.22*rn153.x-0.16*rn153.y,0.0,1.0);\n"+
-        "    light=reflection107*0.085*rim153*direction153;\n"+
+        "    float rim153=1.0-smoothstep(0.0,12.0+min(thickness107*5.0,6.0),depth153);\n"+
+        "    float direction153=clamp(0.70-0.24*rn153.x-0.18*rn153.y,0.18,1.0);\n"+
+        "    float2 center156=(bounds.xy+bounds.zw)*0.5;\n"+
+        "    float2 extent156=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n"+
+        "    float2 uv156=(p-center156)/extent156;\n"+
+        "    float curved156=exp(-3.0*dot(uv156-float2(-0.38,-0.52),uv156-float2(-0.38,-0.52)));\n"+
+        "    float inside156=1.0-smoothstep(-2.0,1.0,d);\n"+
+        "    float sheen156=0.045*curved156*inside156;\n"+
+        "    light=reflection107*(0.19*rim153*direction153+sheen156);\n"+
         "    if(opticalReflection153>1.5) light=0.0;\n"+
         "  }\n"+
         // V155: defer reflection until after the blur mix; no double counting.
