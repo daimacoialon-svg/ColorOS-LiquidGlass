@@ -34,6 +34,7 @@ final class GlassLens173 {
         "uniform float edgeLightWidth;\n" +
         "uniform float directionalEdgeLight;\n" +
         "uniform float reflectionModel178;\n" +
+        "uniform float activeCurvature180;\n" +
         "\n" +
         "// Exact rounded-rectangle silhouette; positive depths point INTO glass.\n" +
         "float depth173(float2 p) {\n" +
@@ -73,10 +74,31 @@ final class GlassLens173 {
         "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
         "}\n" +
         "\n" +
+        "// V180: curvature applied to the ACTIVE independent renderer, not legacy HookEntry AGSL.\\n" +
+        "float2 delta180(float2 p) {\\n" +
+        "  float2 size=max(bounds.zw-bounds.xy,float2(2.0));\\n" +
+        "  float2 mid=(bounds.xy+bounds.zw)*0.5;\\n" +
+        "  float2 uv=(p-mid)/(size*0.5);\\n" +
+        "  float d=max(depth173(p),0.0);\\n" +
+        "  float band=min(clamp(min(size.x,size.y)*0.26,13.0,42.0),max(5.0,radius*0.88));\\n" +
+        "  float t=clamp(d/band,0.0,1.0);\\n" +
+        "  float profile=sin(3.14159265*t);\\n" +
+        "  float2 g=float2(0.5*(depth173(p+float2(1.0,0.0))-depth173(p-float2(1.0,0.0))),0.5*(depth173(p+float2(0.0,1.0))-depth173(p-float2(0.0,1.0))));\\n" +
+        "  float2 rim=g*band*0.19*profile*profile;\\n" +
+        "  float inner=smoothstep(0.0,band*1.3,d);\\n" +
+        "  float2 core=-uv*min(min(size.x,size.y)*0.072,19.0)*exp(-0.68*dot(uv,uv))*inner;\\n" +
+        "  float gain=activeCurvature180>1.5?1.28:1.0;\\n" +
+        "  float2 raw=(rim+core)*gain*clamp(glassStrength,0.0,1.0);\\n" +
+        "  float cap=clamp(min(size.x,size.y)*0.13,11.0,25.0);\\n" +
+        "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\\n" +
+        "}\\n" +
+        "float2 opticalDelta180(float2 p) {\\n" +
+        "  return activeCurvature180>0.5?delta180(p):delta173(p);\\n" +
+        "}\\n" +
         "float2 sample173(float2 p) {\n" +
         "  float2 lo=validBounds.xy+float2(1.0);\n" +
         "  float2 hi=max(lo+float2(2.0),validBounds.zw-float2(1.0));\n" +
-        "  return clamp(p+delta173(p),lo,hi);\n" +
+        "  return clamp(p+opticalDelta180(p),lo,hi);\n" +
         "}\n" +
         "\n" +
         "half4 main(float2 p) {\n" +
@@ -84,7 +106,16 @@ final class GlassLens173 {
         "  float d=max(depth173(p),0.0);\n" +
         "  float2 disp=s-p;\n" +
         "  float strength=clamp(glassStrength,0.0,1.0);\n" +
-        "  if(diagnostic>10.5 && diagnostic<11.5){\n" +
+        "  if(diagnostic>31.5 && diagnostic<32.5){\\n" +
+        "    float diff=length(delta180(p)-delta173(p));\\n" +
+        "    float t=clamp(diff/7.0,0.0,1.0);\\n" +
+        "    return half4(half3(t,0.1,1.0-t),1.0);\\n" +
+        "  }\\n" +
+        "  if(diagnostic>32.5 && diagnostic<33.5){\\n" +
+        "    float2 v=s-p;\\n" +
+        "    return half4(half3(clamp(0.5+v.x/18.0,0.0,1.0),clamp(0.5+v.y/18.0,0.0,1.0),clamp(length(v)/12.0,0.0,1.0)),1.0);\\n" +
+        "  }\\n" +
+        "  if(diagnostic>10.5 && diagnostic<11.5){\\n" +
         "    float2 cell=abs(fract(s/23.0)-0.5);\n" +
         "    float line=1.0-smoothstep(0.457,0.492,max(cell.x,cell.y));\n" +
         "    return half4(half3(line),1.0);\n" +
@@ -202,7 +233,7 @@ final class GlassLens173 {
     static void draw(View owner, Canvas canvas, RectF rect, float radius,
                      BitmapShader wallpaper, BitmapShader blurredWallpaper,
                      RectF validBounds, float strength, float blurMix, int diagnostic, int samplingMode,
-                     boolean edgeEnabled, int edgeStrength, int edgeWidth, boolean directional, int reflectionModel178) {
+                     boolean edgeEnabled, int edgeStrength, int edgeWidth, boolean directional, int reflectionModel178, int activeCurvature180) {
         RuntimeShader shader;
         synchronized (CACHE173) {
             shader = CACHE173.get(owner);
@@ -227,6 +258,7 @@ final class GlassLens173 {
         shader.setFloatUniform("edgeLightWidth", (float) Math.max(1, Math.min(5, edgeWidth)));
         shader.setFloatUniform("directionalEdgeLight", directional ? 1f : 0f);
         shader.setFloatUniform("reflectionModel178", reflectionModel178 > 0 ? 1f : 0f);
+        shader.setFloatUniform("activeCurvature180", (float)Math.max(0,Math.min(2,activeCurvature180)));
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         paint.setShader(shader);
         canvas.drawRoundRect(rect, radius, radius, paint);
