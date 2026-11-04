@@ -30,6 +30,13 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public final class HookEntry implements IXposedHookLoadPackage {
     private static final String TAG = "ColorOSLiquidGlass";
+    // V173 clean optical renderer. 1=new independent path; 0=V172 fallback.
+    private static int opticalPipeline173(View view) {
+        try { return android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),
+                "liquidglass_optical_pipeline_173", 1) == 0 ? 0 : 1; }
+        catch(Throwable ignored) { return 1; }
+    }
+    private static int newOpticalLog173=0;
     private static int edgeShaderLogs93=0;
     private static volatile String lastOpticalState149 = "";
     private static volatile String lastOpticalState150 = "";
@@ -4702,6 +4709,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         if(n<80 || (n<800 && n%100==0)) log("RESIDUAL_ISOLATION_120 stage="+stage+" "+detail);
     }
     private static void drawReferenceRefraction(View view,Canvas canvas,RectF rect,float radius) {
+        final int pipeline173=opticalPipeline173(view);
         final int residualMode120=residualIsolation120(view);
         residualLog120("ENTRY","mode="+residualMode120+" legacyEnabled="+REFRACTION_ENABLED+" legacyStrength="+refractionPercent+" lens="+nonlinear107+","+thickness107+","+interior107+","+focus107+","+reflection107);
         if(residualMode120==3){residualLog120("SKIP_ALL_MODULE_REFRACTION","mode=3");return;}
@@ -5659,8 +5667,6 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 matrix93.setValues(new float[]{referenceScaleX,0f,rect.left-left,
                                                     0f,referenceScaleY,rect.top-top,0f,0f,1f});
                                                 wallpaper93.setLocalMatrix(matrix93);
-                                                android.graphics.RuntimeShader shader93=new android.graphics.RuntimeShader(EDGE_SHADER_93);
-                                                shader93.setInputShader("wallpaper",wallpaper93);
                                                 float requestedBlurPx101=(customBlurMode==1 ? Math.max(0f,folderMicroBlurDp95) : 0f)*view.getResources().getDisplayMetrics().density;
                                                 float blend101=requestedBlurPx101<=1f?0f:Math.min(1f,Math.max(0f,(requestedBlurPx101-1f)/3f));
                                                 android.graphics.Bitmap blurredFrame101=blend101>0f?preblur101(frame,requestedBlurPx101):frame;
@@ -5673,6 +5679,29 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 blurredMatrix101.setValues(new float[]{referenceScaleX*(float)frame.getWidth()/blurredFrame101.getWidth(),0f,rect.left-left,
                                                     0f,referenceScaleY*(float)frame.getHeight()/blurredFrame101.getHeight(),rect.top-top,0f,0f,1f});
                                                 blurredWallpaper101.setLocalMatrix(blurredMatrix101);
+                                                if(pipeline173==1){
+                                                    int opticalDiagnostic173=0;
+                                                    try { opticalDiagnostic173=android.provider.Settings.Global.getInt(
+                                                        view.getContext().getContentResolver(),"liquidglass_optical_diagnostic_147",0); }
+                                                    catch(Throwable ignored173) {}
+                                                    float overall173=residualMode120==2?0f:Math.max(0f,Math.min(1f,nonlinear107/100f));
+                                                    RectF valid173=new RectF(rect.left-left,rect.top-top,
+                                                        rect.left-left+frame.getWidth()*referenceScaleX,
+                                                        rect.top-top+frame.getHeight()*referenceScaleY);
+                                                    int opticalSampling173=0;
+                                                    try { opticalSampling173=android.provider.Settings.Global.getInt(
+                                                        view.getContext().getContentResolver(),"liquidglass_optical_sampling_142",0); }
+                                                    catch(Throwable ignored173b) {}
+                                                    GlassLens173.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
+                                                        valid173,overall173,blend101,opticalDiagnostic173,opticalSampling173);
+                                                    if(newOpticalLog173++<120)log("OPTICAL_PIPELINE_173 path=CLEAN_SINGLE_SHADER"+
+                                                        " container="+((view.getBackground() instanceof DockBackground204)?"DOCK":"FOLDER")+
+                                                        " strength="+overall173+" diagnostic="+opticalDiagnostic173+
+                                                        " rect="+rect.toShortString()+" screenOrigin="+left+","+top+
+                                                        " bitmap="+System.identityHashCode(frame));
+                                                } else {
+                                                android.graphics.RuntimeShader shader93=new android.graphics.RuntimeShader(EDGE_SHADER_93);
+                                                shader93.setInputShader("wallpaper",wallpaper93);
                                                 shader93.setInputShader("blurredWallpaper101",blurredWallpaper101);
                                                 int diagInterior103=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_diag_interior_103",0);
                                                 int diagBlur103=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_diag_blur_103",0);
@@ -5885,6 +5914,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                 }
                                                 if(edgeShaderLogs93++<60)log("FOLDER_DIAG_104 stage=DRAW interior="+diagInterior103+" blurDiag="+diagBlur103+" requestedDp="+folderMicroBlurDp95+" legacyDp="+customBlurDp+" blurMode="+customBlurMode+" effectivePx="+((customBlurMode==1?folderMicroBlurDp95:0f)*view.getResources().getDisplayMetrics().density)+" preblurMix="+blend101+" preblurFrame="+blurredFrame101.getWidth()+"x"+blurredFrame101.getHeight()+" zeroBypass="+(customBlurMode!=1||folderMicroBlurDp95<=0f)+" frame="+System.identityHashCode(frame)+" strength="+(legacyRefractionActive117 ? refractionPercent : 0)+" lens110="+nonlinear107+","+thickness107+","+interior107+
                                                     " bounds="+rect+" screenLeft="+left+" frame="+frame.getWidth()+"x"+frame.getHeight());
+                                                } // V173: legacy lens renderer remains reversible.
                                             }catch(Throwable e){
                                                 if(lensPipelineLogs111++<160)log("LENS_PIPELINE_111 stage=SHADER_ERROR "+e);
                                                 if(edgeShaderLogs93++<60)log("FOLDER_BLUR_102 stage=ERROR "+e);
@@ -6040,7 +6070,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     " rimMode="+rimMode190()+
                     " blurDp="+customBlurDp+
                     " direction="+state.visualDirection188);
-            final int rim190=effectiveRim192();
+            // V173 owns a subtle view-local highlight; disable duplicate painted rims.
+            final int rim190=(pipeline173==1)?0:effectiveRim192();
             if(surface194Logs++<24)log("SURFACE_MODE_194 mode="+surfaceMode194()+
                 " rollback="+(!surface194Enabled())+" strength="+surfaceStrength194()+
                 " softness="+surfaceSoftness194()+" rim="+rim190+
@@ -6053,7 +6084,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     " blurDp="+customBlurDp+
                     " direction="+state.visualDirection188+
                     " view="+System.identityHashCode(view));
-            if(!surface194Enabled() && unified192==0 && rim190==0 && surface189!=0 && refractionActive && continuousDrawn && spec189!=0){
+            if(pipeline173==0 && !surface194Enabled() && unified192==0 && rim190==0 && surface189!=0 && refractionActive && continuousDrawn && spec189!=0){
                 drawSurfaceStripe189(canvas,rect,contourRadius,
                     state.visualDirection188,spec189,surface189);
                 if(surfaceLogs189++<180)log("SURFACE_PASS_189 pass="+surface189+

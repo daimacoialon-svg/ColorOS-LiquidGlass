@@ -1,0 +1,175 @@
+package top.liquidglass.vector;
+
+import android.graphics.BitmapShader;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.RectF;
+import android.graphics.RuntimeShader;
+import android.view.View;
+import java.util.WeakHashMap;
+
+/**
+ * V1.9.205.173: independent, deterministic, view-local optical renderer.
+ * Reuses the verified bitmap coordinate transform supplied by HookEntry,
+ * but does not reuse its historical displacement, motion sheen, or SDF normals.
+ */
+final class GlassLens173 {
+    private GlassLens173() {}
+    // Compile the shader once per container view; update child shaders and uniforms
+    // every draw. Recompiling AGSL on every horizontal swipe was unnecessary work.
+    private static final WeakHashMap<View, RuntimeShader> CACHE173 = new WeakHashMap<>();
+    static final String AGSL =
+        "uniform shader wallpaper;\n" +
+        "uniform shader blurredWallpaper;\n" +
+        "uniform float4 bounds;\n" +
+        "uniform float4 validBounds;\n" +
+        "uniform float radius;\n" +
+        "uniform float glassStrength;\n" +
+        "uniform float blurMix;\n" +
+        "uniform float diagnostic;\n" +
+        "uniform float opticalSampling;\n" +
+        "\n" +
+        "// Exact rounded-rectangle silhouette; positive depths point INTO glass.\n" +
+        "float depth173(float2 p) {\n" +
+        "  float2 halfSize=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        "  float r=clamp(radius,0.0,min(halfSize.x,halfSize.y));\n" +
+        "  float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(halfSize-r);\n" +
+        "  return r-length(max(q,float2(0.0)))-min(max(q.x,q.y),0.0);\n" +
+        "}\n" +
+        "\n" +
+        "// Stable view-local optical map; no time, gesture, wallpaper offset, or\n" +
+        "// nearest-edge index. The rounded SDF derivative is used ONLY in the rim;\n" +
+        "// it vanishes before the medial axis, eliminating diagonal X creases.\n" +
+        "float2 delta173(float2 p) {\n" +
+        "  float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        "  float minSide=min(size.x,size.y);\n" +
+        "  float2 mid=(bounds.xy+bounds.zw)*0.5;\n" +
+        "  float2 uv=(p-mid)/max(size*0.5,float2(1.0));\n" +
+        "  float depth=max(depth173(p),0.0);\n" +
+        "  float band=min(clamp(minSide*0.175,12.0,29.0),max(4.0,radius*0.70));\n" +
+        "  float tx=clamp(depth/band,0.0,1.0);\n" +
+        "  float edgeSin=sin(3.14159265*tx);\n" +
+        "  float edgeShape=edgeSin*edgeSin;\n" +
+        "  // A symmetric central difference is safe because only near-surface SDF\n" +
+        "  // gradients contribute: the rim envelope goes to exact zero inside.\n" +
+        "  float2 gradDepth=float2(\n" +
+        "      0.5*(depth173(p+float2(1.0,0.0))-depth173(p-float2(1.0,0.0))),\n" +
+        "      0.5*(depth173(p+float2(0.0,1.0))-depth173(p-float2(0.0,1.0))));\n" +
+        "  float2 rimDisp=gradDepth*(band*0.210)*edgeShape;\n" +
+        "  float2 u2=uv*uv;\n" +
+        "  float dome=exp(-0.9*(u2.x+u2.y));\n" +
+        "  float interiorRamp=smoothstep(0.0,band*1.15,depth);\n" +
+        "  float innerAmp=clamp(minSide*0.060,5.0,16.0);\n" +
+        "  float2 innerDisp=-uv*innerAmp*dome*interiorRamp;\n" +
+        "  float2 raw=(rimDisp+innerDisp)*clamp(glassStrength,0.0,1.0);\n" +
+        "  // Smooth cap: bounded for 100%, retains first derivative at zero.\n" +
+        "  float cap=clamp(minSide*0.12,10.0,23.0);\n" +
+        "  return raw*(cap/sqrt(cap*cap+dot(raw,raw)));\n" +
+        "}\n" +
+        "\n" +
+        "float2 sample173(float2 p) {\n" +
+        "  float2 lo=validBounds.xy+float2(1.0);\n" +
+        "  float2 hi=max(lo+float2(2.0),validBounds.zw-float2(1.0));\n" +
+        "  return clamp(p+delta173(p),lo,hi);\n" +
+        "}\n" +
+        "\n" +
+        "half4 main(float2 p) {\n" +
+        "  float2 s=sample173(p);\n" +
+        "  float d=max(depth173(p),0.0);\n" +
+        "  float2 disp=s-p;\n" +
+        "  float strength=clamp(glassStrength,0.0,1.0);\n" +
+        "  if(diagnostic>10.5 && diagnostic<11.5){\n" +
+        "    float2 cell=abs(fract(s/23.0)-0.5);\n" +
+        "    float line=1.0-smoothstep(0.457,0.492,max(cell.x,cell.y));\n" +
+        "    return half4(half3(line),1.0);\n" +
+        "  }\n" +
+        "  if(diagnostic>15.5 && diagnostic<17.5 || diagnostic>25.5 && diagnostic<26.5){\n" +
+        "    float2 jx=0.5*(sample173(p+float2(1.0,0.0))-sample173(p-float2(1.0,0.0)));\n" +
+        "    float2 jy=0.5*(sample173(p+float2(0.0,1.0))-sample173(p-float2(0.0,1.0)));\n" +
+        "    float det=jx.x*jy.y-jx.y*jy.x;\n" +
+        "    if(diagnostic<16.5){\n" +
+        "      return half4(half3(clamp(1.0-det,0.0,1.0),clamp(det-1.0,0.0,1.0),det<=0.0?1.0:0.0),1.0);\n" +
+        "    }\n" +
+        "    if(diagnostic<17.5){\n" +
+        "      float shear=length(jx-float2(1.0,0.0))+length(jy-float2(0.0,1.0));\n" +
+        "      float value=clamp(shear*0.8,0.0,1.0);\n" +
+        "      return half4(half3(value,0.15+0.65*(1.0-value),value*0.28),1.0);\n" +
+        "    }\n" +
+        "    float danger=1.0-smoothstep(0.20,0.62,det);\n" +
+        "    return half4(half3(danger,1.0-danger,clamp((det-1.0)*0.75,0.0,1.0)),1.0);\n" +
+        "  }\n" +
+        "  if(diagnostic>20.5 && diagnostic<21.5){\n" +
+        "    float t=clamp(length(disp)/14.0,0.0,1.0);\n" +
+        "    return half4(half3(t,0.1*t,1.0-t),1.0);\n" +
+        "  }\n" +
+        "  if(diagnostic>21.5 && diagnostic<22.5){\n" +
+        "    float removed=clamp(length((p+delta173(p))-s)/max(length(delta173(p)),0.001),0.0,1.0);\n" +
+        "    return half4(half3(removed,1.0-removed,0.0),1.0);\n" +
+        "  }\n" +
+        "  if(diagnostic>22.5 && diagnostic<23.5){\n" +
+        "    float2 v=delta173(p);\n" +
+        "    return half4(half3(clamp(0.5+v.x/20.0,0.0,1.0),clamp(0.5+v.y/20.0,0.0,1.0),clamp(length(v)/12.0,0.0,1.0)),1.0);\n" +
+        "  }\n" +
+        "  if(diagnostic>24.5 && diagnostic<25.5){\n" +
+        "    float band=min(clamp(min(bounds.z-bounds.x,bounds.w-bounds.y)*0.175,12.0,29.0),max(4.0,radius*0.70));\n" +
+        "    float t=clamp(d/band,0.0,1.0);\n" +
+        "    return half4(half3(1.0-t,t,0.28+0.3*t),1.0);\n" +
+        "  }\n" +
+        "  if(diagnostic>23.5 && diagnostic<24.5){\n" +
+        "    return wallpaper.eval(p.x<(bounds.x+bounds.z)*0.5?p:s);\n" +
+        "  }\n" +
+        "  half4 sharp=wallpaper.eval(s);\n" +
+        "  if(opticalSampling>0.5){\n" +
+        "    float2 lo=validBounds.xy+float2(1.0);\n" +
+        "    float2 hi=validBounds.zw-float2(1.0);\n" +
+        "    half4 four=wallpaper.eval(clamp(s+float2(-0.38,-0.38),lo,hi));\n" +
+        "    four+=wallpaper.eval(clamp(s+float2(0.38,-0.38),lo,hi));\n" +
+        "    four+=wallpaper.eval(clamp(s+float2(-0.38,0.38),lo,hi));\n" +
+        "    four+=wallpaper.eval(clamp(s+float2(0.38,0.38),lo,hi));\n" +
+        "    sharp=four*half(0.25);\n" +
+        "    if(opticalSampling>1.5){\n" +
+        "      half4 axes=wallpaper.eval(clamp(s+float2(-0.75,0.0),lo,hi));\n" +
+        "      axes+=wallpaper.eval(clamp(s+float2(0.75,0.0),lo,hi));\n" +
+        "      axes+=wallpaper.eval(clamp(s+float2(0.0,-0.75),lo,hi));\n" +
+        "      axes+=wallpaper.eval(clamp(s+float2(0.0,0.75),lo,hi));\n" +
+        "      sharp=(four+axes+wallpaper.eval(s))*half(1.0/9.0);\n" +
+        "    }\n" +
+        "  }\n" +
+        "  half4 soft=blurredWallpaper.eval(s);\n" +
+        "  half4 result=mix(sharp,soft,half(clamp(blurMix,0.0,1.0)));\n" +
+        "  // Soft, low-energy surface reflection; no independent painted rim.\n" +
+        "  // The shell uses a continuous radial roll-off from actual contour depth.\n" +
+        "  float rim=exp(-d/max(12.0,min(bounds.z-bounds.x,bounds.w-bounds.y)*0.16));\n" +
+        "  float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        "  float broad=exp(-2.0*dot(uv-float2(-0.25,-0.38),uv-float2(-0.25,-0.38)));\n" +
+        "  float light=(0.028*rim+0.014*broad)*strength;\n" +
+        "  result.rgb=clamp(result.rgb+half3(light),half3(0.0),half3(1.0));\n" +
+        "  return result;\n" +
+        "}\n";
+
+    static void draw(View owner, Canvas canvas, RectF rect, float radius,
+                     BitmapShader wallpaper, BitmapShader blurredWallpaper,
+                     RectF validBounds, float strength, float blurMix, int diagnostic, int samplingMode) {
+        RuntimeShader shader;
+        synchronized (CACHE173) {
+            shader = CACHE173.get(owner);
+            if (shader == null) {
+                shader = new RuntimeShader(AGSL);
+                CACHE173.put(owner, shader);
+            }
+        }
+        shader.setInputShader("wallpaper", wallpaper);
+        shader.setInputShader("blurredWallpaper", blurredWallpaper);
+        shader.setFloatUniform("bounds", rect.left, rect.top, rect.right, rect.bottom);
+        shader.setFloatUniform("validBounds", validBounds.left, validBounds.top,
+                validBounds.right, validBounds.bottom);
+        shader.setFloatUniform("radius", Math.max(0f, radius));
+        shader.setFloatUniform("glassStrength", Math.max(0f, Math.min(1f, strength)));
+        shader.setFloatUniform("blurMix", Math.max(0f, Math.min(1f, blurMix)));
+        shader.setFloatUniform("diagnostic", (float) diagnostic);
+        shader.setFloatUniform("opticalSampling", (float) Math.max(0, Math.min(2, samplingMode)));
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+        paint.setShader(shader);
+        canvas.drawRoundRect(rect, radius, radius, paint);
+    }
+}
