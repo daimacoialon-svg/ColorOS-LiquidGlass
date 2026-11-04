@@ -55,10 +55,10 @@ final class GlassLens191 {
         " float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/h;\n" +
         " float small=min(size.x,size.y);\n" +
         " float2 slope=normalSlope(p);\n" +
-        " float2 core=uv*(small*0.016)*heightAt(p);\n" +
-        " float gain=style>1.5?1.0:0.72;\n" +
+        " float2 core=-uv*(small*0.105)*exp(-0.72*dot(uv,uv))*smoothstep(0.0,clamp(small*0.16,12.0,32.0),max(depth(p),0.0));\n" +
+        " float gain=style>1.5?1.12:1.0;\n" +
         " float2 raw=(slope*small*0.56+core)*gain*clamp(strength,0.0,1.0);\n" +
-        " float cap=clamp(small*0.085,6.0,18.0);\n" +
+        " float cap=clamp(small*0.115,10.0,24.0);\n" +
         " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
         "}\n" +
         "half4 main(float2 p){\n" +
@@ -88,7 +88,7 @@ final class GlassLens191 {
         " }\n" +
         " // Reflection is driven by the same normal slope as the lens. No center crown/glow.\n" +
         " float2 slope=normalSlope(p);\n" +
-        " float curvature=clamp(length(slope)*12.0,0.0,1.0);\n" +
+        " float curvature=clamp(length(slope)*22.0,0.0,1.0);\n" +
         " float3 backdrop=float3(clear.rgb);\n" +
         " float2 grad=float2(\n" +
         "  dot(float3(wallpaper.eval(sampleAt+float2(5.0,0.0)).rgb)-backdrop,float3(0.2126,0.7152,0.0722)),\n" +
@@ -100,8 +100,8 @@ final class GlassLens191 {
         " float enabled=reflectionMode>0.5?1.0:0.0;\n" +
         " float dynamic=reflectionMode>1.5?1.0:0.0;\n" +
         " float gain=clamp(reflectionStrength,0.0,2.0);\n" +
-        " float reflect=enabled*gain*curvature*(0.018+0.048*clamp(gradLen*5.0,0.0,1.0));\n" +
-        " float glint=dynamic*gain*curvature*spec*0.13;\n" +
+        " float reflect=enabled*gain*curvature*(0.028+0.075*clamp(gradLen*5.0,0.0,1.0));\n" +
+        " float glint=dynamic*gain*curvature*spec*0.18;\n" +
         " // Optical boundary is a subpixel-to-1px line; thickness is in the lens slope,\n" +
         " // not in a wide constant-width white outline.\n" +
         " float contour=clamp(edgeStrength,0.0,1.0)*exp(-pow((d-0.8)/0.85,2.0))*0.16;\n" +
