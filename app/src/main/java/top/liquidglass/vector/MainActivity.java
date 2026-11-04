@@ -109,7 +109,7 @@ public final class MainActivity extends Activity {
          .putInt("custom_blur_dp",style==2?1:1)
          .putInt("custom_blur_mode",1).commit();
         notifyConfigChanged128();
-        Toast.makeText(this,"已应用风格；新曲面模式 3 将在配置刷新后生效",Toast.LENGTH_LONG).show();
+        Toast.makeText(this,"已应用风格；独立透镜实验模式 4 将在配置刷新后生效",Toast.LENGTH_LONG).show();
         recreate();
     }
     @Override protected void onPause(){super.onPause();notifyConfigChanged128();}

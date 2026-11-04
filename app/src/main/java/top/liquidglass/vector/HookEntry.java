@@ -5749,10 +5749,18 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     try { activeCurvature180=android.provider.Settings.Global.getInt(
                                                         view.getContext().getContentResolver(),"liquidglass_active_curvature_180",0); }
                                                     catch(Throwable ignored180) {}
-                                                    if(opticalStyle186>0)activeCurvature180=3;
+                                                    // V191: new dual-style UI chooses the isolated renderer.
+                                                    // Manual global 0..3 remains a rollback path.
+                                                    if(opticalStyle186>0)activeCurvature180=4;
+                                                    if(activeCurvature180==4){
+                                                        GlassLens191.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
+                                                            valid173,overall173,blend101,opticalDiagnostic173,highlightEnabled,highlightStrength,
+                                                            surfaceMode194,surfaceStrength194,surfaceSoftness194,opticalStyle186);
+                                                    } else {
                                                     GlassLens173.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
                                                         valid173,overall173,blend101,opticalDiagnostic173,opticalSampling173,
                                                         highlightEnabled,highlightStrength,highlightWidth,directionalLight,reflectionModel178,activeCurvature180,surfaceMode194,surfaceStrength194,surfaceSoftness194,opticalStyle186);
+                                                    }
                                                     if(newOpticalLog173++<120)log("OPTICAL_PIPELINE_173 path=CLEAN_SINGLE_SHADER"+
                                                         " container="+((view.getBackground() instanceof DockBackground204)?"DOCK":"FOLDER")+
                                                         " strength="+overall173+" diagnostic="+opticalDiagnostic173+
