@@ -861,7 +861,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static volatile int customBlurDp=14, refractionPercent=35, glassTintOpacity=18, customBlurMode=1;
     private static volatile float folderMicroBlurDp95=14f; // independent float for V94 optical mode 3
     private static int opticalPipelineLogs195=0;
-    private static volatile boolean iconOptics204=false, dockGlass204=false;
+    private static volatile boolean iconOptics204=false, dockGlass204=true;
     private static volatile boolean clearRefraction=false; // false: frosted glass, true: clear refraction
     private static volatile android.graphics.Bitmap CUSTOM_BLUR_FRAME;
     private static volatile android.graphics.Bitmap CUSTOM_BLUR_SOURCE;
@@ -7773,6 +7773,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                     boolean applied=applySnapshot203(direct,"UI_DIRECT");
                                     log("CONFIG_203_DIRECT_RECEIVED applied="+applied);
                                     invalidateGlassViews();
+                                    android.app.Activity dockActivity=LAUNCHER_ACTIVITY_205==null?null:LAUNCHER_ACTIVITY_205.get();
+                                    if(dockActivity!=null){
+                                        android.os.Handler dockHandler=new android.os.Handler(android.os.Looper.getMainLooper());
+                                        dockHandler.post(()->refreshLauncherOptics204(dockActivity));
+                                        log("DOCK_204_DIRECT_REFRESH_QUEUED enabled="+dockGlass204);
+                                    }else log("DOCK_204_DIRECT_REFRESH_WAIT_ACTIVITY enabled="+dockGlass204);
                                 }else{
                                     handler.removeCallbacks(hint194);
                                     handler.postDelayed(hint194,150L);
@@ -7989,7 +7995,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         try{
             if(activity==null||activity.isFinishing()||activity.isDestroyed())return;
             LAUNCHER_ACTIVITY_205=new java.lang.ref.WeakReference<android.app.Activity>(activity);
-            refreshFromContext(activity);
+            // Dock mount is presentation-only. Do not reload or overwrite the
+            // latest direct UI snapshot while attaching the background.
             int id=activity.getResources().getIdentifier("hotseat","id",activity.getPackageName());
             View hotseat=id==0?null:activity.findViewById(id);
             if(hotseat==null)hotseat=findHotseat198(activity.getWindow().getDecorView(),0);

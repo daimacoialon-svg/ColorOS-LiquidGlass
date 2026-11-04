@@ -152,18 +152,26 @@ public final class MainActivity extends Activity {
     }
     private void putBooleanIfChanged193(String key,boolean value){
         if(prefs.getBoolean(key,value)==value)return;
-        prefs.edit().putBoolean(key,value).commit();
+        boolean saved=prefs.edit().putBoolean(key,value).commit();
+        android.util.Log.i("LiquidGlass204","CONFIG_204_SWITCH_SAVE key="+key+" value="+value+" committed="+saved+" readback="+prefs.getBoolean(key,!value));
+        if(!saved)return;
         audit193("USER_CHANGED_"+key);
         notifyConfigChanged128();
     }
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);prefs=getSharedPreferences("glass",0);
         ConfigMigration194.reconcileOnce(this,prefs);
+        // Default ON only for an unconfigured Dock. A user's explicit OFF survives reboot.
+        if(!prefs.contains("dock_glass_204")){
+            boolean saved=prefs.edit().putBoolean("dock_glass_204",true).commit();
+            android.util.Log.i("LiquidGlass204","DOCK_204_FIRST_DEFAULT_ON saved="+saved);
+            if(saved)notifyConfigChanged128();
+        }
         audit193("UI_ON_CREATE_V194");
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.194  ·  单一配置源与安全刷新",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.204  ·  实时同步与 Dock 自动恢复",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -194,7 +202,7 @@ public final class MainActivity extends Activity {
         TextView presetHint=text("推荐参数是测试起点，不代表已达到 iOS 目标。旧二维折射默认关闭，避免与统一透镜叠加。",12,false);
         current.addView(presetHint);
         
-        toggle("启用 Dock 玻璃","dock_glass_204",false);
+        toggle("启用 Dock 玻璃（默认开启，手动关闭后保持关闭）","dock_glass_204",true);
         TextView dockInfo=text("Dock 保持原有尺寸和位置；V132 与文件夹共用直接背景采样及透镜位移 Shader，并按容器几何自适应。",12,false);current.addView(dockInfo);
 
         section("二维曲面透镜","统一曲面负责文件夹和 Dock 的背景折射与厚度。反射、高光和底色分别调整，避免把不同效果混在同一滑块。");

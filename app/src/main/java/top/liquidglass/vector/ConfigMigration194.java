@@ -73,6 +73,9 @@ final class ConfigMigration194 {
             SharedPreferences.Editor edit=prefs.edit();
             for(int i=0;i<v.length;i++){
                 String name=NAMES[i];
+                // Existing user preferences are authoritative. Migration must not undo
+                // an explicit Dock OFF or diagnostics ON from the current settings UI.
+                if(prefs.contains(name) || "dock_glass_204".equals(name))continue;
                 // Never re-enable OEM native blur and native alpha probe via migration.
                 if("native_blur_experiment".equals(name)||"native_alpha_probe".equals(name))continue;
                 if(isBool(name))edit.putBoolean(name,v[i]!=0); else edit.putInt(name,v[i]);

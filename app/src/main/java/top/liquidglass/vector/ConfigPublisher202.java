@@ -21,7 +21,7 @@ final class ConfigPublisher202 {
     };
     private static final int[] DEFAULTS={
         0,210,0,30,0,0,25,0,2,1,0,100,1,0,0,14,35,18,1,0,0,
-        3,100,100,0,0,65,55,20,45,30,0
+        3,100,100,0,1,65,55,20,45,30,0
     };
     private static boolean boolKey(String k){
         return k.equals("enabled")||k.equals("highlight")||k.equals("diagnostics")||
@@ -57,7 +57,7 @@ final class ConfigPublisher202 {
         }catch(Throwable t){Log.w("LiquidGlass202","CONFIG_202_ROOT_ERROR "+t.getClass().getSimpleName());return null;}
         finally{if(p!=null)p.destroy();}
     }
-    static boolean publishVerified(String expected){
+    static synchronized boolean publishVerified(String expected){
         if(expected==null||!expected.matches("LG1(\\|-?[0-9]+){32}"))return false;
         String current=root("settings get global liquidglass_boot_snapshot_v1");
         if(expected.equals(current)){Log.i("LiquidGlass202","CONFIG_202_ALREADY_CURRENT");return true;}
