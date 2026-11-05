@@ -1,30 +1,57 @@
+
 name: Build Vector Test APK
+
 on:
   workflow_dispatch:
   push:
     branches: [main, master]
+
 permissions:
   contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+
       - name: Install Android SDK 35
-        run: ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
-      - uses: gradle/actions/setup-gradle@v4
+        run: |
+          "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            --install "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '9.4.0'
+
+      - name: Check project modules
+        run: gradle --no-daemon projects
+
+      - name: Verify Kyant dependencies
+        run: |
+          gradle --no-daemon \
+            :liquidglass-module:dependencies \
+            --configuration debugRuntimeClasspath
+
       - name: Build debug APK
-        run: gradle --no-daemon --stacktrace :liquidglass-module:assembleDebug
-      - uses: actions/upload-artifact@v4
+        run: |
+          gradle --no-daemon --stacktrace \
+            :liquidglass-module:assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: ColorOS-LiquidGlass-V1.9.205.244-APK
+          name: ColorOS-LiquidGlass-V1.9.205.253-APK
           path: liquidglass-module/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
