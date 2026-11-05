@@ -62,6 +62,42 @@ final class GlassLens191 {
         " float cap=clamp(small*0.115,10.0,24.0);\n" +
         " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
         "}\n" +
+        "// V213 experiment: smooth the rounded-box distance's axis-to-corner transition.\n" +
+        "// This is an alternative height field, NOT a claim that the original SDF was discontinuous.\n" +
+        "float depth213(float2 p){\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float r=clamp(radius,0.0,min(h.x,h.y));\n" +
+        " float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(h-r);\n" +
+        " float k=clamp(r*0.16,1.0,5.0);\n" +
+        " float2 z=0.5*(q+sqrt(q*q+float2(k*k)));\n" +
+        " float m=0.5*(q.x+q.y+sqrt((q.x-q.y)*(q.x-q.y)+k*k));\n" +
+        " float inside=0.5*(m-sqrt(m*m+k*k));\n" +
+        " return r-length(z)-inside;\n" +
+        "}\n" +
+        "float height213(float2 p){\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/h;\n" +
+        " float d=max(depth213(p),0.0);\n" +
+        " float width=clamp(min(h.x,h.y)*0.76,18.0,75.0);\n" +
+        " float x=clamp(d/width,0.0,1.0);\n" +
+        " float shoulder=x*x*(3.0-2.0*x);\n" +
+        " return shoulder*(1.0-0.1035*dot(uv,uv));\n" +
+        "}\n" +
+        "float2 normal213(float2 p){\n" +
+        " float e=1.25;\n" +
+        " return float2(height213(p+float2(e,0.0))-height213(p-float2(e,0.0)),height213(p+float2(0.0,e))-height213(p-float2(0.0,e)))/(2.0*e);\n" +
+        "}\n" +
+        "float2 offset213(float2 p){\n" +
+        " float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        " float2 h=size*0.5;\n" +
+        " float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/h;\n" +
+        " float small=min(size.x,size.y);\n" +
+        " float2 core=-uv*(small*0.105)*exp(-0.72*dot(uv,uv))*smoothstep(0.0,clamp(small*0.16,12.0,32.0),max(depth(p),0.0));\n" +
+        " float gain=style>1.5?1.12:1.0;\n" +
+        " float2 raw=(normal213(p)*small*0.56+core)*gain*clamp(strength,0.0,1.0);\n" +
+        " float cap=clamp(small*0.115,10.0,24.0);\n" +
+        " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
+        "}\n" +
         "// Corner-only diagnostic: smooth the sampling displacement field, not the glass brightness.\n" +
         "float cornerMask211(float2 p){\n" +
         " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
@@ -164,6 +200,33 @@ final class GlassLens191 {
         "   clear=mix(clear,sumC/9.0,half(band));\n" +
         "   blurred=mix(blurred,sumB/9.0,half(band));\n" +
         "  }\n" +
+        " }\n" +
+        " // V213 12: alternative unified smooth-distance normal, single-sample control.\n" +
+        " if(aaProbe208>11.5 && aaProbe208<12.5){\n" +
+        "  float2 sq=p+offset213(p);\n" +
+        "  float sm=min(min(sq.x-lo.x,hi.x-sq.x),min(sq.y-lo.y,hi.y-sq.y));\n" +
+        "  float2 sc=clamp(mix(p,sq,smoothstep(0.0,14.0,sm)),lo,hi);\n" +
+        "  clear=wallpaper.eval(sc);blurred=blurredWallpaper.eval(sc);\n" +
+        " }\n" +
+        " // V213 13: same alternative normal with real 3x3 subpixel evaluation.\n" +
+        " if(aaProbe208>12.5 && aaProbe208<13.5){\n" +
+        "  half4 sumC=half4(0.0),sumB=half4(0.0);\n" +
+        "  for(int ix=-1;ix<=1;ix++){\n" +
+        "   for(int iy=-1;iy<=1;iy++){\n" +
+        "    float2 sp=p+float2(float(ix),float(iy))*(1.0/3.0);\n" +
+        "    float2 sq=sp+offset213(sp);\n" +
+        "    float sm=min(min(sq.x-lo.x,hi.x-sq.x),min(sq.y-lo.y,hi.y-sq.y));\n" +
+        "    float2 sc=clamp(mix(sp,sq,smoothstep(0.0,14.0,sm)),lo,hi);\n" +
+        "    sumC+=wallpaper.eval(sc);sumB+=blurredWallpaper.eval(sc);\n" +
+        "   }\n" +
+        "  }\n" +
+        "  clear=sumC/9.0;blurred=sumB/9.0;\n" +
+        " }\n" +
+        " // V213 14: difference between original and alternative normals.\n" +
+        " if(aaProbe208>13.5 && aaProbe208<14.5){\n" +
+        "  float diff=length(normal213(p)-normalSlope(p));\n" +
+        "  float t=smoothstep(0.0005,0.035,diff);\n" +
+        "  return half4(half3(t,0.22*(1.0-t),1.0-t),1.0);\n" +
         " }\n" +
         " // V212 probe 8: signed-distance gradient orientation (R=x, G=y, B=gradient magnitude).\n" +
         " // Finite differences are used for diagnostic only; no dFdx/dFdy.\n" +
@@ -293,7 +356,7 @@ final class GlassLens191 {
         shader.setFloatUniform("diagnostic", (float) diagnostic);
         int aaProbe208=0;
         try { aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); } catch(Throwable ignored) {}
-        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(11,aaProbe208)));
+        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(14,aaProbe208)));
         shader.setFloatUniform("style", (float) opticalStyle);
         shader.setFloatUniform("reflectionMode", (float) surfaceMode);
         shader.setFloatUniform("reflectionStrength", Math.max(0f, Math.min(2f, surfaceStrength / 100f)));
