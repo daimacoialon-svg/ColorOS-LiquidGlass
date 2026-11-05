@@ -197,7 +197,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.220  ·  图标外缘柔光与二维曲面过渡平滑",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.221  ·  图标薄内缘光学与局部 5/9 点采样",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -299,8 +299,8 @@ public final class MainActivity extends Activity {
         });
         slider("底色色调强度 (%)","tint_strength",30,0,90);
         TextView tintInfo=text("底色色调强度为 0% 时不添加颜色；原生模式不添加色调。颜色变化需在玻璃底色不透明度和当前渲染路径允许的情况下观察。",12,false);current.addView(tintInfo);
-        section("应用图标内缘平滑光影","通过真实轮廓距离场生成向中心平滑衰减的左上高光和右下弱阴影，不再使用浮雕式描边；保留原图标内容与点击区域。首次默认开启，手动关闭保持关闭。");
-        toggle("应用图标渐隐式内缘光影（非浮雕描边）","icon_optics_204",true);
+        section("应用图标内缘立体光影","图标内侧窄带向中心自然渐隐：左上与右下角提亮，右上与左下角轻微压暗。取消 V220 外部模糊光晕；保留原图标内容、尺寸与点击区域。");
+        toggle("应用图标薄内缘明暗光学效果","icon_optics_204",true);
         section("旧版兼容与实验","旧二维壁纸折射仅用于对照测试。默认折叠，避免误以为它是第二套必需的光学系统。");
         final LinearLayout legacyContainer=column();
         final Button legacyButton=new Button(this);
@@ -320,7 +320,7 @@ public final class MainActivity extends Activity {
             legacyContainer.setVisibility(show?View.VISIBLE:View.GONE);
             legacyButton.setText(show?"收起旧版实验参数":"展开旧版二维折射实验");
         });
-        section("维护与状态","V220 在继承 V219 诊断清理基线的基础上，继续优化图标外缘柔光与二维曲面过渡平滑；不会复位正常折射、模糊与 Dock 参数。");
+        section("维护与状态","V221 保留 V219 已验证的二维折射实时传递；正式 Shader 对底部中心和圆角过渡采取按需 5/9 点采样，失败自动回退 V219；不重置折射、模糊、Dock 与图标开关。");
         action("一键关闭所有旧版绘制和可视诊断模式",()->{
             LegacyDiagnostics219.cleanupAsync(this,(success,reason)->{
                 if(success)notifyConfigChanged128();
@@ -360,7 +360,7 @@ public final class MainActivity extends Activity {
             rootStatusHandler.removeCallbacks(rootStatusPoll);
             rootStatusHandler.postDelayed(rootStatusPoll,1000);
         }));
-        TextView serviceHint=text("V220：保留 V219 已验证可用的二维曲面透镜单路 Shader 与实时参数同步；本版进一步增强图标外缘柔光、压低中心过渡阶梯感，并抑制四角短斜线伪影。",12,false);current.addView(serviceHint);
+        TextView serviceHint=text("V221：保留已验证的 UI→Launcher 实时参数和独立二维透镜路由。新 Shader 尝试平滑距离场、局部 5/9 点采样及角部位移修正，若创建失败自动回退 V219。图标取消外圈月晕，改为薄内缘光影。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
         setContentView(scroll);

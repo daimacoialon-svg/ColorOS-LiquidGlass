@@ -123,6 +123,166 @@ final class GlassLens191 {
         " result.rgb=half3(clamp(color,0.0,1.0));\n" +
         " return result;\n" +
         "}\n";
+    // V221 production optical field. V219 remains the tested fallback.
+    private static final String PRODUCTION_AGSL_221 =
+        "uniform shader wallpaper;\n" +
+        "uniform shader blurredWallpaper;\n" +
+        "uniform float4 bounds;\n" +
+        "uniform float4 validBounds;\n" +
+        "uniform float radius;\n" +
+        "uniform float strength;\n" +
+        "uniform float thicknessMix;\n" +
+        "uniform float interiorMix;\n" +
+        "uniform float focusMix;\n" +
+        "uniform float reflectionMix;\n" +
+        "uniform float blurMix;\n" +
+        "uniform float style;\n" +
+        "uniform float reflectionMode;\n" +
+        "uniform float reflectionStrength;\n" +
+        "uniform float reflectionSoftness;\n" +
+        "uniform float edgeStrength;\n" +
+        "float depth219(float2 p){\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float r=clamp(radius,0.0,min(h.x,h.y));\n" +
+        " float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(h-r);\n" +
+        " return r-length(max(q,float2(0.0)))-min(max(q.x,q.y),0.0);\n" +
+        "}\n" +
+        "float radial219(float2 u){\n" +
+        " float2 a=abs(u);\n" +
+        " float roundTerm=dot(u,u);\n" +
+        " float box=max(a.x,a.y);\n" +
+        " float blend=smoothstep(0.44,0.96,max(a.x,a.y)+0.22*min(a.x,a.y));\n" +
+        " return mix(roundTerm,box*box,blend*0.42);\n" +
+        "}\n" +
+        "float depthSmooth221(float2 p){\n" +
+        " float exact=depth219(p);\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float r=clamp(radius,0.0,min(h.x,h.y));\n" +
+        " float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(h-r);\n" +
+        " float k=clamp(min(h.x,h.y)*0.08,3.5,11.0);\n" +
+        " float sm=0.5*(q.x+q.y+sqrt((q.x-q.y)*(q.x-q.y)+k*k));\n" +
+        " float softened=r-length(max(q,float2(0.0)))-min(sm,0.0);\n" +
+        " float blend=smoothstep(2.0,max(8.0,k*1.3),max(exact,0.0));\n" +
+        " return mix(exact,softened,blend);\n" +
+        "}\n" +
+        "float height219(float2 p){\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float2 u=(p-(bounds.xy+bounds.zw)*0.5)/h;\n" +
+        " float d=max(depthSmooth221(p),0.0);\n" +
+        " float width=clamp(min(h.x,h.y)*(0.68+0.44*clamp(thicknessMix,0.0,1.0)),22.0,108.0);\n" +
+        " float x=clamp(d/width,0.0,1.0);\n" +
+        " float shoulder=x*x*(3.0-2.0*x);\n" +
+        " float t=clamp(thicknessMix,0.0,1.0);\n" +
+        " float core=1.0-(0.05+0.34*clamp(interiorMix,0.0,1.0))*radial219(u);\n" +
+        " return ((0.46+0.20*t)+(0.54-0.20*t)*core)*shoulder;\n" +
+        "}\n" +
+        "float2 slope219(float2 p){\n" +
+        " float e=1.0;\n" +
+        " float hx=(height219(p+float2(e,0.0))+height219(p+float2(e,e))+height219(p+float2(e,-e))\n" +
+        "  -height219(p-float2(e,0.0))-height219(p-float2(e,e))-height219(p-float2(e,-e)))/(6.0*e);\n" +
+        " float hy=(height219(p+float2(0.0,e))+height219(p+float2(e,e))+height219(p-float2(e,e))\n" +
+        "  -height219(p-float2(0.0,e))-height219(p+float2(e,-e))-height219(p-float2(e,-e)))/(6.0*e);\n" +
+        " return float2(hx,hy);\n" +
+        "}\n" +
+        "float2 warp219(float2 p){\n" +
+        " float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        " float2 u=(p-(bounds.xy+bounds.zw)*0.5)/(size*0.5);\n" +
+        " float small=min(size.x,size.y);\n" +
+        " float2 slope=slope219(p);\n" +
+        " float2 focus=-u*(small*0.086)*(0.42+clamp(focusMix,0.0,1.0))\n" +
+        "  *exp(-0.66*radial219(u))*smoothstep(0.0,clamp(small*0.18,14.0,36.0),max(depth219(p),0.0));\n" +
+        " float gain=style>1.5?1.08:0.98;\n" +
+        " float2 raw=(slope*small*0.47+focus)*gain*clamp(strength,0.0,1.0);\n" +
+        " float2 cornerUV=abs(u);\n" +
+        " float corner=smoothstep(0.58,0.92,cornerUV.x)*smoothstep(0.58,0.92,cornerUV.y);\n" +
+        " float cornerBand=1.0-smoothstep(4.0,27.0,max(depth219(p),0.0));\n" +
+        " raw*=1.0-0.17*corner*cornerBand;\n" +
+        " float cap=clamp(small*0.096,9.0,21.0);\n" +
+        " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
+        "}\n" +
+        "float2 samplePosition221(float2 p,float2 lo,float2 hi){\n" +
+        " float2 q=p+warp219(p);\n" +
+        " float margin=min(min(q.x-lo.x,hi.x-q.x),min(q.y-lo.y,hi.y-q.y));\n" +
+        " float safety=smoothstep(0.0,14.0,margin);\n" +
+        " return clamp(mix(p,q,safety),lo,hi);\n" +
+        "}\n" +
+        "half4 main(float2 p){\n" +
+        " float2 lo=validBounds.xy+float2(2.0);\n" +
+        " float2 hi=max(lo+float2(1.0),validBounds.zw-float2(2.0));\n" +
+        " float2 src=samplePosition221(p,lo,hi);\n" +
+        " half4 clear=wallpaper.eval(src);\n" +
+        " half4 softened=blurredWallpaper.eval(src);\n" +
+        " float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        " float2 signedUV=(p-(bounds.xy+bounds.zw)*0.5)/(size*0.5);\n" +
+        " float2 uv=abs(signedUV);\n" +
+        " float dRisk=max(depth219(p),0.0);\n" +
+        " float small=min(size.x,size.y);\n" +
+        " float band=smoothstep(1.2,8.0,dRisk)*(1.0-smoothstep(small*0.16,small*0.33,dRisk));\n" +
+        " float corner=smoothstep(0.59,0.90,uv.x)*smoothstep(0.59,0.90,uv.y);\n" +
+        " float rimRisk=band*corner;\n" +
+        " float lowerCenter=smoothstep(0.36,0.57,signedUV.y)*(1.0-smoothstep(0.40,0.66,uv.x));\n" +
+        " float3 backdrop=float3(clear.rgb);\n" +
+        " float2 luminanceGradient=float2(\n" +
+        "  dot(float3(wallpaper.eval(clamp(src+float2(4.0,0.0),lo,hi)).rgb)-backdrop,float3(0.2126,0.7152,0.0722)),\n" +
+        "  dot(float3(wallpaper.eval(clamp(src+float2(0.0,4.0),lo,hi)).rgb)-backdrop,float3(0.2126,0.7152,0.0722)));\n" +
+        " float contrast=clamp(length(luminanceGradient)*8.0,0.0,1.0);\n" +
+        " float risk=max(rimRisk,lowerCenter*(0.40+0.60*contrast))\n" +
+        "  *smoothstep(0.30,0.75,clamp(strength,0.0,1.0));\n" +
+        " if(risk>0.22){\n" +
+        "  float e=0.34;\n" +
+        "  float2 s1=samplePosition221(p+float2(-e,-e),lo,hi);\n" +
+        "  float2 s2=samplePosition221(p+float2( e,-e),lo,hi);\n" +
+        "  float2 s3=samplePosition221(p+float2(-e, e),lo,hi);\n" +
+        "  float2 s4=samplePosition221(p+float2( e, e),lo,hi);\n" +
+        "  half4 csum=clear+wallpaper.eval(s1)+wallpaper.eval(s2)+wallpaper.eval(s3)+wallpaper.eval(s4);\n" +
+        "  half4 bsum=softened+blurredWallpaper.eval(s1)+blurredWallpaper.eval(s2)+blurredWallpaper.eval(s3)+blurredWallpaper.eval(s4);\n" +
+        "  float w5=smoothstep(0.22,0.49,risk);\n" +
+        "  half4 c5=csum*half(0.20);half4 b5=bsum*half(0.20);\n" +
+        "  clear=mix(clear,c5,half(w5));softened=mix(softened,b5,half(w5));\n" +
+        "  if(risk>0.68){\n" +
+        "   float2 s5=samplePosition221(p+float2(-0.42,0.0),lo,hi);\n" +
+        "   float2 s6=samplePosition221(p+float2( 0.42,0.0),lo,hi);\n" +
+        "   float2 s7=samplePosition221(p+float2(0.0,-0.42),lo,hi);\n" +
+        "   float2 s8=samplePosition221(p+float2(0.0, 0.42),lo,hi);\n" +
+        "   half4 c9=(csum+wallpaper.eval(s5)+wallpaper.eval(s6)+wallpaper.eval(s7)+wallpaper.eval(s8))*half(1.0/9.0);\n" +
+        "   half4 b9=(bsum+blurredWallpaper.eval(s5)+blurredWallpaper.eval(s6)+blurredWallpaper.eval(s7)+blurredWallpaper.eval(s8))*half(1.0/9.0);\n" +
+        "   float w9=smoothstep(0.68,0.92,risk);\n" +
+        "   clear=mix(clear,c9,half(w9));softened=mix(softened,b9,half(w9));\n" +
+        "  }\n" +
+        " }\n" +
+        " half4 result=mix(clear,softened,half(clamp(blurMix,0.0,1.0)));\n" +
+        " float2 slope=slope219(p);\n" +
+        " float curvature=clamp(length(slope)*22.0,0.0,1.0);\n" +
+        " float3 normal=normalize(float3(-slope*4.0,1.0));\n" +
+        " float3 light=normalize(float3(-0.55,-0.75,0.75));\n" +
+        " float facing=clamp(dot(normal,light),0.0,1.0);\n" +
+        " float direction=clamp(dot(luminanceGradient/(0.02+length(luminanceGradient)),\n" +
+        "  slope/(0.02+length(slope))),0.0,1.0);\n" +
+        " float spec=pow(direction,mix(15.0,4.0,clamp(reflectionSoftness,0.0,1.0)))\n" +
+        "  *clamp(length(luminanceGradient)*9.0,0.0,1.0);\n" +
+        " float enabled=reflectionMode>0.5?1.0:0.0;\n" +
+        " float dynamic=reflectionMode>1.5?1.0:0.0;\n" +
+        " float gain=clamp(reflectionStrength,0.0,2.0)*(0.65+0.70*clamp(reflectionMix,0.0,1.0));\n" +
+        " float ambient=clamp(dot(backdrop,float3(0.2126,0.7152,0.0722)),0.0,1.0);\n" +
+        " float reflect=enabled*gain*curvature*(0.014+0.078*pow(facing,5.0))*(0.55+0.45*ambient);\n" +
+        " float glint=dynamic*gain*curvature*spec*0.14;\n" +
+        " float d=max(depth219(p),0.0);\n" +
+        " float rim=exp(-pow((d-0.80)/0.92,2.0));\n" +
+        " float meniscus=exp(-pow((d-4.6)/4.8,2.0));\n" +
+        " float fresnel=pow(1.0-clamp(1.0/sqrt(1.0+dot(slope*4.2,slope*4.2)),0.0,1.0),1.25);\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float2 cornerUV=abs((p-(bounds.xy+bounds.zw)*0.5)/h);\n" +
+        " float cornerFade=smoothstep(0.58,0.98,max(cornerUV.x,cornerUV.y))*smoothstep(0.10,0.82,min(cornerUV.x,cornerUV.y));\n" +
+        " float outline=clamp(edgeStrength,0.0,1.0)*(0.10*rim+0.085*meniscus*fresnel)\n" +
+        "  *(0.25+0.75*pow(facing,3.0))*(1.0-0.46*cornerFade);\n" +
+        " float shadow=(1.0-smoothstep(0.8,5.6,d))*smoothstep(0.0,0.9,d)*0.030*(1.0-0.55*cornerFade);\n" +
+        " float3 color=float3(result.rgb);\n" +
+        " color+=(1.0-color)*clamp(reflect+glint+outline,0.0,0.28);\n" +
+        " color*=1.0-shadow;\n" +
+        " result.rgb=half3(clamp(color,0.0,1.0));\n" +
+        " return result;\n" +
+        "}\n";
+
     // Historical shader is deliberately reachable only through explicit debug opt-in.
     static final String AGSL =
         "uniform shader wallpaper;\n" +
@@ -564,6 +724,8 @@ final class GlassLens191 {
         "  return half4(half3(1.0-ink),1.0);\n";
     private static final String WHITE_GRID_AGSL_217=AGSL.replace(GRID_OLD_217,GRID_NEW_217);
     private static boolean GRID_FAILED_217=false;
+    private static boolean PRODUCTION_221_FAILED=false;
+    private static boolean PRODUCTION_221_FALLBACK_REPORTED=false;
     private static int ROUTE_LOGS_218=0;
 
     static void draw(View owner, Canvas canvas, RectF rect, float radius,
@@ -612,11 +774,25 @@ final class GlassLens191 {
                 shader=cache.get(owner);
                 if(shader==null){
                     try{
-                        shader=new RuntimeShader(fallbackProduction?PRODUCTION_AGSL_219:AGSL);
+                        if(fallbackProduction && !PRODUCTION_221_FAILED){
+                            try{
+                                shader=new RuntimeShader(PRODUCTION_AGSL_221);
+                                android.util.Log.i("LiquidGlass221","LENS_SHADER_CREATED production=221 adaptiveSSAA=true");
+                            }catch(Throwable fail221){
+                                PRODUCTION_221_FAILED=true;
+                                android.util.Log.e("LiquidGlass221","LENS_SHADER_221_FAILED fallback=219",fail221);
+                            }
+                        }
+                        if(shader==null){
+                            shader=new RuntimeShader(fallbackProduction?PRODUCTION_AGSL_219:AGSL);
+                            if(fallbackProduction && !PRODUCTION_221_FALLBACK_REPORTED){
+                                PRODUCTION_221_FALLBACK_REPORTED=true;
+                                android.util.Log.w("LiquidGlass221","LENS_SHADER_CREATED production=219 fallback=true");
+                            }
+                        }
                         cache.put(owner,shader);
-                        android.util.Log.i("LiquidGlass219","LENS_SHADER_CREATED production="+fallbackProduction);
                     }catch(Throwable fail){
-                        android.util.Log.e("LiquidGlass219","LENS_SHADER_FAILED production="+fallbackProduction,fail);
+                        android.util.Log.e("LiquidGlass221","LENS_SHADER_FAILED production="+fallbackProduction,fail);
                         throw fail;
                     }
                 }
