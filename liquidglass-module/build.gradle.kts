@@ -23,6 +23,10 @@ android {
 dependencies {
     compileOnly(project(":xposed-stubs"))
     implementation(project(":backdrop"))
+
+    // V254 修复：测试 Activity 直接使用 RoundedRectangle
+    implementation(libs.kyant.shapes)
+
     implementation(libs.androidx.activity.compose)
     implementation(libs.compose.foundation)
     implementation(libs.compose.ui)
