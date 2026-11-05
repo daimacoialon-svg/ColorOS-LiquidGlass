@@ -93,13 +93,16 @@ final class UnifiedGlass230 {
             float shoulderWidth=shortSide*mix(0.14,0.29,clamp(thickness230,0.0,1.0));
             float t=clamp(depth/max(shoulderWidth,1.0),0.0,1.0);
             float edge=t*t*t*(t*(t*6.0-15.0)+10.0);
-            // A weak continuous inner meniscus prevents a visibly rectangular
-            // central shelf.  The edge remains the dominant optical curvature.
+            // V247: full-area, continuously curved inner lens. The V246 6.5%
+            // radial correction left a nearly planar rectangular center.
+            // Use one differentiable elliptical dome (not four edge ramps).
+            // Its derivative is zero at the center and continuous in every
+            // direction, including the diagonals and rounded corners.
             float2 center=(bounds.xy+bounds.zw)*0.5;
             float2 uv=(p-center)/max(size*0.5,float2(1.0));
-            float radial=dot(uv,uv);
-            float inner=1.0-0.065*clamp(radial,0.0,1.0);
-            return edge*inner;
+            float rho2=dot(uv,uv);
+            float innerDome=1.0-0.17*rho2/(1.0+0.35*rho2);
+            return edge*innerDome;
         }
         float2 normalSlope230(float2 p){
             float e=1.0;
@@ -250,7 +253,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_244 nativeRadiusShoulder245=true ab=enabled");
+                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_247 fullAreaDome=true ab=enabled");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
@@ -275,7 +278,7 @@ final class UnifiedGlass230 {
             if(diagnostic235!=0 && probeLogs235++<24)Log.i("LiquidGlass235",
                 "OPTICAL_STAGE mode="+diagnostic235+" bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix);
-            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_244 dimensions="+rect.width()+"x"+rect.height()+
+            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_247 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             if(consecutiveFailures240!=0){
                 Log.i("LiquidGlass240","OPTICAL_RECOVERED_240 failures="+consecutiveFailures240);
