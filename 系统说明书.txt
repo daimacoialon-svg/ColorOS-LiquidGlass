@@ -1,3 +1,11 @@
+V1.9.205.256｜原生 View 到 Kyant 单帧背景桥接诊断版
+
+本版新增独立测试 Activity：原生 Android View 绘制背景→在本模块进程内生成 Bitmap 快照→Compose layerBackdrop→Kyant 原版 lens 光学渲染。提供文件夹/Dock 形状、拖动、手动重新采样、复位。
+
+重要限制：这不是 ColorOS Launcher 实时背景捕获，也没有让 Kyant 接管文件夹或 Dock。没有修改 Kyant 原版 Shader；旧版 Hook、设置及 V255 测试保持不变。后续需要在目标 Launcher 进程验证真实背景来源、采样同步、类加载器、生命周期和性能。
+
+构建：GitHub Actions :liquidglass-module:assembleDebug。未在当前环境完成编译/真机验证。
+
 V1.9.205.255｜Kyant 原版引擎多场景测试版
 
 保留上游 backdrop 原始光学公式，新增原版壁纸、网格、高对比背景，文件夹/Dock/竖条形状切换和拖动边界测试。
