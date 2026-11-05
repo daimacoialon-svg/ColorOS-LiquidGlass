@@ -25,6 +25,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: ColorOS-LiquidGlass-V1.9.205.244-APK
-          path: path: liquidglass-module/build/outputs/apk/debug/*.apk
+          path: liquidglass-module/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
