@@ -98,6 +98,38 @@ final class GlassLens191 {
         " float cap=clamp(small*0.115,10.0,24.0);\n" +
         " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
         "}\n" +
+        "// V214: continuous corner direction field; experimental, never used by default.\n" +
+        "float2 normal214(float2 p){\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float r=clamp(radius,1.0,min(h.x,h.y));\n" +
+        " float2 a=abs(p-(bounds.xy+bounds.zw)*0.5);\n" +
+        " float2 start=max(h-float2(r*1.9),float2(0.0));\n" +
+        " float2 gate=smoothstep(start,start+float2(max(3.0,r*0.95)),a);\n" +
+        " float corner=gate.x*gate.y;\n" +
+        " float2 fine=normal213(p);\n" +
+        " float e=max(1.8,min(3.2,r*0.12));\n" +
+        " float2 broad=float2(height213(p+float2(e,0.0))-height213(p-float2(e,0.0)),height213(p+float2(0.0,e))-height213(p-float2(0.0,e)))/(2.0*e);\n" +
+        " float2 direction=mix(fine,broad,corner*0.80);\n" +
+        " float mag=length(fine);\n" +
+        " return direction*(mag/max(length(direction),0.00001));\n" +
+        "}\n" +
+        "float2 offset214(float2 p,float mode){\n" +
+        " float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        " float2 h=size*0.5;\n" +
+        " float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/h;\n" +
+        " float small=min(size.x,size.y);\n" +
+        " float2 core=-uv*(small*0.105)*exp(-0.72*dot(uv,uv))*smoothstep(0.0,clamp(small*0.16,12.0,32.0),max(depth(p),0.0));\n" +
+        " float gain=style>1.5?1.12:1.0;\n" +
+        " float2 raw=(normal214(p)*small*0.56+core)*gain*clamp(strength,0.0,1.0);\n" +
+        " float cap=clamp(small*0.115,10.0,24.0);\n" +
+        " if(mode>0.5){\n" +
+        "  float2 prior=(normal213(p)*small*0.56+core)*gain*clamp(strength,0.0,1.0);\n" +
+        "  float oldMag=length(prior)*cap/sqrt(cap*cap+dot(prior,prior));\n" +
+        "  float2 blended=raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
+        "  return blended*(oldMag/max(length(blended),0.00001));\n" +
+        " }\n" +
+        " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
+        "}\n" +
         "// Corner-only diagnostic: smooth the sampling displacement field, not the glass brightness.\n" +
         "float cornerMask211(float2 p){\n" +
         " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
@@ -221,6 +253,27 @@ final class GlassLens191 {
         "   }\n" +
         "  }\n" +
         "  clear=sumC/9.0;blurred=sumB/9.0;\n" +
+        " }\n" +
+        " // V214 modes 15/16: direction-continuous normal, true 3x3 sampling.\n" +
+        " if(aaProbe208>14.5 && aaProbe208<16.5){\n" +
+        "  half4 sumC=half4(0.0),sumB=half4(0.0);\n" +
+        "  float mode=aaProbe208>15.5?1.0:0.0;\n" +
+        "  for(int ix=-1;ix<=1;ix++){\n" +
+        "   for(int iy=-1;iy<=1;iy++){\n" +
+        "    float2 sp=p+float2(float(ix),float(iy))*(1.0/3.0);\n" +
+        "    float2 sq=sp+offset214(sp,mode);\n" +
+        "    float sm=min(min(sq.x-lo.x,hi.x-sq.x),min(sq.y-lo.y,hi.y-sq.y));\n" +
+        "    float2 sc=clamp(mix(sp,sq,smoothstep(0.0,14.0,sm)),lo,hi);\n" +
+        "    sumC+=wallpaper.eval(sc);sumB+=blurredWallpaper.eval(sc);\n" +
+        "   }\n" +
+        "  }\n" +
+        "  clear=sumC/9.0;blurred=sumB/9.0;\n" +
+        " }\n" +
+        " // V214 mode 17: final offset difference, blue=small, red=large.\n" +
+        " if(aaProbe208>16.5 && aaProbe208<17.5){\n" +
+        "  float diff=length(offset214(p,1.0)-offset213(p));\n" +
+        "  float t=smoothstep(0.02,1.5,diff);\n" +
+        "  return half4(half3(t,0.25*(1.0-t),1.0-t),1.0);\n" +
         " }\n" +
         " // V213 14: difference between original and alternative normals.\n" +
         " if(aaProbe208>13.5 && aaProbe208<14.5){\n" +
@@ -356,7 +409,7 @@ final class GlassLens191 {
         shader.setFloatUniform("diagnostic", (float) diagnostic);
         int aaProbe208=0;
         try { aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); } catch(Throwable ignored) {}
-        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(14,aaProbe208)));
+        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(17,aaProbe208)));
         shader.setFloatUniform("style", (float) opticalStyle);
         shader.setFloatUniform("reflectionMode", (float) surfaceMode);
         shader.setFloatUniform("reflectionStrength", Math.max(0f, Math.min(2f, surfaceStrength / 100f)));
