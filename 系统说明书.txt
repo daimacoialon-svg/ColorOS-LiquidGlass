@@ -1,18 +1,13 @@
-ColorOS-LiquidGlass V1.9.205.225｜稳定透镜回退与图标薄内缘修复
+ColorOS-LiquidGlass V1.9.205.226｜采样质量证据采集版
 
-适用：一加 13T / ColorOS 15 / Android 15 / KernelSU / LSPosed Vector。
+稳定基线：完整继承 V1.9.205.225 的正式绘制代码。此版本不修改任何正式 Shader、图标、文件夹或 Dock 绘制逻辑。
 
-一、稳定回退
-- 以 V1.9.205.221 源码为完整基础，正式二维透镜恢复 V221 PRODUCTION_AGSL_221，编译失败时保留 V219 Shader 回退。
-- 不使用 V222/V223 的 GlassLens222 单调形变算法及其大范围透镜变形。
-- 保留 V221 现有实时强度参数传递及既有兼容诊断；V222 特有的诊断模式 1-4 不在此回退版本提供。
+诊断方式：使用 tools/lens_sampling_diagnostics_226.sh 进行只读设备信息和渲染日志采集，不自动启用旧版绘制/实验模式。请将脚本复制到 /sdcard/lens_sampling_diagnostics_226.sh，然后在 Termux 执行：
+  su -c 'sh /sdcard/lens_sampling_diagnostics_226.sh'
+结果保存在 Download/liquidglass_lens_226_时间戳/。
 
-二、图标光学
-- 删除 V221 的 128px 像素距离场/法线渐变实现，改为 Path 裁剪后的窄内缘描边，不位移图标图像。
-- 优先采用 Android AdaptiveIconDrawable 原生矢量遮罩；不适用时使用既有轮廓/圆角回退。
-- 内缘最大半宽约 2dp，避免 V223 外部厚白边；继续沿用 icon_optics_204 开关。
+测试方法：使用相同壁纸和固定容器位置，在折射强度 0%、50%、100% 各截图一次，分别测试水平线、竖线和斜线纹理。截图是视觉证据；日志只辅助检查 Shader 回退、采样模式和设备显示信息。仅凭截图或日志不能直接证明位移场折叠。
 
-三、验证说明
-- 本包未经过真机视觉或 Gradle 编译验证。建议先核对 GitHub Actions 构建结果，再观察 V221 折射外观是否恢复。
-- 旧版诊断功能不应被误认为 V222 的全容器热图模式。
-- 下一步需在保持透镜曲率不变的前提下单独诊断高强度下纹理采样阶梯。
+本版未增加运行时 1/5/9 点切换：在没有隔离验证采样根因前，避免改变 V225 的稳定画面。也没有加入新 UI 设置或 Root 快照字段，原有参数链完全不变。
+
+构建状态：未执行完整 Android Gradle 编译；需通过 GitHub Actions 验证。
