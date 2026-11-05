@@ -724,9 +724,8 @@ final class GlassLens191 {
         "  return half4(half3(1.0-ink),1.0);\n";
     private static final String WHITE_GRID_AGSL_217=AGSL.replace(GRID_OLD_217,GRID_NEW_217);
     private static boolean GRID_FAILED_217=false;
-    private static final WeakHashMap<View, RuntimeShader> V222_CACHE = new WeakHashMap<>();
-    private static boolean PRODUCTION_222_FAILED=false;
-    private static boolean PRODUCTION_222_FALLBACK_REPORTED=false;
+    private static boolean PRODUCTION_221_FAILED=false;
+    private static boolean PRODUCTION_221_FALLBACK_REPORTED=false;
     private static int ROUTE_LOGS_218=0;
 
     static void draw(View owner, Canvas canvas, RectF rect, float radius,
@@ -767,40 +766,34 @@ final class GlassLens191 {
             }
         }
         usingGrid=gridRequested && shader!=null;
-        boolean using222=false;
-        if(shader==null && production219 && !PRODUCTION_222_FAILED){
-            synchronized(V222_CACHE){
-                shader=V222_CACHE.get(owner);
-                if(shader==null){
-                    try{
-                        shader=new RuntimeShader(GlassLens222.AGSL);
-                        V222_CACHE.put(owner,shader);
-                        android.util.Log.i("LiquidGlass222","LENS_SHADER_CREATED production=222 wholeSurface=true");
-                    }catch(Throwable t){
-                        PRODUCTION_222_FAILED=true;
-                        android.util.Log.e("LiquidGlass222","LENS_SHADER_222_FAILED fallback=219",t);
-                    }
-                }
-            }
-            using222=shader!=null;
-        }
         if(shader==null){
-            // V219 tested lens is the safe production fallback, never V221.
+            // If diagnostic grid compilation fails, stay with working production optics.
             final boolean fallbackProduction=production219 || gridRequested;
             WeakHashMap<View,RuntimeShader> cache=fallbackProduction?CACHE:LEGACY_DEBUG_CACHE_219;
             synchronized(cache){
                 shader=cache.get(owner);
                 if(shader==null){
                     try{
-                        shader=new RuntimeShader(fallbackProduction?PRODUCTION_AGSL_219:AGSL);
-                        cache.put(owner,shader);
-                        if(fallbackProduction && !PRODUCTION_222_FALLBACK_REPORTED){
-                            PRODUCTION_222_FALLBACK_REPORTED=true;
-                            android.util.Log.w("LiquidGlass222","LENS_SHADER_CREATED production=219 fallback=true");
+                        if(fallbackProduction && !PRODUCTION_221_FAILED){
+                            try{
+                                shader=new RuntimeShader(PRODUCTION_AGSL_221);
+                                android.util.Log.i("LiquidGlass221","LENS_SHADER_CREATED production=221 adaptiveSSAA=true");
+                            }catch(Throwable fail221){
+                                PRODUCTION_221_FAILED=true;
+                                android.util.Log.e("LiquidGlass221","LENS_SHADER_221_FAILED fallback=219",fail221);
+                            }
                         }
+                        if(shader==null){
+                            shader=new RuntimeShader(fallbackProduction?PRODUCTION_AGSL_219:AGSL);
+                            if(fallbackProduction && !PRODUCTION_221_FALLBACK_REPORTED){
+                                PRODUCTION_221_FALLBACK_REPORTED=true;
+                                android.util.Log.w("LiquidGlass221","LENS_SHADER_CREATED production=219 fallback=true");
+                            }
+                        }
+                        cache.put(owner,shader);
                     }catch(Throwable fail){
-                        android.util.Log.e("LiquidGlass222","LENS_SHADER_FAILED production="+fallbackProduction,fail);
-                        throw new IllegalStateException("Lens shader failed",fail);
+                        android.util.Log.e("LiquidGlass221","LENS_SHADER_FAILED production="+fallbackProduction,fail);
+                        throw fail;
                     }
                 }
             }
@@ -817,17 +810,6 @@ final class GlassLens191 {
         shader.setFloatUniform("focusMix",Math.max(0f,Math.min(1f,focus/100f)));
         shader.setFloatUniform("reflectionMix",Math.max(0f,Math.min(1f,reflection/100f)));
         shader.setFloatUniform("blurMix", Math.max(0f, Math.min(1f, blurMix)));
-        if(using222){
-            int diagnostic222=0;
-            try{
-                if(android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),
-                    "liquidglass_debug_opt_in_219",0)==1){
-                    diagnostic222=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),
-                        "liquidglass_lens_diagnostic_222",0);
-                }
-            }catch(Throwable ignored){}
-            shader.setFloatUniform("diagnostic222",(float)Math.max(0,Math.min(4,diagnostic222)));
-        }
         if(debugShader){
             shader.setFloatUniform("diagnostic", (float) diagnostic);
             shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(20,aaProbe208)));

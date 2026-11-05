@@ -4775,13 +4775,6 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 Matrix m=new Matrix();
                 m.setValues(new float[]{sx,0f,rect.left-left,0f,sy,rect.top-top,0f,0f,1f});
                 wallpaper.setLocalMatrix(m);
-                // V222: screenshot may be smaller than screen pixels. Always
-                // sample interpolated texels for the whole-surface lens; a
-                // magnifying map otherwise exposes hard pixel staircases.
-                wallpaper.setFilterMode(android.graphics.BitmapShader.FILTER_MODE_LINEAR);
-                if((sx>1.5f || sy>1.5f) && CLEAN_DRAW_LOG_219<20)
-                    log("LENS_SOURCE_222 undersampled frame="+frame.getWidth()+"x"+frame.getHeight()+
-                        " display="+sw+"x"+sh+" scale="+sx+","+sy);
                 float blurDp=customBlurMode==1?Math.max(0f,folderMicroBlurDp95):0f;
                 float blurPx=blurDp*display.density;
                 float blurMix=blurPx<=1f?0f:Math.min(1f,(blurPx-1f)/3f);
@@ -4793,7 +4786,6 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 bm.setValues(new float[]{sx*frame.getWidth()/filtered.getWidth(),0f,rect.left-left,
                     0f,sy*frame.getHeight()/filtered.getHeight(),rect.top-top,0f,0f,1f});
                 blurred.setLocalMatrix(bm);
-                blurred.setFilterMode(android.graphics.BitmapShader.FILTER_MODE_LINEAR);
                 RectF valid=new RectF(rect.left-left,rect.top-top,
                     rect.left-left+sw,rect.top-top+sh);
                 try{
@@ -8348,113 +8340,29 @@ public final class HookEntry implements IXposedHookLoadPackage {
             return null;
         }finally{if(bitmap!=null)bitmap.recycle();}
     }
-    // V222: vector-silhouette optics, no pixel-distance normal field.
-    // V221's row-scanned 128px polygon/chamfer normals caused radial streaks
-    // on the icon corners. This renderer never deforms source icon pixels.
-    private static final class IconOpticsField222 {
-        Drawable source;
-        android.graphics.Bitmap layer;
-        int width,height;
-        float density,originX,originY;
-        boolean matches(Drawable d,int w,int h,float dp,float x,float y){
-            return source==d && layer!=null && !layer.isRecycled() &&
-                width==w && height==h && density==dp && originX==x && originY==y;
-        }
-    }
-    private static final java.util.WeakHashMap<View,IconOpticsField222> ICON_FIELDS_222 =
-        new java.util.WeakHashMap<>();
-    private static int ICON_FIELD_LOGS_222=0;
-    // Radial lighting affects only the stroke *color*, never the silhouette,
-    // direction or position; the optical band always follows one vector path.
-    private static void drawIconCornerRim222(Canvas c,Path shape,
-            float cx,float cy,float radius,int peak,int tail,float strokeWidth){
-        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-        p.setStyle(Paint.Style.STROKE);
-        p.setStrokeWidth(strokeWidth);
-        p.setStrokeJoin(Paint.Join.ROUND);
-        p.setStrokeCap(Paint.Cap.ROUND);
-        p.setShader(new android.graphics.RadialGradient(cx,cy,Math.max(radius,2f),
-            new int[]{peak,tail,0x00000000},
-            new float[]{0f,0.52f,1f},android.graphics.Shader.TileMode.CLAMP));
-        c.drawPath(shape,p);
-    }
-    private static void drawIconInnerOptics222(View owner,Canvas canvas,Path silhouette,
+    // V224: non-displacing, clipped optical rim. No pixel normals or external bezel.
+    private static void drawIconInnerOptics221(View owner, Canvas canvas, Path silhouette,
             float left,float top,int width,int height,float density,Drawable source){
-        if(silhouette==null || silhouette.isEmpty() || width<10 || height<10 ||
-                width>512 || height>512)return;
-        IconOpticsField222 field;
-        synchronized(ICON_FIELDS_222){
-            field=ICON_FIELDS_222.get(owner);
-            if(field==null){field=new IconOpticsField222();ICON_FIELDS_222.put(owner,field);}
-        }
-        synchronized(field){
-            if(!field.matches(source,width,height,density,left,top)){
-                android.graphics.Bitmap layer=null;
-                try{
-                    layer=android.graphics.Bitmap.createBitmap(width,height,
-                        android.graphics.Bitmap.Config.ARGB_8888);
-                    Canvas lc=new Canvas(layer);
-                    Path shape=new Path();
-                    Matrix translate=new Matrix();
-                    translate.setTranslate(-left,-top);
-                    silhouette.transform(translate,shape);
-                    // One true contour; rasterize antialias only once into the
-                    // cached bitmap. No 8-neighbor distance / finite differences.
-                    int layerId=lc.saveLayer(0f,0f,width,height,null);
-                    float min=Math.min(width,height);
-                    float thin=Math.max(1.15f*density,min*0.020f);
-                    float mid=Math.max(2.6f*density,min*0.038f);
-                    float tail=Math.max(4.5f*density,min*0.071f);
-                    Paint soft=new Paint(Paint.ANTI_ALIAS_FLAG);
-                    soft.setStyle(Paint.Style.STROKE);
-                    soft.setStrokeJoin(Paint.Join.ROUND);
-                    soft.setStrokeWidth(tail);
-                    soft.setColor(0x13EFF6FF);
-                    lc.drawPath(shape,soft);
-                    soft.setStrokeWidth(mid);
-                    soft.setColor(0x2DF7FBFF);
-                    lc.drawPath(shape,soft);
-                    soft.setStrokeWidth(thin);
-                    soft.setColor(0x35FFFFFF);
-                    lc.drawPath(shape,soft);
-                    // Bright TL + BR. Dark TR + BL: stable in local icon space.
-                    // No inward tug, radial streaks, or external moon-like bloom.
-                    float cx0=width*0.03f,cy0=height*0.03f;
-                    float cx1=width*0.97f,cy1=height*0.97f;
-                    float r=min*0.97f;
-                    drawIconCornerRim222(lc,shape,cx0,cy0,r,0xAEFFFFFF,0x20F4FAFF,mid);
-                    drawIconCornerRim222(lc,shape,cx1,cy1,r,0x9CFFFFFF,0x1AEAF8FF,mid);
-                    drawIconCornerRim222(lc,shape,width*0.97f,height*0.03f,r,
-                        0x48071D35,0x100F2137,mid);
-                    drawIconCornerRim222(lc,shape,width*0.03f,height*0.97f,r,
-                        0x3B081827,0x090E2332,mid);
-                    // A slim specular filament adds definition while staying inside.
-                    drawIconCornerRim222(lc,shape,cx0,cy0,r,0x9AFFFFFF,0x13F2FBFF,thin);
-                    drawIconCornerRim222(lc,shape,cx1,cy1,r,0x88FFFFFF,0x12F2FBFF,thin);
-                    Paint mask=new Paint(Paint.ANTI_ALIAS_FLAG);
-                    mask.setColor(Color.WHITE);
-                    mask.setStyle(Paint.Style.FILL);
-                    mask.setXfermode(new android.graphics.PorterDuffXfermode(
-                        android.graphics.PorterDuff.Mode.DST_IN));
-                    lc.drawPath(shape,mask);
-                    mask.setXfermode(null);
-                    lc.restoreToCount(layerId);
-                    field.source=source;
-                    field.width=width;field.height=height;field.density=density;
-                    field.originX=left;field.originY=top;field.layer=layer;
-                    if(diagnostics && ICON_FIELD_LOGS_222++<20)
-                        log("ICON_VECTOR_222 built="+width+"x"+height+
-                            " widths="+thin+","+mid+","+tail+
-                            " source="+source.getClass().getSimpleName());
-                }catch(Throwable t){
-                    if(layer!=null && !layer.isRecycled())layer.recycle();
-                    if(diagnostics && ICON_FIELD_LOGS_222++<20)
-                        log("ICON_VECTOR_222 failed="+t.getClass().getSimpleName());
-                    return;
-                }
-            }
-            canvas.drawBitmap(field.layer,left,top,new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG));
-        }
+        if(silhouette==null || silhouette.isEmpty() || width<10 || height<10)return;
+        int save=canvas.save();
+        try{
+            canvas.clipPath(silhouette);
+            float span=Math.min(width,height);
+            float narrow=Math.min(2.0f*density,span*0.024f);
+            Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeJoin(Paint.Join.ROUND);
+            p.setStrokeWidth(Math.max(0.75f,narrow*2f));
+            RectF bounds=new RectF();
+            silhouette.computeBounds(bounds,true);
+            // Gradient direction is fixed in screen space; source icon pixels never move.
+            p.setShader(new android.graphics.LinearGradient(
+                bounds.left,bounds.top,bounds.right,bounds.bottom,
+                new int[]{0x78F5FAFF,0x20EDF4FF,0x260D203A,0x64EDF7FF},
+                new float[]{0f,0.30f,0.67f,1f},
+                android.graphics.Shader.TileMode.CLAMP));
+            canvas.drawPath(silhouette,p);
+        }finally{canvas.restoreToCount(save);}
     }
     private static void drawIconEdge205(android.widget.TextView v,Canvas c){
         if(!iconOptics204 || !v.isShown() || v.getWidth()<=0 || v.getHeight()<=0)return;
@@ -8471,35 +8379,57 @@ public final class HookEntry implements IXposedHookLoadPackage {
         float left=(v.getWidth()-w)*.5f;
         float top=v.getPaddingTop();
         if(top+h>v.getHeight())return;
-        // Prefer OEM adaptive icon vector mask; avoid the V221 row-scan
-        // outline extraction that generated 128px polygon seams and tearing.
+        android.graphics.Path contour=null;
+        long now=android.os.SystemClock.uptimeMillis();
+        synchronized(ICON_CONTOUR_2059){
+            contour=ICON_CONTOUR_2059.get(d);
+            Long retry=ICON_CONTOUR_RETRY_20510.get(d);
+            if(contour==null && (retry==null || now>=retry.longValue())){
+                contour=computeIconContour2059(d);
+                if(contour!=null){
+                    ICON_CONTOUR_2059.put(d,contour);
+                    ICON_CONTOUR_RETRY_20510.remove(d);
+                }else ICON_CONTOUR_RETRY_20510.put(d,now+60000L);
+            }
+        }
+        String type=d.getClass().getName();
+        if(diagnostics && ICON_CONTOUR_LOG_2059.size()<40 && ICON_CONTOUR_LOG_2059.add(type+"|"+v.getContentDescription()))
+            log("ICON_CONTOUR_20511 label="+v.getContentDescription()+" drawable="+type+
+                " alphaContour="+(contour!=null)+" fallback="+(contour==null)+" bounds="+bounds.toShortString());
         android.graphics.Path mapped=new android.graphics.Path();
         float pad=Math.max(.35f*density,.5f);
         RectF r=new RectF(left+pad,top+pad,left+w-pad,top+h-pad);
-        boolean maskDrawn=false;
-        try{
-            Drawable unwrapped=d;
-            for(int depth=0;depth<3 && unwrapped instanceof android.graphics.drawable.InsetDrawable;depth++)
-                unwrapped=((android.graphics.drawable.InsetDrawable)unwrapped).getDrawable();
-            if(unwrapped instanceof android.graphics.drawable.AdaptiveIconDrawable){
-                Path mask=((android.graphics.drawable.AdaptiveIconDrawable)unwrapped).getIconMask();
-                if(mask!=null && !mask.isEmpty()){
-                    RectF mb=new RectF();mask.computeBounds(mb,true);
-                    float aspect=mb.height()>0?mb.width()/mb.height():0f;
-                    if(mb.width()>1f && mb.height()>1f && aspect>0.87f && aspect<1.13f){
-                        Matrix matrix=new Matrix();
-                        matrix.setRectToRect(mb,r,Matrix.ScaleToFit.CENTER);
-                        mask.transform(matrix,mapped);
-                        maskDrawn=true;
+        if(contour!=null && !(d instanceof android.graphics.drawable.AdaptiveIconDrawable)){
+            android.graphics.Matrix matrix=new android.graphics.Matrix();
+            matrix.setScale(w/128f,h/128f);
+            matrix.postTranslate(left,top);
+            contour.transform(matrix,mapped);
+        }else{
+            // Prefer the actual adaptive icon mask over a guessed rounded square.
+            boolean maskDrawn=false;
+            try{
+                Drawable unwrapped=d;
+                for(int depth=0;depth<3 && unwrapped instanceof android.graphics.drawable.InsetDrawable;depth++)
+                    unwrapped=((android.graphics.drawable.InsetDrawable)unwrapped).getDrawable();
+                if(unwrapped instanceof android.graphics.drawable.AdaptiveIconDrawable){
+                    android.graphics.Path mask=((android.graphics.drawable.AdaptiveIconDrawable)unwrapped).getIconMask();
+                    if(mask!=null && !mask.isEmpty()){
+                        RectF maskBounds=new RectF();mask.computeBounds(maskBounds,true);
+                        float aspect=maskBounds.height()>0?maskBounds.width()/maskBounds.height():0f;
+                        if(maskBounds.width()>1f && maskBounds.height()>1f && aspect>.92f && aspect<1.08f){
+                            android.graphics.Matrix matrix=new android.graphics.Matrix();
+                            matrix.setRectToRect(maskBounds,r,android.graphics.Matrix.ScaleToFit.CENTER);
+                            mask.transform(matrix,mapped);maskDrawn=true;
+                        }
                     }
                 }
+            }catch(Throwable t){if(diagnostics)log("ICON_MASK_217_FALLBACK "+t.getClass().getSimpleName());}
+            if(!maskDrawn){
+                float corner=Math.min(r.width(),r.height())*.265f;
+                mapped.addRoundRect(r,corner,corner,android.graphics.Path.Direction.CW);
             }
-        }catch(Throwable t){if(diagnostics)log("ICON_VECTOR_MASK_222 "+t.getClass().getSimpleName());}
-        if(!maskDrawn){
-            float corner=Math.min(r.width(),r.height())*.265f;
-            mapped.addRoundRect(r,corner,corner,Path.Direction.CW);
         }
-        drawIconInnerOptics222(v,c,mapped,left,top,Math.round(w),Math.round(h),density,d);
+        drawIconInnerOptics221(v,c,mapped,left,top,Math.round(w),Math.round(h),density,d);
     }
     private static void hookIconOptics205(ClassLoader loader){
         String[] candidates={"com.android.launcher3.BubbleTextView",
