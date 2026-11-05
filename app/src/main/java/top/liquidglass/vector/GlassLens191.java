@@ -80,7 +80,7 @@ final class GlassLens191 {
         "half4 main(float2 p){\n" +
         " float2 lo=validBounds.xy+float2(2.0);\n" +
         " float2 hi=max(lo+float2(1.0),validBounds.zw-float2(2.0));\n" +
-        " float2 q=p+warp219(p);\n" +
+        " float2 q=p+warp219(p)+environmentWarp228(p)*clamp(environment228,0.0,1.0);\n" +
         " float margin=min(min(q.x-lo.x,hi.x-q.x),min(q.y-lo.y,hi.y-q.y));\n" +
         " float safety=smoothstep(0.0,14.0,margin);\n" +
         " float2 src=clamp(mix(p,q,safety),lo,hi);\n" +
@@ -142,6 +142,7 @@ final class GlassLens191 {
         "uniform float reflectionSoftness;\n" +
         "uniform float edgeStrength;\n" +
         "uniform float contour227;\n" +
+        "uniform float environment228;\n" +
         "float depth219(float2 p){\n" +
         " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
         " float r=clamp(radius,0.0,min(h.x,h.y));\n" +
@@ -200,6 +201,21 @@ final class GlassLens191 {
         " raw*=1.0-0.17*corner*cornerBand;\n" +
         " float cap=clamp(small*0.096,9.0,21.0);\n" +
         " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
+        "}\n" +
+        // V228: independent environment-driven meniscus transmission. No extra Canvas pass.
+        // The V221 displacement remains untouched and is exactly restored when disabled.
+        "float2 environmentWarp228(float2 p){\n" +
+        " float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        " float d=max(depth219(p),0.0);\n" +
+        " float width=clamp(min(size.x,size.y)*0.12,12.0,30.0);\n" +
+        " float t=clamp(d/width,0.0,1.0);\n" +
+        " float band=sin(3.14159265*t);band=band*band*(1.0-smoothstep(0.82,1.0,t));\n" +
+        " float2 n=slope219(p);\n" +
+        " float len=sqrt(dot(n,n)+0.000004);\n" +
+        " float2 dir=n/len;\n" +
+        " float strength228=clamp(strength,0.0,1.0);\n" +
+        " float amp=clamp(min(size.x,size.y)*0.022,2.5,7.0);\n" +
+        " return dir*(amp*strength228*band*clamp(len*32.0,0.0,1.0));\n" +
         "}\n" +
         "float2 samplePosition221(float2 p,float2 lo,float2 hi){\n" +
         " float2 q=p+warp219(p);\n" +
@@ -289,7 +305,7 @@ final class GlassLens191 {
         " float angle=clamp(directional*0.5+0.5,0.0,1.0);\n" +
         " float bright=smoothstep(0.48,0.92,angle);\n" +
         " float dark=1.0-smoothstep(0.12,0.48,angle);\n" +
-        " float contourGain=clamp(contour227,0.0,1.0)*clamp(edgeStrength,0.0,1.0);\n" +
+        " float contourGain=clamp(contour227,0.0,1.0)*(1.0-clamp(environment228,0.0,1.0))*clamp(edgeStrength,0.0,1.0);\n" +
         " float contourLight=contourGain*(0.085*edgeThin+0.095*edgeBody)*bright;\n" +
         " float contourShade=contourGain*(0.018*edgeThin+0.027*edgeBody)*dark;\n" +
         " float3 color=float3(result.rgb);\n" +
@@ -845,6 +861,15 @@ final class GlassLens191 {
         // uniform or production configuration schema is introduced.
         shader.setFloatUniform("edgeStrength", usingGrid ? gridSpacing217/16f :
             (edgeEnabled ? Math.max(0f, Math.min(1f, edgeStrength / 100f)) : 0f));
+        // V228 independent switch; default on, 0 restores the exact V227 production path.
+        if(!debugShader){
+            int env228=1;
+            try { env228=android.provider.Settings.Global.getInt(
+                owner.getContext().getContentResolver(),"liquidglass_environment_228",1); }
+            catch(Throwable ignored) { }
+            try { shader.setFloatUniform("environment228",env228==0?0f:1f); }
+            catch(Throwable ignored) { }
+        }
         // V227: reversible production contour; legacy/fallback shaders do not expose this uniform.
         // Existing edgeStrength and surface controls remain the single source of truth.
         if(!debugShader){
