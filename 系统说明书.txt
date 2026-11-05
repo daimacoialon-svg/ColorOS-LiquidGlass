@@ -1,4 +1,4 @@
-V1.9.205.253 — Kyant-first unified Gradle integration (UNVERIFIED ENGINEERING SOURCE)
+V1.9.205.253 — Kyant-first unified Gradle integration (UNVERIFIED ENGINEERING SOURCE)  
 
 基于 V252 原有 LSPosed app/src/main 迁入 liquidglass-module；原版 Kyant kmp 源码作为根工程，原版 backdrop 模块不修改。
 主模块 Gradle 通过 implementation(project(":backdrop")) 建立实际源码依赖，另保留 compileOnly(:xposed-stubs)。
