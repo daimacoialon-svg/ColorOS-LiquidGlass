@@ -128,6 +128,33 @@ final class GlassLens191 {
         "  float v=smoothstep(1.0,2.5,footprint);\n" +
         "  return half4(half3(v,1.0-v,0.12),1.0);\n" +
         " }\n" +
+        " // V210 probe 4: full 3x3 real subpixel sampling in the entire meniscus shoulder.\n" +
+        " // Outside the shoulder retain original single-sample result; no persistent quality change.\n" +
+        " if(aaProbe208>3.5 && aaProbe208<4.5){\n" +
+        "  float band=smoothstep(0.5,3.0,d)*(1.0-smoothstep(shoulderWidth*0.9,shoulderWidth*1.3,d));\n" +
+        "  if(band>0.001){\n" +
+        "   half4 sumC=half4(0.0),sumB=half4(0.0);\n" +
+        "   for(int ix=-1;ix<=1;ix++){\n" +
+        "    for(int iy=-1;iy<=1;iy++){\n" +
+        "     float2 sp=p+float2(float(ix),float(iy))*(1.0/3.0);\n" +
+        "     float2 sq=sp+offsetAt(sp);\n" +
+        "     float sm=min(min(sq.x-lo.x,hi.x-sq.x),min(sq.y-lo.y,hi.y-sq.y));\n" +
+        "     float2 sc=clamp(mix(sp,sq,smoothstep(0.0,14.0,sm)),lo,hi);\n" +
+        "     sumC+=wallpaper.eval(sc);sumB+=blurredWallpaper.eval(sc);\n" +
+        "    }\n" +
+        "   }\n" +
+        "   clear=mix(clear,sumC/9.0,half(band));\n" +
+        "   blurred=mix(blurred,sumB/9.0,half(band));\n" +
+        "  }\n" +
+        " }\n" +
+        " // V210 probe 5: visualize actual displacement-gradient severity.\n" +
+        " if(aaProbe208>4.5 && aaProbe208<5.5){\n" +
+        "  float2 sx=p+float2(1.0,0.0),sy=p+float2(0.0,1.0);\n" +
+        "  float2 dx=offsetAt(sx)-delta,dy=offsetAt(sy)-delta;\n" +
+        "  float risk210=max(length(dx),length(dy));\n" +
+        "  float t=smoothstep(0.15,1.5,risk210);\n" +
+        "  return half4(half3(t,1.0-abs(t-0.5)*2.0,1.0-t),1.0);\n" +
+        " }\n" +
         " half4 result=mix(clear,blurred,half(clamp(blurMix,0.0,1.0)));\n" +
         " if(diagnostic>10.5 && diagnostic<11.5){\n" +
         "  float2 f=abs(fract((sampleAt-validBounds.xy)/16.0)-0.5);\n" +
@@ -199,7 +226,7 @@ final class GlassLens191 {
         shader.setFloatUniform("diagnostic", (float) diagnostic);
         int aaProbe208=0;
         try { aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); } catch(Throwable ignored) {}
-        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(3,aaProbe208)));
+        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(5,aaProbe208)));
         shader.setFloatUniform("style", (float) opticalStyle);
         shader.setFloatUniform("reflectionMode", (float) surfaceMode);
         shader.setFloatUniform("reflectionStrength", Math.max(0f, Math.min(2f, surfaceStrength / 100f)));

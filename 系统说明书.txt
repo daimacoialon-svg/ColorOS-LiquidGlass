@@ -1,11 +1,24 @@
-ColorOS-LiquidGlass V1.9.205.209｜配置链一致性修复版
+ColorOS-LiquidGlass V1.9.205.210｜曲面过渡带采样诊断版
 
-基于 V208 源码，保留 V208 的抗锯齿诊断模式。
+基于 V209，保留首次配置键写入修复、UI 实时通知、Root 快照与 Dock 持久化。
+本版重点为诊断而非声称已解决锯齿。正常模式 0 继续沿用 V207 自适应采样。
 
-修复：MainActivity 的布尔与整数配置写入去重判断，只有配置键已存在且值相等时才跳过写入。原实现把目标值作为 getBoolean/getInt 默认值，导致首次保存尚不存在的键时错误跳过。
-修复：整数参数只有在 commit 成功后才通知 Launcher。
-诊断：新增 CONFIG_209_INT_SAVE 日志，保留 CONFIG_204_SWITCH_SAVE。
+诊断命令（Termux root）：
+su -c 'settings put global liquidglass_aa_probe_208 0'  正常自适应
+su -c 'settings put global liquidglass_aa_probe_208 1'  采样等级热力图
+su -c 'settings put global liquidglass_aa_probe_208 2'  全玻璃真实九点采样
+su -c 'settings put global liquidglass_aa_probe_208 3'  采样足迹热力图
+su -c 'settings put global liquidglass_aa_probe_208 4'  仅曲面过渡带真实九点采样
+su -c 'settings put global liquidglass_aa_probe_208 5'  折射位移变化率热力图
 
-验证建议：UI 关闭再开启“启用桌面文件夹玻璃”，检查 glass.xml 中 enabled=true，Root 快照以 LG1|1| 开头，Launcher 日志 enabled=true。
+诊断模式可能需要滑动桌面或重启 Launcher 触发 Shader uniform 刷新。
+模式 2、4 的性能开销较高，仅用于短时对比，完成后恢复 0。
+诊断热力图的高亮区域不是已确认的锯齿位置，需要与实际截图比较。
 
-注意：未在本环境进行 Android Gradle 编译或真机测试。
+Git：
+cd ~/ColorOS-LiquidGlass-V1.0-Source
+git add .
+git commit -m "V1.9.205.210 版本"
+git push origin main
+
+本包未进行真机编译与运行验证。
