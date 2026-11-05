@@ -255,6 +255,8 @@ public final class MainActivity extends Activity {
         });
         slider("底色色调强度 (%)","tint_strength",30,0,90);
         TextView tintInfo=text("底色色调强度为 0% 时不添加颜色；原生模式不添加色调。颜色变化需在玻璃底色不透明度和当前渲染路径允许的情况下观察。",12,false);current.addView(tintInfo);
+        section("应用图标光学高光","为桌面应用图标增加沿真实轮廓变化的细腻反光，不改变图标内容与点击区域。");
+        toggle("应用图标高光","icon_optics_204",false);
         section("旧版兼容与实验","旧二维壁纸折射仅用于对照测试。默认折叠，避免误以为它是第二套必需的光学系统。");
         final LinearLayout legacyContainer=column();
         final Button legacyButton=new Button(this);
@@ -267,7 +269,7 @@ public final class MainActivity extends Activity {
         toggle("旧二维壁纸折射（实验对照）","real_refraction",false);
         slider("旧二维折射强度 (%)","refraction_percent",0,0,100);
         toggle("旧版玻璃细节增强","clear_refraction",false);
-        toggle("应用图标高光实验","icon_optics_204",false);
+
         current=savedCurrent;
         legacyButton.setOnClickListener(clickedView->{
             boolean show=legacyContainer.getVisibility()!=View.VISIBLE;

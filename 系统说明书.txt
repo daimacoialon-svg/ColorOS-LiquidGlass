@@ -1,14 +1,11 @@
-ColorOS-LiquidGlass V1.9.205.205 系统说明书
+ColorOS-LiquidGlass V1.9.205.207｜自适应亚像素抗锯齿实验版
 
-设备目标：OnePlus 13T / ColorOS 15 / Android 15 / KernelSU / LSPosed Vector。
-源码：使用 Android Studio 打开压缩包中的顶层项目目录，按项目 Gradle 配置编译并安装；在 Vector 中启用模块并勾选桌面 Launcher 作用域。
+基于 V206，保持文件夹与 Dock 的二维曲面透镜、配置同步及自动恢复机制。
 
-配置：UI SharedPreferences 文件 glass.xml 为用户设置持久化来源；UI 修改后直接向 Launcher 发送 LG1 32 字段快照，Root 在后台延迟发布 Settings.Global 快照以支持重启恢复。
-Dock：首次未配置时默认开启；手动关闭后保持关闭；总玻璃开关关闭时不绘制 Dock。Launcher 生命周期中尝试挂载，UI 开关变动后主动刷新 Dock 背景。
-详细日志：diagnostics 作为独立持久化开关，重启时不允许旧迁移逻辑覆盖已有用户值。
+改动：在曲面肩部过渡带先做低成本空间筛选，再计算有限差分采样足迹和方向扭曲；根据风险使用 1/4/9 点纹理采样，平滑混合不同级别。AGSL 不使用 dFdx/dFdy。
 
-参数一致性：ConfigPublisher202.KEYS 和 ConfigMigration194.NAMES 均为32字段，0基索引：diagnostics=5，surface_strength_195=22，dock_glass_204=25，nonlinear_107=26，optical_style_186=31；Launcher 使用快照索引+1读取。配置 Provider 使用同名键，但列次序不等于 LG1 快照顺序。
+说明：属于真机验证前的实验实现，可能出现着色器编译兼容性、GPU 负载和画质问题。建议先保留 V205 稳定版本以便回退。
 
-本版本保留 V199 二维曲面透镜公式和 V203 实时直达；不宣称已完成真机验证。
+构建：Android Studio / Gradle，使用项目自带配置执行 :app:assembleDebug。
 
-V1.9.205.205：修复 MainActivity.onCreate(Bundle saved) 内 Dock 默认开启布尔变量重名导致的 Java 编译错误；其余逻辑沿用 V204。
+测试：静止时曲面过渡带台阶、滑动帧率、Dock 轮廓、参数实时生效与重启持久化。

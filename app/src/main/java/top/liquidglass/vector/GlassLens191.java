@@ -72,6 +72,33 @@ final class GlassLens191 {
         " float2 sampleAt=mix(p,q,safety);\n" +
         " half4 clear=wallpaper.eval(sampleAt);\n" +
         " half4 blurred=blurredWallpaper.eval(sampleAt);\n" +
+        " // Adaptive finite-difference footprint; no unsupported AGSL derivatives.\n" +
+        " // Pre-gate by meniscus shoulder to avoid expensive Jacobian tests in the center.\n" +
+        " float shoulderWidth=clamp(min(bounds.z-bounds.x,bounds.w-bounds.y)*0.38,18.0,75.0);\n" +
+        " float shoulderAA=smoothstep(2.0,8.0,d)*(1.0-smoothstep(shoulderWidth*0.65,shoulderWidth*1.05,d));\n" +
+        " if(shoulderAA>0.005 && strength>0.01){\n" +
+        "  float2 px=p+float2(1.0,0.0),py=p+float2(0.0,1.0);\n" +
+        "  float2 qx=px+offsetAt(px),qy=py+offsetAt(py);\n" +
+        "  float2 jx=mix(float2(1.0,0.0),qx-q,safety);\n" +
+        "  float2 jy=mix(float2(0.0,1.0),qy-q,safety);\n" +
+        "  float footprint=max(length(jx),length(jy));\n" +
+        "  float anisotropy=abs(dot(jx,jy))/(0.01+length(jx)*length(jy));\n" +
+        "  float risk=shoulderAA*max(smoothstep(1.10,2.25,footprint),smoothstep(0.20,0.85,anisotropy)*0.6);\n" +
+        "  if(risk>0.12){\n" +
+        "   float2 ax=jx*0.29,ay=jy*0.29;\n" +
+        "   half4 c4=(wallpaper.eval(clamp(sampleAt+ax+ay,lo,hi))+wallpaper.eval(clamp(sampleAt+ax-ay,lo,hi))+wallpaper.eval(clamp(sampleAt-ax+ay,lo,hi))+wallpaper.eval(clamp(sampleAt-ax-ay,lo,hi)))*0.25;\n" +
+        "   half4 b4=(blurredWallpaper.eval(clamp(sampleAt+ax+ay,lo,hi))+blurredWallpaper.eval(clamp(sampleAt+ax-ay,lo,hi))+blurredWallpaper.eval(clamp(sampleAt-ax+ay,lo,hi))+blurredWallpaper.eval(clamp(sampleAt-ax-ay,lo,hi)))*0.25;\n" +
+        "   clear=mix(clear,c4,half(smoothstep(0.12,0.42,risk)));\n" +
+        "   blurred=mix(blurred,b4,half(smoothstep(0.12,0.42,risk)));\n" +
+        "   if(risk>0.68){\n" +
+        "    half4 c9=wallpaper.eval(clamp(sampleAt+ax,lo,hi))+wallpaper.eval(clamp(sampleAt-ax,lo,hi))+wallpaper.eval(clamp(sampleAt+ay,lo,hi))+wallpaper.eval(clamp(sampleAt-ay,lo,hi));\n" +
+        "    half4 b9=blurredWallpaper.eval(clamp(sampleAt+ax,lo,hi))+blurredWallpaper.eval(clamp(sampleAt-ax,lo,hi))+blurredWallpaper.eval(clamp(sampleAt+ay,lo,hi))+blurredWallpaper.eval(clamp(sampleAt-ay,lo,hi));\n" +
+        "    half w9=half(smoothstep(0.68,0.92,risk));\n" +
+        "    clear=mix(clear,(c4*4.0+c9+wallpaper.eval(sampleAt))/9.0,w9);\n" +
+        "    blurred=mix(blurred,(b4*4.0+b9+blurredWallpaper.eval(sampleAt))/9.0,w9);\n" +
+        "   }\n" +
+        "  }\n" +
+        " }\n" +
         " half4 result=mix(clear,blurred,half(clamp(blurMix,0.0,1.0)));\n" +
         " if(diagnostic>10.5 && diagnostic<11.5){\n" +
         "  float2 f=abs(fract((sampleAt-validBounds.xy)/16.0)-0.5);\n" +
@@ -100,14 +127,20 @@ final class GlassLens191 {
         " float enabled=reflectionMode>0.5?1.0:0.0;\n" +
         " float dynamic=reflectionMode>1.5?1.0:0.0;\n" +
         " float gain=clamp(reflectionStrength,0.0,2.0);\n" +
-        " float reflect=enabled*gain*curvature*(0.028+0.075*clamp(gradLen*5.0,0.0,1.0));\n" +
-        " float glint=dynamic*gain*curvature*spec*0.18;\n" +
-        " // Optical boundary is a subpixel-to-1px line; thickness is in the lens slope,\n" +
-        " // not in a wide constant-width white outline.\n" +
-        " float rim=exp(-pow((d-1.35)/1.5,2.0));\n" +
-        " float fresnel=pow(1.0-clamp(1.0/sqrt(1.0+dot(slope*3.5,slope*3.5)),0.0,1.0),1.5);\n" +
-        " float contour=clamp(edgeStrength,0.0,1.0)*(0.09*rim+0.075*fresnel*smoothstep(0.0,7.0,d));\n" +
-        " float shadow=(1.0-smoothstep(1.0,6.0,d))*smoothstep(0.0,1.1,d)*0.055;\n" +
+        " // Directional reflection follows the height-field slope and local wallpaper luminance.\n" +
+        " float3 lightDir=normalize(float3(-0.55,-0.75,0.75));\n" +
+        " float3 n=normalize(float3(-slope*4.0,1.0));\n" +
+        " float facing=clamp(dot(n,lightDir),0.0,1.0);\n" +
+        " float ambient=clamp(dot(backdrop,float3(0.2126,0.7152,0.0722)),0.0,1.0);\n" +
+        " float reflect=enabled*gain*curvature*(0.014+0.078*pow(facing,5.0))*(0.55+0.45*ambient);\n" +
+        " float glint=dynamic*gain*curvature*spec*0.14;\n" +
+        " // Thin optical silhouette plus a softer, curvature-dependent internal meniscus.\n" +
+        " float rim=exp(-pow((d-0.85)/0.85,2.0));\n" +
+        " float meniscus=exp(-pow((d-4.2)/3.8,2.0));\n" +
+        " float fresnel=pow(1.0-clamp(1.0/sqrt(1.0+dot(slope*4.8,slope*4.8)),0.0,1.0),1.35);\n" +
+        " float direction=0.25+0.75*pow(facing,3.0);\n" +
+        " float contour=clamp(edgeStrength,0.0,1.0)*(0.12*rim*direction+0.11*meniscus*fresnel*direction);\n" +
+        " float shadow=(1.0-smoothstep(0.7,5.0,d))*smoothstep(0.0,0.8,d)*0.042;\n" +
         " float3 color=float3(result.rgb);\n" +
         " color+=(1.0-color)*clamp(reflect+glint+contour,0.0,0.28);\n" +
         " color*=1.0-shadow;\n" +
