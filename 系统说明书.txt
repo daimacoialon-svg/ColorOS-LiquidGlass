@@ -1,3 +1,8 @@
+V1.9.205.261｜Launcher 背景来源可行性诊断
+诊断开关：su -c settings put global liquidglass_kyant_probe_261 1
+Vector 搜索 KYANT261。新增 WALLPAPER（动态/静态元数据及建议尺寸）、LAYER（文件夹、Workspace、DragLayer 的背景/滚动/位移）、SOURCE_LIMIT。只读元数据，不获取壁纸位图、不截屏、不替换光学渲染。动态壁纸信息或权限可能不可用；结果仅供诊断，不能证明真实合成背景可读取。
+关闭：su -c settings put global liquidglass_kyant_probe_261 0
+
 V1.9.205.260｜Launcher 背景来源元数据诊断版
 
 继承 V259 已验证的 FolderIcon.dispatchDraw 实例监听；默认关闭，仅在全局设置 liquidglass_kyant_probe_260=1 时执行。
