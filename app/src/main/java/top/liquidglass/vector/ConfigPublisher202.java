@@ -42,6 +42,19 @@ final class ConfigPublisher202 {
         }
         return s.toString();
     }
+    // V230: a separate, versioned material record; 33-field LG1 is untouched.
+    static String materialSnapshot(Context context){
+        return MaterialConfig230.snapshot(context);
+    }
+    static synchronized boolean publishMaterialVerified(String expected){
+        if(expected==null || !expected.matches("LG230(\\|[0-9]+){5}"))return false;
+        String current=root("settings get global "+MaterialConfig230.GLOBAL_KEY);
+        if(expected.equals(current))return true;
+        root("settings put global "+MaterialConfig230.GLOBAL_KEY+" '"+expected+"'");
+        boolean ok=expected.equals(root("settings get global "+MaterialConfig230.GLOBAL_KEY));
+        Log.i("LiquidGlass230","MATERIAL_ROOT_VERIFIED_230="+ok);
+        return ok;
+    }
     private static String root(String cmd){
         Process p=null;
         try{

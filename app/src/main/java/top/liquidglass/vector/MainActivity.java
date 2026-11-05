@@ -39,7 +39,10 @@ public final class MainActivity extends Activity {
     private final Runnable rootSignal194=()->new Thread(()->{
         String expected=ConfigPublisher202.snapshot(getApplicationContext());
         boolean ok=ConfigPublisher202.publishVerified(expected);
-        android.util.Log.i("LiquidGlass203","CONFIG_203_BACKGROUND_PUBLISH verified="+ok);
+        boolean materialOk=ConfigPublisher202.publishMaterialVerified(
+            ConfigPublisher202.materialSnapshot(getApplicationContext()));
+        android.util.Log.i("LiquidGlass203","CONFIG_203_BACKGROUND_PUBLISH verified="+ok+
+            " material230="+materialOk);
     },"LiquidGlass-BackgroundPublish203").start();
     private void notifyConfigChanged128(){
         getContentResolver().notifyChange(GlassConfigProvider.URI,null);
@@ -48,6 +51,7 @@ public final class MainActivity extends Activity {
             android.content.Intent i=new android.content.Intent("top.liquidglass.vector.CONFIG_CHANGED_128");
             i.setPackage("com.android.launcher");
             i.putExtra("lg_snapshot_203",snapshot);
+            i.putExtra(MaterialConfig230.EXTRA,ConfigPublisher202.materialSnapshot(getApplicationContext()));
             sendBroadcast(i);
             android.util.Log.i("LiquidGlass203","CONFIG_203_DIRECT_SENT fields="+snapshot.split("\\|",-1).length);
         }catch(Throwable t){android.util.Log.w("LiquidGlass203","CONFIG_203_DIRECT_FAILED",t);}
@@ -92,6 +96,33 @@ public final class MainActivity extends Activity {
             public void onProgressChanged(SeekBar b,int progress,boolean fromUser){update.run();}
             public void onStartTrackingTouch(SeekBar b){}
             public void onStopTrackingTouch(SeekBar b){putIntIfChanged193(key,b.getProgress()+min);}
+        });
+    }
+    // V230 opt-in material: throttle direct Launcher updates during dragging to
+    // ~20 fps; final finger release is always committed. The existing 33 LG1
+    // settings remain unchanged and the Root publication is still debounced.
+    private void materialSlider230(String label,String key,int def,int min,int max){
+        TextView caption=text("",13,false);current.addView(caption);
+        SeekBar bar=new SeekBar(this);bar.setMax(max-min);
+        bar.setProgress(Math.max(0,Math.min(max-min,prefs.getInt(key,def)-min)));
+        current.addView(bar);
+        Runnable update=()->caption.setText(label+"  ·  "+(bar.getProgress()+min));
+        update.run();
+        bar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            long lastSent=0;
+            public void onProgressChanged(SeekBar b,int progress,boolean fromUser){
+                update.run();
+                if(!fromUser)return;
+                long now=android.os.SystemClock.uptimeMillis();
+                if(now-lastSent>=50L){
+                    lastSent=now;
+                    putIntIfChanged193(key,progress+min);
+                }
+            }
+            public void onStartTrackingTouch(SeekBar b){}
+            public void onStopTrackingTouch(SeekBar b){
+                putIntIfChanged193(key,b.getProgress()+min);
+            }
         });
     }
     // V95: decimal dp is persisted as tenths to avoid SharedPreferences float/int migration issues.
@@ -207,9 +238,9 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass  ·  光学工作台",27,true);body.addView(heading);
-        TextView version=text("V1.9.205.229  ·  统一曲面光学 · 设置分区重构",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.230  ·  新统一玻璃材质实验 · 稳定引擎可回退",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         category229("01  总览与预设","常用操作集中管理；页面打开不会覆盖已有配置。");
-        section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
+        section("稳定引擎风格预设（兼容）","用于 V229 正式引擎；V230 实验材质的统一参数位于下方第三板块。预设不会覆盖已保存的 V230 光学参数，也不会强制切换容器开关。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
         Button bubble186=new Button(this);bubble186.setAllCaps(false);bubble186.setText("泡泡液态玻璃");
@@ -218,7 +249,7 @@ public final class MainActivity extends Activity {
         styleButtons186.addView(ios186,new LinearLayout.LayoutParams(0,dp(58),1));
         bubble186.setOnClickListener(clickedView186 -> applyOpticalStyle186(2));
         ios186.setOnClickListener(clickedView186 -> applyOpticalStyle186(1));
-        TextView styleNote186=text("泡泡：连续边缘透镜与环境响应高光。iOS 风格：较弱曲率与柔和反射。两者均为模拟光学风格，并非苹果原生渲染。手动调整下方参数不会自动覆盖这两套预设。",12,false);
+        TextView styleNote186=text("仅作用于稳定引擎（V229）兼容参数。V230 实验材质另行保存，不与旧预设绑定。",12,false);
         current.addView(styleNote186);
         category229("02  玻璃容器","文件夹、Dock 和图标独立启用；尊重手动关闭。");
         section("玻璃材质总览","文件夹与 Dock 共用光学参数；两者可分别启用。预设不会强制打开旧版实验模式。");
@@ -243,28 +274,57 @@ public final class MainActivity extends Activity {
         toggle("启用 Dock 玻璃（默认开启，手动关闭后保持关闭）","dock_glass_204",true);
         TextView dockInfo=text("Dock 保持原有尺寸和位置；V132 与文件夹共用直接背景采样及透镜位移 Shader，并按容器几何自适应。",12,false);current.addView(dockInfo);
 
-        category229("03  统一曲面光学","折射与环境反射共享曲面法线；原折射位移场不改动。");
-        section("二维曲面透镜","统一曲面负责文件夹和 Dock 的背景折射与厚度。反射、高光和底色分别调整，避免把不同效果混在同一滑块。");
-        slider("二维曲面折射强度 (%)","nonlinear_107",65,0,100);
-        TextView unifiedInfo162=text("0% 为无曲面位移，100% 最强。文件夹和 Dock 共用同一张二维高度场，不叠加旧版折射。",12,false);
-        current.addView(unifiedInfo162);
-        final LinearLayout advancedLens219=column();
-        final Button lensDetails219=new Button(this);
-        lensDetails219.setText("展开曲面几何高级参数");lensDetails219.setAllCaps(false);
-        current.addView(lensDetails219);current.addView(advancedLens219);
-        advancedLens219.setVisibility(View.GONE);
-        final LinearLayout beforeAdvanced219=current;
-        current=advancedLens219;
-        slider("边缘曲面厚度 (%)","thickness_107",55,0,100);
-        slider("内区曲率过渡 (%)","interior_107",20,0,100);
-        slider("中心聚焦强度 (%)","focus_107",45,0,100);
-        slider("曲面局部反射比例 (%)","reflection_107",30,0,100);
-        current.addView(text("这四项与主折射强度分别控制透镜边缘宽度、中心到边缘的曲率、内部聚焦和环境反射的局部比例；均已接入同一个 Shader。",12,false));
-        current=beforeAdvanced219;
-        lensDetails219.setOnClickListener(clicked->{
-            boolean open=advancedLens219.getVisibility()!=View.VISIBLE;
-            advancedLens219.setVisibility(open?View.VISIBLE:View.GONE);
-            lensDetails219.setText(open?"收起曲面几何高级参数":"展开曲面几何高级参数");
+        category229("03  统一玻璃材质","同一曲面驱动折射、环境响应和边缘厚度；默认关闭，新版可随时回退稳定引擎。");
+        section("Unified Glass Surface · 单一光学模型","开启后由单次 Shader 合成整片玻璃；旧引擎仍完整保留，关闭即可恢复 V229 的渲染路径。");
+        toggle("使用 V230 统一玻璃曲面（实验，默认关闭)",MaterialConfig230.PREF_ON,false);
+        materialSlider230("整体光学强度 (%)",MaterialConfig230.PREF_STRENGTH,70,0,100);
+        materialSlider230("曲面厚度与弯曲过渡 (%)",MaterialConfig230.PREF_THICKNESS,55,0,100);
+        materialSlider230("环境融合与反射响应 (%)",MaterialConfig230.PREF_ENV,60,0,100);
+        final TextView qualityLabel230=text("采样质量（0=性能优先、1=局部五点、2=局部九点）",13,false);
+        current.addView(qualityLabel230);
+        Spinner qualitySpinner230=new Spinner(this);
+        String[] qualityNames230={"0 · 性能优先（单点）","1 · 均衡（边缘五点）","2 · 画质优先（边缘九点）"};
+        qualitySpinner230.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,qualityNames230));
+        qualitySpinner230.setSelection(Math.max(0,Math.min(2,prefs.getInt(MaterialConfig230.PREF_QUALITY,0))));
+        current.addView(qualitySpinner230);
+        qualitySpinner230.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            public void onItemSelected(android.widget.AdapterView<?> parent,View item,int pos,long id){
+                putIntIfChanged193(MaterialConfig230.PREF_QUALITY,pos);
+            }
+            public void onNothingSelected(android.widget.AdapterView<?> parent){}
+        });
+        current.addView(text("实验引擎默认关闭。每个新参数持久保存，修改后通知 Launcher 即时应用；后台 Root 发布独立 LG230 快照，重启恢复。折射、反射共用同一高度场和法线，不再叠加第二道白边。",12,false));
+        final LinearLayout compatLens230=column();
+        final Button compatButton230=new Button(this);
+        compatButton230.setText("展开稳定引擎兼容参数（V229）");compatButton230.setAllCaps(false);
+        current.addView(compatButton230);current.addView(compatLens230);
+        compatLens230.setVisibility(View.GONE);
+        LinearLayout materialRoot230=current;
+        current=compatLens230;
+        slider("原引擎二维曲面折射强度 (%)","nonlinear_107",65,0,100);
+        slider("原引擎边缘曲面厚度 (%)","thickness_107",55,0,100);
+        slider("原引擎内区曲率过渡 (%)","interior_107",20,0,100);
+        slider("原引擎中心聚焦强度 (%)","focus_107",45,0,100);
+        slider("原引擎曲面反射比例 (%)","reflection_107",30,0,100);
+        TextView surfaceLabel230=text("稳定引擎环境反射模式",13,false);current.addView(surfaceLabel230);
+        Spinner surfaceSpinner230=new Spinner(this);
+        String[] surfaceModes230={"0 · 关闭","1 · 柔和环境反射","2 · 反射与高光","3 · 增强环境响应"};
+        surfaceSpinner230.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,surfaceModes230));
+        surfaceSpinner230.setSelection(Math.max(0,Math.min(3,prefs.getInt("surface_mode_195",3))));current.addView(surfaceSpinner230);
+        surfaceSpinner230.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
+            public void onItemSelected(android.widget.AdapterView<?> parent,View item,int pos,long id){
+                putIntIfChanged193("surface_mode_195",pos);
+            }
+            public void onNothingSelected(android.widget.AdapterView<?> parent){}
+        });
+        slider("原引擎环境反射强度 (%)","surface_strength_195",100,0,200);
+        slider("原引擎反射柔和度 (%)","surface_softness_195",100,50,200);
+        current.addView(text("这些原字段仍沿用 LG1 原有 33 项持久化配置；关闭新引擎时直接恢复原值，不执行隐式迁移。",12,false));
+        current=materialRoot230;
+        compatButton230.setOnClickListener(clickedCompat230->{
+            boolean open=compatLens230.getVisibility()!=View.VISIBLE;
+            compatLens230.setVisibility(open?View.VISIBLE:View.GONE);
+            compatButton230.setText(open?"收起稳定引擎兼容参数":"展开稳定引擎兼容参数（V229）");
         });
         category229("04  材质与背景","模糊、透明度、色调仍使用原来的持久化键值。");
         section("玻璃外观","背景模糊和底色独立于折射；应用图标不会被自定义壁纸模糊处理。");
@@ -282,26 +342,6 @@ public final class MainActivity extends Activity {
         // Legacy native_alpha_probe is deliberately disabled: blur and material opacity are separate.
         // V193: do not mutate native_alpha_probe while constructing the settings page.
         TextView blurInfo=text("自定义模糊使用壁纸采样，不模糊应用图标。系统模糊开关不再强制开启；ColorOS 自身仍可能启用原生模糊。",12,false);current.addView(blurInfo);
-        // V1.9.199: legacy soft-highlight controls removed from UI. Existing
-        // preferences remain for compatibility; the unified surface owns reflection.
-        section("同曲面环境反射","V229：环境反射与二维折射共用同一坡度法线和曲率。支持按原参数调节，壁纸环境只是近似反射源。");
-        TextView surfaceLabel=text("环境反射与动态边缘高光",13,false);current.addView(surfaceLabel);
-        Spinner surfaceSpinner=new Spinner(this);
-        String[] surfaceModes={"0 · 关闭新增环境反射","1 · 柔和曲面环境反射","2 · 曲面反射 + 动态边缘高光","3 · 增强动态边缘高光"};
-        surfaceSpinner.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,surfaceModes));
-        surfaceSpinner.setSelection(Math.max(0,Math.min(3,prefs.getInt("surface_mode_195",3))));current.addView(surfaceSpinner);
-        surfaceSpinner.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener(){
-            public void onItemSelected(android.widget.AdapterView<?> parent,View view,int pos,long id){
-                if(prefs.getInt("surface_mode_195",3)!=pos){
-                    putIntIfChanged193("surface_mode_195",pos);
-                }
-            }
-            public void onNothingSelected(android.widget.AdapterView<?> parent){}
-        });
-        slider("环境反射与高光强度 (%)","surface_strength_195",100,0,200);
-        slider("反射柔和度 (%)","surface_softness_195",100,50,200);
-        TextView surfaceHint=text("V229：统一法线驱动的环境反射；旧曲面透镜采样保持不变。可通过 Root 全局开关 liquidglass_unified_optics_229=0 回退 V228 反射公式。",12,false);
-        current.addView(surfaceHint);
         section("玻璃底色色调","选择玻璃底色的冷暖色调与叠加浓度；与模糊、折射、表面反射独立。");
         TextView tintLabel=text("色调",13,false);current.addView(tintLabel);
         Spinner tint=new Spinner(this);String[] names={"原生 · 推荐","冷白","浅灰","深色"};

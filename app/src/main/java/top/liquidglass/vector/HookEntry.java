@@ -998,18 +998,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static volatile long REFRACTION_CONFIG_EPOCH = 0L;
     private static volatile int REFRACTION_SWITCH_LOGS = 0;
     private static synchronized boolean restoreBootSnapshot(android.content.Context context) {
+        // V230 material settings use a companion snapshot; LG1 remains unchanged.
+        boolean materialChanged=MaterialConfig230.restoreGlobal(context);
         // V194: Global snapshot is the only authoritative Launcher configuration.
         // Never permanently lock out newer root publications after a UI event.
         try {
             String raw=android.provider.Settings.Global.getString(context.getContentResolver(),BOOT_SNAPSHOT_KEY);
             // An older Root publication must never undo a more recent UI edit.
             if(!latestDirectSnapshot203.isEmpty()){
-                if(!latestDirectSnapshot203.equals(raw))return false;
+                if(!latestDirectSnapshot203.equals(raw))return materialChanged;
                 latestDirectSnapshot203="";
             }
-            if(raw==null || !raw.startsWith("LG1|"))return false;
-            return applySnapshot203(raw,"GLOBAL_SNAPSHOT");
-        }catch(Throwable t){log("BOOT_SNAPSHOT_FAILED reason="+t.getClass().getSimpleName());return false;}
+            if(raw==null || !raw.startsWith("LG1|"))return materialChanged;
+            return applySnapshot203(raw,"GLOBAL_SNAPSHOT") || materialChanged;
+        }catch(Throwable t){log("BOOT_SNAPSHOT_FAILED reason="+t.getClass().getSimpleName());return materialChanged;}
     }
     private static synchronized boolean applySnapshot203(String raw,String source){
         try {
@@ -7869,6 +7871,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             "top.liquidglass.vector.CONFIG_CHANGED_128");
                         app.registerReceiver(new android.content.BroadcastReceiver(){
                             @Override public void onReceive(android.content.Context c,android.content.Intent i){
+                                String directMaterial230=i.getStringExtra(MaterialConfig230.EXTRA);
+                                if(MaterialConfig230.apply(directMaterial230,true)){
+                                    log("MATERIAL_DIRECT_RECEIVED_230");
+                                    invalidateGlassViews();
+                                }
                                 String direct=i.getStringExtra("lg_snapshot_203");
                                 if(direct!=null && direct.matches("LG1(\\|-?[0-9]+){33}")){
                                     latestDirectSnapshot203=direct;

@@ -786,6 +786,10 @@ final class GlassLens191 {
                 aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),
                     "liquidglass_aa_probe_208",0);
         } catch(Throwable ignored) {}
+        // V230: separate SINGLE-PASS material experiment, no legacy overlay.
+        // On failure, the entire V229 implementation below runs unchanged.
+        if(aaProbe208==0 && UnifiedGlass230.draw(owner,canvas,rect,radius,
+                wallpaper,blurredWallpaper,valid,blurMix))return;
         boolean gridRequested=aaProbe208==18;
         if(ROUTE_LOGS_218<12){
             ROUTE_LOGS_218++;

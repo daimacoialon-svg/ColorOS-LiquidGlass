@@ -1,9 +1,46 @@
-ColorOS-LiquidGlass V1.9.205.229｜统一曲面光学与设置分区重构
+ColorOS-LiquidGlass V1.9.205.230｜统一玻璃曲面材质实验版与 UI 统一分组
 
-基于 V1.9.205.228 原始源码增量修改。
-1. 设置页按总览、玻璃容器、统一曲面光学、材质背景、应用图标、实验维护分区；保持原 SharedPreferences glass 键、数值范围、持久化 commit、直接 Launcher 广播和后台 Root 快照逻辑。
-2. 正常二维曲面透镜的位移场、采样与抗锯齿路径不修改。环境反射改为使用同一 slope219 曲面法线与壁纸局部亮度梯度，加入掠射角反射与局部环境响应。
-3. 新反射算法默认启用，可在 Termux 执行：su -c 'settings put global liquidglass_unified_optics_229 0' 回退 V228 反射公式；设为 1 恢复 V229。切换后重启桌面以确保 Shader 重新绑定。
-4. 原 V228 的 environment228、contour227 实验开关保持不变。没有自动覆盖用户配置。
-5. 这是实验版，尚未完成真机光学验证；无法保证已经消除阶梯锯齿、短线或达到参考图。
-6. 更新仅保留系统说明书，不增加 README 或更新说明文件。
+一、版本定位
+基于 V1.9.205.229 完整源码制作。默认继续使用 V229 正式透镜、图标、Dock、Root 辅助脚本和 33 项配置快照。
+V230 在 "03 统一玻璃材质" 中新建一条独立单次 RuntimeShader 渲染实验路径，默认关闭，用户手动启用后才生效。
+新的透射、二维折射、Fresnel 与基于壁纸局部颜色的近似反射共享同一 surface230 高度场与 normalSlope230 法线。
+新引擎仅使用一次 Canvas.drawRoundRect，不再额外叠加独立轮廓描边。实验光学效果未经真机验证。
+
+二、UI 与兼容字段
+将 V229 原 "二维曲面透镜" 和 "同曲面环境反射" 两个独立模块并入一个统一玻璃材质板块。
+统一材质开关、光学强度、曲面厚度、环境融合、采样质量共计五项，统一显示在同一张卡片。
+原有 nonlinear_107、thickness_107、interior_107、focus_107、reflection_107、surface_mode_195、surface_strength_195、surface_softness_195 原键未改动，收纳到"稳定引擎兼容参数"折叠区，切回旧引擎不会丢设置。
+另外保留材质底色、壁纸模糊、图标内缘、文件夹/Dock 启用等原板块与各自原键。
+
+三、配置持久化与实时生效
+V202 LG1 快照仍为完整 33 字段，顺序、默认值和 Root/Launcher 脚本完全保持不变。
+新增 LG230|enabled|strength|thickness|environment|quality 独立材质快照，避免修改旧 33 字段的顺序。
+新增持久化 SharedPreferences 键：
+ unified_material_230 (boolean 默认 false)
+ material_optical_strength_230 (int 0..100 默认 70)
+ material_thickness_230 (int 0..100 默认 55)
+ material_environment_230 (int 0..100 默认 60)
+ material_quality_230 (int 0..2 默认 0)
+V230 三个新材质滑块拖动时约 50ms 节流提交并广播、松手强制提交最终值；原滑块机制保持不变。
+UI commit -> CONFIG_CHANGED_128 广播附带 lg_material_230 -> Launcher 立即解析并重绘；
+后台 su -c settings 写入并校验 liquidglass_material_snapshot_230，重启时 Loader 读取恢复。
+MaterialConfig230 的无效数据会整体拒绝；读取 Global 时拒绝旧快照覆盖尚未持久化的 UI 直接修改。
+独立扩展快照不要求旧 Root helper 知道新字段，旧辅助脚本保持一字不变。
+
+四、回退
+设置内关闭"使用 V230 统一玻璃曲面"即可直接使用 V229 完整正式渲染路径。
+V230 Shader 创建或绘制异常时记 MATERIAL_SHADER_FAILED_230 并退回 V229。
+若新快照缺失或无效，V230 默认关闭；既有配置不被重置。
+用户可继续使用以往 global 环境/轮廓实验开关，但它们只影响旧渲染路径。
+
+五、测试建议
+先保持 V230 默认关闭确认 V229 效果，然后开启实验；对比纯色、山体纹理与网格壁纸、文件夹各比例以及 Dock。
+光学质量 0 为性能优先；1 为边缘五点；2 为边缘九点，建议确认视觉表现后再切换。
+重点观察是否达到参考图片的环境融入、曲率、轮廓清晰度，同时留意滑动帧率、锯齿及圆角短线。
+本环境没有连接 Android 真机，未确认 AGSL 编译和最终视觉效果。出现异常应切回旧引擎并反馈 MATERIAL_SHADER_FAILED_230 日志。
+
+六、Termux Git
+cd ~/ColorOS-LiquidGlass-V1.0-Source
+git add .
+git commit -m "V1.9.205.230 版本"
+git push origin main
