@@ -60,26 +60,36 @@ final class UnifiedGlass230 {
             float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(halfSize-r);
             return r-length(max(q,float2(0.0)))-min(max(q.x,q.y),0.0);
         }
-        // V243: seam-free analytic superelliptic lens. The V242 signed
-        // distance field is only C0 at nearest-edge switches, which made
-        // X-shaped normal/displacement seams. Never derive optical normals
-        // from the rounded-rectangle SDF.
+        // V245: native-radius-aware, continuously differentiable rounded lens.
+        // Use a smooth rounded-rectangle distance instead of a quartic superellipse
+        // (which produced a square-looking central shoulder and wrong corner radius).
+        // Every join is softened; no nearest-edge branch or diagonal normal seam.
+        float smoothMax245(float a,float b,float k){
+            return 0.5*(a+b+sqrt((a-b)*(a-b)+k*k));
+        }
         float surface230(float2 p){
-            float2 size=max(bounds.zw-bounds.xy,float2(2.0));
-            float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/(size*0.5);
-            // Smooth everywhere, including the center and diagonals.
-            // A quartic superellipse follows the rectangular aspect ratio
-            // without nearest-side min/max switches.
-            float x2=uv.x*uv.x;
-            float y2=uv.y*uv.y;
-            float rho4=x2*x2+y2*y2;
-            float shoulder=mix(1.35,2.7,clamp(thickness230,0.0,1.0));
-            float dome=exp(-shoulder*rho4);
-            // Gentle curvature in the center, avoiding a flat square.
-            float centerCurve=1.0/(1.0+0.28*(x2+y2));
-            // The actual native rounded rectangle is clipped by
-            // Canvas.drawRoundRect, NOT by this optical height function.
-            return dome*centerCurve;
+            float2 halfSize=max((bounds.zw-bounds.xy)*0.5,float2(1.0));
+            float r=clamp(radius,1.0,min(halfSize.x,halfSize.y));
+            float2 v=p-(bounds.xy+bounds.zw)*0.5;
+            // Smooth absolute and smooth positive-part remove axis and corner seams.
+            float soft=max(0.8,min(halfSize.x,halfSize.y)*0.007);
+            float2 av=sqrt(v*v+float2(soft*soft));
+            float2 q=av-(halfSize-float2(r));
+            float qmax=smoothMax245(q.x,q.y,soft);
+            float2 qp=0.5*(q+sqrt(q*q+float2(soft*soft)));
+            float outer=sqrt(dot(qp,qp)+soft*soft)-soft;
+            float signedOutside=outer+min(qmax,0.0)-r;
+            // Optical shoulder follows the actual native rounded-rectangle contour.
+            // Distance is normalized by short side, not width/height independently.
+            float shortSide=min(halfSize.x,halfSize.y)*2.0;
+            float depth=max(0.0,-signedOutside);
+            float shoulderWidth=shortSide*mix(0.11,0.25,clamp(thickness230,0.0,1.0));
+            float t=clamp(depth/max(shoulderWidth,1.0),0.0,1.0);
+            // C1 at both ends, and C2 through the shoulder transition.
+            float smooth=t*t*t*(t*(t*6.0-15.0)+10.0);
+            // The interior is almost flat; optical curvature lives in the edge,
+            // without generating a separate square plate in the center.
+            return smooth;
         }
         float2 normalSlope230(float2 p){
             float e=1.0;
@@ -230,7 +240,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_244 analyticSuperellipse=true ab=enabled");
+                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_244 nativeRadiusShoulder245=true ab=enabled");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
