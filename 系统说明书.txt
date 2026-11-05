@@ -1,4 +1,4 @@
-ColorOS-LiquidGlass V1.9.205.224｜稳定透镜回退与图标薄内缘修复
+ColorOS-LiquidGlass V1.9.205.225｜稳定透镜回退与图标薄内缘修复
 
 适用：一加 13T / ColorOS 15 / Android 15 / KernelSU / LSPosed Vector。
 

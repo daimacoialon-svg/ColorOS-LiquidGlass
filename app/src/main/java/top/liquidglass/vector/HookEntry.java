@@ -8340,28 +8340,36 @@ public final class HookEntry implements IXposedHookLoadPackage {
             return null;
         }finally{if(bitmap!=null)bitmap.recycle();}
     }
-    // V224: non-displacing, clipped optical rim. No pixel normals or external bezel.
+    // V225: concentric clipped strokes form a smooth inward optical falloff.
+    // The source icon is never displaced, scaled, or painted outside its mask.
     private static void drawIconInnerOptics221(View owner, Canvas canvas, Path silhouette,
             float left,float top,int width,int height,float density,Drawable source){
         if(silhouette==null || silhouette.isEmpty() || width<10 || height<10)return;
         int save=canvas.save();
         try{
             canvas.clipPath(silhouette);
-            float span=Math.min(width,height);
-            float narrow=Math.min(2.0f*density,span*0.024f);
-            Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
-            p.setStyle(Paint.Style.STROKE);
-            p.setStrokeJoin(Paint.Join.ROUND);
-            p.setStrokeWidth(Math.max(0.75f,narrow*2f));
             RectF bounds=new RectF();
             silhouette.computeBounds(bounds,true);
-            // Gradient direction is fixed in screen space; source icon pixels never move.
-            p.setShader(new android.graphics.LinearGradient(
-                bounds.left,bounds.top,bounds.right,bounds.bottom,
-                new int[]{0x78F5FAFF,0x20EDF4FF,0x260D203A,0x64EDF7FF},
-                new float[]{0f,0.30f,0.67f,1f},
-                android.graphics.Shader.TileMode.CLAMP));
-            canvas.drawPath(silhouette,p);
+            float span=Math.min(width,height);
+            // Clipping halves each centered stroke: width 2*r reaches r inward.
+            float core=Math.min(0.85f*density,span*0.010f);
+            float falloff=Math.min(3.6f*density,span*0.045f);
+            float[] widths={falloff,falloff*0.72f,falloff*0.46f,core};
+            float[] alpha={0.12f,0.18f,0.23f,0.28f};
+            for(int i=0;i<widths.length;i++){
+                Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);
+                p.setStyle(Paint.Style.STROKE);
+                p.setStrokeJoin(Paint.Join.ROUND);
+                p.setStrokeCap(Paint.Cap.ROUND);
+                p.setStrokeWidth(Math.max(0.6f,widths[i]*2f));
+                p.setShader(new android.graphics.LinearGradient(
+                    bounds.left,bounds.top,bounds.right,bounds.bottom,
+                    new int[]{0xB8F5FAFF,0x24E6F0FA,0x28132236,0x92EDF7FF},
+                    new float[]{0f,0.32f,0.68f,1f},
+                    android.graphics.Shader.TileMode.CLAMP));
+                p.setAlpha(Math.round(alpha[i]*255f));
+                canvas.drawPath(silhouette,p);
+            }
         }finally{canvas.restoreToCount(save);}
     }
     private static void drawIconEdge205(android.widget.TextView v,Canvas c){
