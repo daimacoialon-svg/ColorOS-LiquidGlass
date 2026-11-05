@@ -39,32 +39,42 @@ final class GlassLens191 {
         " float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(h-r);\n" +
         " return r-length(max(q,float2(0.0)))-min(max(q.x,q.y),0.0);\n" +
         "}\n" +
+        "float radial219(float2 u){\n" +
+        " float2 a=abs(u);\n" +
+        " float roundTerm=dot(u,u);\n" +
+        " float box=max(a.x,a.y);\n" +
+        " float blend=smoothstep(0.44,0.96,max(a.x,a.y)+0.22*min(a.x,a.y));\n" +
+        " return mix(roundTerm,box*box,blend*0.42);\n" +
+        "}\n" +
         "float height219(float2 p){\n" +
         " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
         " float2 u=(p-(bounds.xy+bounds.zw)*0.5)/h;\n" +
         " float d=max(depth219(p),0.0);\n" +
-        " float width=clamp(min(h.x,h.y)*(0.56+0.37*clamp(thicknessMix,0.0,1.0)),18.0,85.0);\n" +
+        " float width=clamp(min(h.x,h.y)*(0.68+0.44*clamp(thicknessMix,0.0,1.0)),22.0,108.0);\n" +
         " float x=clamp(d/width,0.0,1.0);\n" +
         " float shoulder=x*x*(3.0-2.0*x);\n" +
         " float t=clamp(thicknessMix,0.0,1.0);\n" +
-        " float core=1.0-(0.06+0.38*clamp(interiorMix,0.0,1.0))*dot(u,u);\n" +
-        " return ((0.48+0.22*t)+(0.52-0.22*t)*core)*shoulder;\n" +
+        " float core=1.0-(0.05+0.34*clamp(interiorMix,0.0,1.0))*radial219(u);\n" +
+        " return ((0.46+0.20*t)+(0.54-0.20*t)*core)*shoulder;\n" +
         "}\n" +
         "float2 slope219(float2 p){\n" +
-        " float e=1.25;\n" +
-        " return float2(height219(p+float2(e,0.0))-height219(p-float2(e,0.0)),\n" +
-        "  height219(p+float2(0.0,e))-height219(p-float2(0.0,e)))/(2.0*e);\n" +
+        " float e=1.0;\n" +
+        " float hx=(height219(p+float2(e,0.0))+height219(p+float2(e,e))+height219(p+float2(e,-e))\n" +
+        "  -height219(p-float2(e,0.0))-height219(p-float2(e,e))-height219(p-float2(e,-e)))/(6.0*e);\n" +
+        " float hy=(height219(p+float2(0.0,e))+height219(p+float2(e,e))+height219(p-float2(e,e))\n" +
+        "  -height219(p-float2(0.0,e))-height219(p+float2(e,-e))-height219(p-float2(e,-e)))/(6.0*e);\n" +
+        " return float2(hx,hy);\n" +
         "}\n" +
         "float2 warp219(float2 p){\n" +
         " float2 size=max(bounds.zw-bounds.xy,float2(2.0));\n" +
         " float2 u=(p-(bounds.xy+bounds.zw)*0.5)/(size*0.5);\n" +
         " float small=min(size.x,size.y);\n" +
         " float2 slope=slope219(p);\n" +
-        " float2 focus=-u*(small*0.105)*(0.45+clamp(focusMix,0.0,1.0))\n" +
-        "  *exp(-0.72*dot(u,u))*smoothstep(0.0,clamp(small*0.16,12.0,32.0),max(depth219(p),0.0));\n" +
-        " float gain=style>1.5?1.12:1.0;\n" +
-        " float2 raw=(slope*small*0.56+focus)*gain*clamp(strength,0.0,1.0);\n" +
-        " float cap=clamp(small*0.115,10.0,24.0);\n" +
+        " float2 focus=-u*(small*0.086)*(0.42+clamp(focusMix,0.0,1.0))\n" +
+        "  *exp(-0.66*radial219(u))*smoothstep(0.0,clamp(small*0.18,14.0,36.0),max(depth219(p),0.0));\n" +
+        " float gain=style>1.5?1.08:0.98;\n" +
+        " float2 raw=(slope*small*0.47+focus)*gain*clamp(strength,0.0,1.0);\n" +
+        " float cap=clamp(small*0.096,9.0,21.0);\n" +
         " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
         "}\n" +
         "half4 main(float2 p){\n" +
@@ -98,12 +108,15 @@ final class GlassLens191 {
         " float reflect=enabled*gain*curvature*(0.014+0.078*pow(facing,5.0))*(0.55+0.45*ambient);\n" +
         " float glint=dynamic*gain*curvature*spec*0.14;\n" +
         " float d=max(depth219(p),0.0);\n" +
-        " float rim=exp(-pow((d-0.85)/0.85,2.0));\n" +
-        " float meniscus=exp(-pow((d-4.2)/3.8,2.0));\n" +
-        " float fresnel=pow(1.0-clamp(1.0/sqrt(1.0+dot(slope*4.8,slope*4.8)),0.0,1.0),1.35);\n" +
-        " float outline=clamp(edgeStrength,0.0,1.0)*(0.12*rim+0.11*meniscus*fresnel)\n" +
-        "  *(0.25+0.75*pow(facing,3.0));\n" +
-        " float shadow=(1.0-smoothstep(0.7,5.0,d))*smoothstep(0.0,0.8,d)*0.042;\n" +
+        " float rim=exp(-pow((d-0.80)/0.92,2.0));\n" +
+        " float meniscus=exp(-pow((d-4.6)/4.8,2.0));\n" +
+        " float fresnel=pow(1.0-clamp(1.0/sqrt(1.0+dot(slope*4.2,slope*4.2)),0.0,1.0),1.25);\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float2 cornerUV=abs((p-(bounds.xy+bounds.zw)*0.5)/h);\n" +
+        " float cornerFade=smoothstep(0.58,0.98,max(cornerUV.x,cornerUV.y))*smoothstep(0.10,0.82,min(cornerUV.x,cornerUV.y));\n" +
+        " float outline=clamp(edgeStrength,0.0,1.0)*(0.10*rim+0.085*meniscus*fresnel)\n" +
+        "  *(0.25+0.75*pow(facing,3.0))*(1.0-0.46*cornerFade);\n" +
+        " float shadow=(1.0-smoothstep(0.8,5.6,d))*smoothstep(0.0,0.9,d)*0.030*(1.0-0.55*cornerFade);\n" +
         " float3 color=float3(result.rgb);\n" +
         " color+=(1.0-color)*clamp(reflect+glint+outline,0.0,0.28);\n" +
         " color*=1.0-shadow;\n" +

@@ -8347,7 +8347,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static final class IconOpticsField219 {
         Drawable source;
         android.graphics.Bitmap layer;
-        int width,height;
+        int width,height,pad;
         float density;
         float originX,originY;
         boolean matches(Drawable d,int w,int h,float dp,float x,float y){
@@ -8367,95 +8367,75 @@ public final class HookEntry implements IXposedHookLoadPackage {
             if(field==null){field=new IconOpticsField219();ICON_FIELDS_219.put(owner,field);}
         }
         synchronized(field){
-            if(!field.matches(source,width,height,density,left,top)){
-                android.graphics.Bitmap mask=null;
+            int pad=Math.max(1,Math.round(Math.max(3.2f*density,Math.min(width,height)*0.12f)));
+            if(!field.matches(source,width,height,density,left,top) || field.pad!=pad){
+                android.graphics.Bitmap layer=null;
                 try{
-                    mask=android.graphics.Bitmap.createBitmap(width,height,
+                    int layerW=width+pad*2;
+                    int layerH=height+pad*2;
+                    layer=android.graphics.Bitmap.createBitmap(layerW,layerH,
                         android.graphics.Bitmap.Config.ARGB_8888);
-                    Canvas mc=new Canvas(mask);
-                    mc.translate(-left,-top);
-                    Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG);
-                    fill.setColor(Color.WHITE);
-                    mc.drawPath(silhouette,fill);
-                    int n=width*height;
-                    int[] alpha=new int[n];
-                    mask.getPixels(alpha,0,width,0,0,width,height);
-                    // Chamfer distance to transparency. Two linear passes are
-                    // enough at icon resolution, with no per-frame blur or strokes.
-                    float[] dist=new float[n];
-                    final float far=width+height+10f,diagonal=1.41421356f;
-                    for(int y=0;y<height;y++)for(int x=0;x<width;x++){
-                        int k=y*width+x;
-                        dist[k]=((alpha[k]>>>24)<5)?0f:
-                            (x==0||y==0||x==width-1||y==height-1?1f:far);
-                    }
-                    for(int y=0;y<height;y++)for(int x=0;x<width;x++){
-                        int k=y*width+x;
-                        if(dist[k]==0f)continue;
-                        if(x>0)dist[k]=Math.min(dist[k],dist[k-1]+1f);
-                        if(y>0){
-                            dist[k]=Math.min(dist[k],dist[k-width]+1f);
-                            if(x>0)dist[k]=Math.min(dist[k],dist[k-width-1]+diagonal);
-                            if(x+1<width)dist[k]=Math.min(dist[k],dist[k-width+1]+diagonal);
-                        }
-                    }
-                    for(int y=height-1;y>=0;y--)for(int x=width-1;x>=0;x--){
-                        int k=y*width+x;
-                        if(dist[k]==0f)continue;
-                        if(x+1<width)dist[k]=Math.min(dist[k],dist[k+1]+1f);
-                        if(y+1<height){
-                            dist[k]=Math.min(dist[k],dist[k+width]+1f);
-                            if(x>0)dist[k]=Math.min(dist[k],dist[k+width-1]+diagonal);
-                            if(x+1<width)dist[k]=Math.min(dist[k],dist[k+width+1]+diagonal);
-                        }
-                    }
-                    int[] optical=new int[n];
-                    float fadePx=Math.max(2f,Math.min(width,height)*0.135f);
-                    for(int y=0;y<height;y++)for(int x=0;x<width;x++){
-                        int k=y*width+x;
-                        float coverage=(alpha[k]>>>24)/255f;
-                        if(coverage<=0.01f)continue;
-                        float depth=Math.max(0f,dist[k]-0.5f);
-                        // Smooth monotonic decay: no abrupt inner outline.
-                        float u=depth/fadePx;
-                        float fade=(float)Math.exp(-1.38f*u*u);
-                        float dx=dist[y*width+Math.min(width-1,x+1)]-
-                            dist[y*width+Math.max(0,x-1)];
-                        float dy=dist[Math.min(height-1,y+1)*width+x]-
-                            dist[Math.max(0,y-1)*width+x];
-                        float inv=1f/(float)Math.sqrt(dx*dx+dy*dy+0.0001f);
-                        // Distance grows inwards, so the outward normal is -grad.
-                        float light=Math.max(0f,(dx*0.58f+dy*0.81f)*inv);
-                        float shade=Math.max(0f,(-dx*0.58f-dy*0.81f)*inv);
-                        float bright=fade*coverage*(4f+42f*light*light);
-                        float dark=fade*coverage*(17f*shade*shade);
-                        int a;
-                        if(bright>=dark){
-                            a=Math.min(255,Math.round(bright));
-                            optical[k]=(a<<24)|0x00F6FAFF;
-                        }else{
-                            a=Math.min(255,Math.round(dark));
-                            optical[k]=(a<<24)|0x00081930;
-                        }
-                    }
-                    android.graphics.Bitmap layer=android.graphics.Bitmap.createBitmap(width,height,
-                        android.graphics.Bitmap.Config.ARGB_8888);
-                    layer.setPixels(optical,0,width,0,0,width,height);
+                    Canvas lc=new Canvas(layer);
+                    android.graphics.Path shifted=new android.graphics.Path();
+                    android.graphics.Matrix shiftMatrix=new android.graphics.Matrix();
+                    shiftMatrix.setTranslate(-left+pad,-top+pad);
+                    silhouette.transform(shiftMatrix,shifted);
+
+                    // Broad ambient glow around the icon silhouette. This is not a crisp
+                    // outline: the stroke stays soft and mostly visible as a surrounding halo.
+                    Paint glow=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+                    glow.setStyle(Paint.Style.STROKE);
+                    glow.setStrokeCap(Paint.Cap.ROUND);
+                    glow.setStrokeJoin(Paint.Join.ROUND);
+                    float haloWidth=Math.max(1.35f*density,Math.min(width,height)*0.072f);
+                    glow.setColor(0x16DDF6FF);
+                    glow.setStrokeWidth(Math.max(haloWidth*2.3f,3.2f*density));
+                    glow.setMaskFilter(new android.graphics.BlurMaskFilter(
+                        Math.max(3.4f*density,haloWidth*1.55f),
+                        android.graphics.BlurMaskFilter.Blur.NORMAL));
+                    lc.drawPath(shifted,glow);
+                    glow.setColor(0x24FFFFFF);
+                    glow.setStrokeWidth(haloWidth);
+                    glow.setMaskFilter(new android.graphics.BlurMaskFilter(
+                        Math.max(2.2f*density,haloWidth*1.18f),
+                        android.graphics.BlurMaskFilter.Blur.NORMAL));
+                    lc.drawPath(shifted,glow);
+
+                    // Gentle internal optical lift so the icon face still feels like glass,
+                    // but without the embossed bezel look from a hard inner contour.
+                    Paint inner=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+                    inner.setShader(new android.graphics.LinearGradient(
+                        pad+width*0.12f,pad+height*0.04f,
+                        pad+width*0.88f,pad+height*0.98f,
+                        new int[]{0x17FFFFFF,0x0ED9EEFF,0x05070F18},
+                        new float[]{0f,0.58f,1f},
+                        android.graphics.Shader.TileMode.CLAMP));
+                    lc.drawPath(shifted,inner);
+                    inner.setShader(new android.graphics.RadialGradient(
+                        pad+width*0.20f,pad+height*0.10f,
+                        Math.max(width,height)*0.92f,
+                        new int[]{0x18FFFFFF,0x07FFFFFF,0x00000000},
+                        new float[]{0f,0.54f,1f},
+                        android.graphics.Shader.TileMode.CLAMP));
+                    lc.drawPath(shifted,inner);
+
                     field.source=source;
                     field.width=width;field.height=height;field.density=density;
-                    field.originX=left;field.originY=top;
+                    field.originX=left;field.originY=top;field.pad=pad;
                     field.layer=layer;
                     if(diagnostics && ICON_FIELD_LOGS_219++<24)
-                        log("ICON_GRADIENT_219 built="+width+"x"+height+
-                            " fadePx="+fadePx+" source="+source.getClass().getSimpleName());
+                        log("ICON_GLOW_220 built="+width+"x"+height+
+                            " haloWidth="+haloWidth+" pad="+pad+
+                            " source="+source.getClass().getSimpleName());
                 }catch(Throwable t){
+                    if(layer!=null && !layer.isRecycled())layer.recycle();
                     if(diagnostics && ICON_FIELD_LOGS_219++<24)
-                        log("ICON_GRADIENT_219 failed="+t.getClass().getSimpleName());
+                        log("ICON_GLOW_220 failed="+t.getClass().getSimpleName());
                     return;
-                }finally{if(mask!=null)mask.recycle();}
+                }
             }
             Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
-            canvas.drawBitmap(field.layer,left,top,p);
+            canvas.drawBitmap(field.layer,left-field.pad,top-field.pad,p);
         }
     }
     private static void drawIconEdge205(android.widget.TextView v,Canvas c){

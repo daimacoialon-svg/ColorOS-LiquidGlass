@@ -197,7 +197,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.219  ·  单路曲面透镜与图标内缘平滑过渡",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.220  ·  图标外缘柔光与二维曲面过渡平滑",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -320,7 +320,7 @@ public final class MainActivity extends Activity {
             legacyContainer.setVisibility(show?View.VISIBLE:View.GONE);
             legacyButton.setText(show?"收起旧版实验参数":"展开旧版二维折射实验");
         });
-        section("维护与状态","V219 首次打开会自动关闭遗留的全局可视诊断开关并备份原值；之后可手动再次清理。不会复位正常折射、模糊与 Dock 参数。");
+        section("维护与状态","V220 在继承 V219 诊断清理基线的基础上，继续优化图标外缘柔光与二维曲面过渡平滑；不会复位正常折射、模糊与 Dock 参数。");
         action("一键关闭所有旧版绘制和可视诊断模式",()->{
             LegacyDiagnostics219.cleanupAsync(this,(success,reason)->{
                 if(success)notifyConfigChanged128();
@@ -360,7 +360,7 @@ public final class MainActivity extends Activity {
             rootStatusHandler.removeCallbacks(rootStatusPoll);
             rootStatusHandler.postDelayed(rootStatusPoll,1000);
         }));
-        TextView serviceHint=text("V219：更新 Root 辅助脚本后重启一次，可恢复 0.1dp 级模糊配置的开机同步。正式玻璃走轻量二维曲面 Shader 单次合成；旧的叠加描边和可视诊断已与正式绘制隔离。",12,false);current.addView(serviceHint);
+        TextView serviceHint=text("V220：保留 V219 已验证可用的二维曲面透镜单路 Shader 与实时参数同步；本版进一步增强图标外缘柔光、压低中心过渡阶梯感，并抑制四角短斜线伪影。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
         setContentView(scroll);
