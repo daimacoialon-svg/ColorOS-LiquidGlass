@@ -86,23 +86,28 @@ final class UnifiedGlass230 {
             float interior=min(smoothMax246(q.x,q.y,eps),0.0);
             return length(outside)+interior-r;
         }
+        // V248: a single full-domain superelliptic optical height field.
+        // Unlike a clamped distance-to-edge ramp, this has no rectangular
+        // interior plateau and no independent X/Y shoulder junctions.
+        // The existing rounded-rectangle clip still defines the silhouette.
         float surface230(float2 p){
             float2 size=max(bounds.zw-bounds.xy,float2(2.0));
-            float shortSide=min(size.x,size.y);
-            float depth=max(0.0,-signedOutside246(p));
-            float shoulderWidth=shortSide*mix(0.14,0.29,clamp(thickness230,0.0,1.0));
-            float t=clamp(depth/max(shoulderWidth,1.0),0.0,1.0);
-            float edge=t*t*t*(t*(t*6.0-15.0)+10.0);
-            // V247: full-area, continuously curved inner lens. The V246 6.5%
-            // radial correction left a nearly planar rectangular center.
-            // Use one differentiable elliptical dome (not four edge ramps).
-            // Its derivative is zero at the center and continuous in every
-            // direction, including the diagonals and rounded corners.
             float2 center=(bounds.xy+bounds.zw)*0.5;
             float2 uv=(p-center)/max(size*0.5,float2(1.0));
-            float rho2=dot(uv,uv);
-            float innerDome=1.0-0.17*rho2/(1.0+0.35*rho2);
-            return edge*innerDome;
+            float2 uv2=uv*uv;
+            float radial4=uv2.x*uv2.x+uv2.y*uv2.y;
+            // Exponential decay gives continuous curvature across the entire
+            // interior; no clamp(t,1) and no min/max edge selection.
+            float curvature=mix(0.95,1.75,clamp(thickness230,0.0,1.0));
+            float dome=exp(-curvature*radial4);
+            // Narrow optical edge transition, separate from the body dome.
+            // Smoothstep has matching zero first derivative at both ends.
+            float shortSide=min(size.x,size.y);
+            float depth=max(0.0,-signedOutside246(p));
+            float rimWidth=max(1.0,shortSide*0.055);
+            float rimT=clamp(depth/rimWidth,0.0,1.0);
+            float rim=rimT*rimT*(3.0-2.0*rimT);
+            return dome*rim;
         }
         float2 normalSlope230(float2 p){
             float e=1.0;
@@ -253,7 +258,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_247 fullAreaDome=true ab=enabled");
+                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_248 fullDomainSuperellipse=true ab=enabled");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
@@ -278,7 +283,7 @@ final class UnifiedGlass230 {
             if(diagnostic235!=0 && probeLogs235++<24)Log.i("LiquidGlass235",
                 "OPTICAL_STAGE mode="+diagnostic235+" bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix);
-            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_247 dimensions="+rect.width()+"x"+rect.height()+
+            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_248 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             if(consecutiveFailures240!=0){
                 Log.i("LiquidGlass240","OPTICAL_RECOVERED_240 failures="+consecutiveFailures240);
