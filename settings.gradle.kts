@@ -26,3 +26,5 @@ rootProject.name = "Glass"
 include(":backdrop")
 include(":app")
 include(":androidApp")
+include(":liquidglass-module")
+include(":xposed-stubs")

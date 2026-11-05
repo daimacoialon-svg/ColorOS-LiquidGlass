@@ -1,51 +1,9 @@
-ColorOS-LiquidGlass V1.9.205.248｜全域连续透镜曲率实验版
+V1.9.205.253 — Kyant-first unified Gradle integration (UNVERIFIED ENGINEERING SOURCE)
 
-基于 V1.9.205.244 完整 Android Studio 源码，保持现有 UI、SharedPreferences、Root 快照、Launcher 配置和诊断 1～6 的键与定义不变。保留 A/B/C 动态折射对照键 liquidglass_refraction_ab_244。
+基于 V252 原有 LSPosed app/src/main 迁入 liquidglass-module；原版 Kyant kmp 源码作为根工程，原版 backdrop 模块不修改。
+主模块 Gradle 通过 implementation(project(":backdrop")) 建立实际源码依赖，另保留 compileOnly(:xposed-stubs)。
+新增 KyantEngine253Activity.kt 为编译期依赖探针；目前未在 Manifest 注册，不构成完整渲染测试。
 
-本次仅替换 UnifiedGlass230 的统一光学高度场：
-1. 从与容器尺寸关联的四次超椭圆，改为与实际 radius 关联的圆角矩形光学肩部。
-2. 用连续平滑的绝对值、max 与正部函数构造几何，避免四条边拼接和对角线硬切换。
-3. 将玻璃厚度过渡绑定到真实圆角轮廓；内部保持平缓，避免独立方形中心板。
-4. 继续由同一高度场驱动法线、折射位移、反射及最终合成，不新增白色描边。
-
-真机对比：请在 A/B/C 各档、折射强度 100%、静止与滑动状态下测试大/小文件夹及 Dock。重点观察圆角折射方向、边缘纹理连续性、反向收缩、折痕以及靠近屏幕边缘时的采样。
-
-Termux 实验命令：
-  su -c 'settings put global liquidglass_refraction_ab_244 0'  # A
-  su -c 'settings put global liquidglass_refraction_ab_244 1'  # B
-  su -c 'settings put global liquidglass_refraction_ab_244 2'  # C
-  su -c 'settings delete global liquidglass_refraction_ab_244'
-
-说明：本版是待真机验证的几何改进，不宣称已达到参考 iOS 27 的视觉效果；未在当前环境完成 Android 编译或真机测试。
-\n\nV1.9.205.246：统一圆角矩形平滑有符号距离场，修复四边过渡拼接的几何来源；增加轻微内部弯月面曲率。保留原有设置键与诊断模式。尚未完成真机验证。\n
-V1.9.205.248：在 V246 的统一平滑圆角距离场基础上，将原本较弱的中心曲率改为全容器连续椭圆穹面；保持中心导数为零、对角方向连续，不增加四边拼接或独立描边。诊断 1~3 仍为位移/法线/高度的伪彩可视化，非正常材质。保留 A/B/C 折射实验与全部既有设置键。尚未真机验证。
-
-V1.9.205.248：将饱和的边缘距离场主体改为全域连续超椭圆高度场；保留圆角轮廓裁剪、诊断模式及原参数映射。真机效果待验证。
-
-
-V1.9.205.249｜开源光学思路对照实验（不代表已通过真机验证）
-保留 AB=0/1/2 原始算法；新增 AB=3 真实壁纸采样位移实验，采用统一圆角矩形 SDF 法线与非线性边缘采样剖面，位移幅度与剖面宽度绑定以降低折返风险。此实现是参考开源技术思路的独立实验，不是复制开源项目的原始 Shader。
-切换：su -c settings put global liquidglass_refraction_ab_244 3（实验）或 0（原版）。诊断模式：su -c settings put global liquidglass_optical_diagnostic_235 5（实际变形壁纸），恢复 0。请先确认源码中的真实键名再执行。
-本版未通过 Android SDK 编译或真机验证，建议保留 V248 作为回滚包。
-
-
-V1.9.205.250｜Kyant Backdrop 独立引擎源码基线
-- kyant-backdrop-engine/：来自用户上传的 AndroidLiquidGlass-kmp.zip（kmp 分支），保留完整上游工程、backdrop 模块、Shader、依赖声明、示例及 LICENSE。
-- 原 ColorOS LSPosed 模块与渲染逻辑保持原样；本版本没有把 Compose 库强行注入 Launcher，也未开启 SystemUI 作用域。
-- 上游项目使用 Kotlin Multiplatform、Compose、Android Multiplatform Library、shapes 依赖；其 Gradle 工程独立于原项目，可分别导入 Android Studio。
-- 进入 kyant-backdrop-engine 运行 ./gradlew :backdrop:tasks 进行依赖与构建环境检查（需要网络及相应 Android SDK / JDK）；完整编译与真机验证尚未完成。
-- 上游 LICENSE 为 Apache-2.0，保留版权声明；原模块不因包含上游源码而自动拥有已验证的完整玻璃效果。
-- 下一步是构建独立 Android 测试宿主、确认 Shader 效果，再设计 View/Launcher 桥接层。
-
-V1.9.205.251｜Kyant 原版 Shader View 桥接验证版
-- 新增 KyantOriginalShader251.java：逐字保存 Kyant kmp 的 RoundedRectRefractionShaderString 与 RoundedRectSDF（仅展开 Kotlin 字符串插值）；Apache-2.0 版权与 LICENSE 保留。
-- 新增 KyantViewBridge251.java：Android RuntimeShader + BitmapShader 的独立 View 桥接原型；输入必须是容器本地坐标下的背景 Bitmap。
-- 新增 KyantBridgeTestActivity251.java：高对比网格测试，入口在设置主界面底部。
-- 尚未注入 ColorOS Launcher；原有文件夹、Dock、SystemUI Hook 不变；测试图只验证原版折射 Shader 的 Android View 渲染，未复刻 Compose 的整套光照/色散/模糊合成。
-- 需 Android 13+ / API 33+；未进行 Android SDK 编译及真机测试。
-
-V1.9.205.252｜独立上游构建入口与背景采样修正版
-1. 修复 V251 测试页紧贴玻璃裁切背景导致的 CLAMP 拉伸：传入整幅背景，BitmapShader 通过 localMatrix 映射到玻璃本地坐标。
-2. 新增 tools/build_kyant_upstream_252.sh：独立编译真正的上游 androidApp（backdrop、Shapes、Compose 依赖按上游 Gradle 解析）。
-3. 上游完整光学引擎仍在独立工程，尚未作为 LSPosed app 的依赖；当前 app 内依然是单 Shader 实验，不得视为完整引擎移植。
-4. 尚未在本环境完成 Android SDK/Gradle 编译及真机验证。下一步必须先验证独立上游构建和桥接采样，再设计系统进程适配。
+重要：本环境未完成 Gradle 编译，也未验证 API / Android SDK 37 / 运行时、未实现 ColorOS Launcher 原版 Backdrop 背景采样。此包不是“完整引擎可用版”，只是 V253 构建迁移草案。
+请勿替换当前稳定模块；先在 Android Studio / CI 执行 ./gradlew :liquidglass-module:assembleDebug，修复构建兼容后再测试。
+上游 LICENSE 保留，Kyant 光学公式未改。
