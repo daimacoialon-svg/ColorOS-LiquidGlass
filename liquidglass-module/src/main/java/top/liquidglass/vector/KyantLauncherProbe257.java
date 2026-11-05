@@ -8,7 +8,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
-import de.robv.android.xposed.XposedHelpers;
+import java.lang.reflect.Method;
 
 /** V257 read-only Launcher source and geometry probe. Never captures pixels or changes drawing. */
 public final class KyantLauncherProbe257 {
@@ -16,9 +16,11 @@ public final class KyantLauncherProbe257 {
     private KyantLauncherProbe257() {}
     public static void install(ClassLoader loader) {
         try {
-            Class<?> folder = XposedHelpers.findClassIfExists("com.android.launcher3.folder.FolderIcon", loader);
+            Class<?> folder;
+            try { folder = Class.forName("com.android.launcher3.folder.FolderIcon", false, loader); }
+            catch (ClassNotFoundException missing) { XposedBridge.log("KYANT257_FOLDER_ICON_NOT_FOUND"); return; }
             if (folder == null) { XposedBridge.log("KYANT257_FOLDER_ICON_NOT_FOUND"); return; }
-            XposedBridge.hookAllMethods(folder, "onLayout", new XC_MethodHook() {
+            XC_MethodHook callback = new XC_MethodHook() {
                 @Override protected void afterHookedMethod(MethodHookParam param) {
                     try {
                         View v = (View) param.thisObject;
@@ -41,8 +43,15 @@ public final class KyantLauncherProbe257 {
                         XposedBridge.log("KYANT257_SOURCE_POLICY no_pixel_capture; wallpaper_may_be_separate_surface; no_glass_replacement");
                     } catch(Throwable t) { XposedBridge.log("KYANT257_PROBE_ERROR "+t.getClass().getSimpleName()); }
                 }
-            });
-            XposedBridge.log("KYANT257_PROBE_INSTALLED opt_in_global=liquidglass_kyant_probe_257");
+            };
+            int hooked = 0;
+            for (Method method : folder.getDeclaredMethods()) {
+                if (!"onLayout".equals(method.getName())) continue;
+                XposedBridge.hookMethod(method, callback);
+                hooked++;
+            }
+            if (hooked == 0) { XposedBridge.log("KYANT257_ONLAYOUT_NOT_DECLARED"); return; }
+            XposedBridge.log("KYANT257_PROBE_INSTALLED count="+hooked+" opt_in_global=liquidglass_kyant_probe_257");
         } catch(Throwable t) { XposedBridge.log("KYANT257_INSTALL_FAILED "+t); }
     }
 }
