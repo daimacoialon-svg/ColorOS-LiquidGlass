@@ -57,27 +57,26 @@ final class UnifiedGlass230 {
             float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(halfSize-r);
             return r-length(max(q,float2(0.0)))-min(max(q.x,q.y),0.0);
         }
-        // V242: continuous full-domain optical surface. The old shoulder used
-        // a smoothstep plateau and then mixed in a separate superellipse dome,
-        // exposing a rectangular inset and four diagonal transition seams.
-        // Instead use a single rounded-rect boundary distance with a soft,
-        // non-plateauing attenuation, modulated by a global smooth ellipsoidal
-        // dome. There is no internal shoulder blend boundary.
+        // V243: seam-free analytic superelliptic lens. The V242 signed
+        // distance field is only C0 at nearest-edge switches, which made
+        // X-shaped normal/displacement seams. Never derive optical normals
+        // from the rounded-rectangle SDF.
         float surface230(float2 p){
             float2 size=max(bounds.zw-bounds.xy,float2(2.0));
-            float2 halfSize=size*0.5;
-            float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/halfSize;
-            float d=max(inside230(p),0.0);
-            float shortSide=min(size.x,size.y);
-            float shoulder=max(2.0,shortSide*mix(0.15,0.25,clamp(thickness230,0.0,1.0)));
-            // Exponential edge response smoothly approaches a flat center
-            // without a visible square shoulder or hard transition.
-            float edge=1.0-exp(-d/shoulder);
-            // Global radial term makes the center continuously curved rather
-            // than a rectangular plateau. No nearest-side switching here.
-            float radial=dot(uv,uv);
-            float dome=1.0/(1.0+0.45*radial);
-            return edge*dome;
+            float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/(size*0.5);
+            // Smooth everywhere, including the center and diagonals.
+            // A quartic superellipse follows the rectangular aspect ratio
+            // without nearest-side min/max switches.
+            float x2=uv.x*uv.x;
+            float y2=uv.y*uv.y;
+            float rho4=x2*x2+y2*y2;
+            float shoulder=mix(1.35,2.7,clamp(thickness230,0.0,1.0));
+            float dome=exp(-shoulder*rho4);
+            // Gentle curvature in the center, avoiding a flat square.
+            float centerCurve=1.0/(1.0+0.28*(x2+y2));
+            // The actual native rounded rectangle is clipped by
+            // Canvas.drawRoundRect, NOT by this optical height function.
+            return dome*centerCurve;
         }
         float2 normalSlope230(float2 p){
             float e=1.0;
@@ -217,7 +216,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass241","MATERIAL_SHADER_CREATED_242 continuousFullDomain=true");
+                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_243 analyticSuperellipse=true");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
@@ -235,13 +234,13 @@ final class UnifiedGlass230 {
             paint.setShader(shader);
             canvas.drawRoundRect(rect,radius,radius,paint);
             if(routeLogs237++<20)Log.i("LiquidGlass239",
-                "OPTICAL_PIPELINE_242 wallpaper=bound blurred=bound bounds="+rect.toShortString()+
+                "OPTICAL_PIPELINE_243 wallpaper=bound blurred=bound bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix+
                 " mode="+diagnostic235+" material=singlePass");
             if(diagnostic235!=0 && probeLogs235++<24)Log.i("LiquidGlass235",
                 "OPTICAL_STAGE mode="+diagnostic235+" bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix);
-            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_242 dimensions="+rect.width()+"x"+rect.height()+
+            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_243 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             if(consecutiveFailures240!=0){
                 Log.i("LiquidGlass240","OPTICAL_RECOVERED_240 failures="+consecutiveFailures240);

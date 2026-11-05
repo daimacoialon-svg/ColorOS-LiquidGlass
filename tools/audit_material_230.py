@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent V230 source-wiring regression test (no Android runtime required)."""
+"""Independent V243 source-wiring regression test (no Android runtime required)."""
 from pathlib import Path
 import re
 R=Path(__file__).resolve().parents[1]
@@ -43,6 +43,6 @@ assert 'new State(false,70,55,60,0)' in M
 for old in ['nonlinear_107','thickness_107','interior_107','focus_107','reflection_107','surface_mode_195','surface_strength_195','surface_softness_195']:
     assert old in U and old in C and old in P
 assert (R/'root-helper/99-liquidglass-wallpaper.sh').read_bytes()==(R/'app/src/main/assets/99-liquidglass-wallpaper.sh').read_bytes()
-assert "versionName '1.9.205.241'" in (R/'app/build.gradle').read_text()
-assert 'ColorOS-LiquidGlass-V1.9.205.241-APK' in (R/'.github/workflows/build-apk.yml').read_text()
+assert "versionName '1.9.205.243'" in (R/'app/build.gradle').read_text()
+assert 'ColorOS-LiquidGlass-V1.9.205.243-APK' in (R/'.github/workflows/build-apk.yml').read_text()
 print('PASS V230: LG1 33 unchanged, LG230 persisted/direct/root/boot, five controls, single-pass shader, V229 fallback, legacy keys and version metadata')
