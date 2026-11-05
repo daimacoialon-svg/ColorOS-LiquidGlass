@@ -5756,6 +5756,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     // V191: new dual-style UI chooses the isolated renderer.
                                                     // Manual global 0..3 remains a rollback path.
                                                     if(opticalStyle186>0)activeCurvature180=4;
+                                                    // V218: mode 16 is a lens diagnostic, not an outer fusion probe.
+                                                    // Explicitly route it to the 191 shader even when a stale
+                                                    // optical-style setting would otherwise select 173.
+                                                    int lensMode218=0;
+                                                    try { lensMode218=android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); }
+                                                    catch(Throwable ignored218) {}
+                                                    if(lensMode218>=12 && lensMode218<=20)activeCurvature180=4;
                                                     if(activeCurvature180==4){
                                                         GlassLens191.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
                                                             valid173,overall173,blend101,opticalDiagnostic173,highlightEnabled,highlightStrength,
@@ -5765,6 +5772,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                         valid173,overall173,blend101,opticalDiagnostic173,opticalSampling173,
                                                         highlightEnabled,highlightStrength,highlightWidth,directionalLight,reflectionModel178,activeCurvature180,surfaceMode194,surfaceStrength194,surfaceSoftness194,opticalStyle186);
                                                     }
+                                                    if(newOpticalLog173<24)log("LENS_ROUTE_218 renderer="+(activeCurvature180==4?"191":"173")+
+                                                        " aaMode="+lensMode218+" pipeline="+pipeline173+" nonlinear="+nonlinear107+
+                                                        " residualMode="+residualMode120+" effectiveStrength="+overall173+
+                                                        " style="+opticalStyle186+" surface="+surfaceStrength194);
                                                     if(newOpticalLog173++<120)log("OPTICAL_PIPELINE_173 path=CLEAN_SINGLE_SHADER"+
                                                         " container="+((view.getBackground() instanceof DockBackground204)?"DOCK":"FOLDER")+
                                                         " strength="+overall173+" diagnostic="+opticalDiagnostic173+
@@ -8256,21 +8267,21 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 new float[]{0f,.26f,.55f,1f},android.graphics.Shader.TileMode.CLAMP));
             innerLight.setStyle(Paint.Style.STROKE);
             innerLight.setStrokeJoin(Paint.Join.ROUND);innerLight.setStrokeCap(Paint.Cap.ROUND);
-            innerLight.setStrokeWidth(Math.min(diagonal*.085f,Math.max(3f*dp,5.5f*dp)));
+            innerLight.setStrokeWidth(Math.min(diagonal*.11f,6.0f*dp));
             innerLight.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x85FFFFFF,0x48FFFFFF,0x10FFFFFF,0x00FFFFFF},
+                new int[]{0x44FFFFFF,0x28FFFFFF,0x0CFFFFFF,0x00FFFFFF},
                 new float[]{0f,.27f,.58f,1f},android.graphics.Shader.TileMode.CLAMP));
             innerShade.setStyle(Paint.Style.STROKE);
             innerShade.setStrokeJoin(Paint.Join.ROUND);innerShade.setStrokeCap(Paint.Cap.ROUND);
-            innerShade.setStrokeWidth(Math.min(diagonal*.07f,4.2f*dp));
+            innerShade.setStrokeWidth(Math.min(diagonal*.095f,5.0f*dp));
             innerShade.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x00000820,0x00000820,0x17000B25,0x60000B25},
+                new int[]{0x00000820,0x00000820,0x0D000B25,0x28000B25},
                 new float[]{0f,.43f,.76f,1f},android.graphics.Shader.TileMode.CLAMP));
             contour.setStyle(Paint.Style.STROKE);
-            contour.setStrokeWidth(Math.max(.6f*dp,1f));
+            contour.setStrokeWidth(Math.max(.35f*dp,.65f));
             contour.setStrokeJoin(Paint.Join.ROUND);contour.setStrokeCap(Paint.Cap.ROUND);
             contour.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x88FFFFFF,0x40FFFFFF,0x10FFFFFF,0x30FFFFFF},
+                new int[]{0x38FFFFFF,0x20FFFFFF,0x08FFFFFF,0x12FFFFFF},
                 new float[]{0f,.32f,.7f,1f},android.graphics.Shader.TileMode.CLAMP));
         }
     }

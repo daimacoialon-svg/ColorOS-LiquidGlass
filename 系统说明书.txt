@@ -1,22 +1,12 @@
-ColorOS-LiquidGlass V1.9.205.217｜透镜恢复、应用图标内缘光影与开机配置修复
+ColorOS-LiquidGlass V1.9.205.218｜二维透镜路由诊断与图标柔和光影修正版
 
-设备目标：OnePlus 13T / ColorOS 15 / Android 15 / KernelSU / LSPosed Vector。
+基于 V217 原工程。
+1. 模式12–20显式选择 GlassLens191，避免旧 opticalStyle 导致的渲染器路由歧义。
+2. 增加 LENS_ROUTE_218、LENS_SHADER_ENTRY、LENS_SHADER_CREATED / FAILED 日志；区分渲染器、参数与Shader创建。
+3. 调低图标外轮廓及暗色描边强度，采用较宽但透明度更低的内缘渐变，减少浮雕感。
+4. 保留 V217 文件夹/Dock开机默认与手动关闭持久化逻辑；不修改 LG1 字段顺序。
 
-修复内容：
-1. 正常二维曲面透镜恢复为 V215 的 AGSL Shader；模式18白底黑线网格被隔离到独立 Shader，避免诊断改动使正常透镜失效。
-2. 模式18使用原模式16折射映射，白底黑线，主网格每5格加粗；设置 liquidglass_grid_spacing_216 为8/12/16。
-3. 应用图标沿实际 alpha 轮廓（失败时自适应图标蒙版/圆角回退）绘制内缘投射亮光、暗部阴影与精细轮廓。
-4. 文件夹、Dock、图标光影首次配置默认开启；已有用户手动关闭的设置保持不变。Root 脚本支持缺失 enabled 键的旧配置，重启后自动发布持久化状态。
-5. 不更改 LG1 的32项快照字段及顺序；保留 V209 配置实时直发与 Root 异步持久化。
+注意：模式16是诊断模式，设置为16后重启桌面或重绘测试；模式0返回默认效果。
+日志：su -c 'logcat -d -v time | grep -E "LENS_ROUTE_218|LENS_SHADER_|SHADER_ERROR|CONFIG_APPLIED_203" | tail -80'
 
-首次安装/更新：
-- 安装模块 APK 后确认 LSPosed Vector 作用域包含系统桌面；打开模块设置检查三个开关。
-- 点击“检查并更新 Root 辅助脚本”，授权 KernelSU 后重启一次；只安装 APK 而未更新 service.d 脚本不能保证开机同步。
-- 若看到诊断色块/白网格，先退出模式：su -c 'settings put global liquidglass_aa_probe_208 0'。
-- 测试模式16：su -c 'settings put global liquidglass_aa_probe_208 16'。
-- 测试模式18：su -c 'settings put global liquidglass_aa_probe_208 18'。
-- 设置网格间距：su -c 'settings put global liquidglass_grid_spacing_216 12'。
-- 查看配置：su -c 'settings get global liquidglass_boot_snapshot_v1'。
-- 失败诊断：su -c 'logcat -d -v time | grep -E "SHADER_ERROR|GRID_217_SHADER_FAILED|BOOT_DEFAULTS_217|CONFIG_APPLIED_203|ICON_OPTICS_205" | tail -80'。
-
-测试注意：本源码在交付环境进行静态一致性检查，未在 OnePlus 13T 上完成 AGSL 编译或实际光学验收。
+未在真机验证 AGSL 编译及实际折射效果；请先备份 V217，安装后核对日志。

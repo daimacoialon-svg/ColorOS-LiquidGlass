@@ -449,6 +449,7 @@ final class GlassLens191 {
         "  return half4(half3(1.0-ink),1.0);\n";
     private static final String WHITE_GRID_AGSL_217=AGSL.replace(GRID_OLD_217,GRID_NEW_217);
     private static boolean GRID_FAILED_217=false;
+    private static int ROUTE_LOGS_218=0;
 
     static void draw(View owner, Canvas canvas, RectF rect, float radius,
             BitmapShader wallpaper, BitmapShader blurredWallpaper, RectF valid,
@@ -458,6 +459,11 @@ final class GlassLens191 {
         int aaProbe208=0;
         try { aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); } catch(Throwable ignored) {}
         boolean gridRequested=aaProbe208==18;
+        if(ROUTE_LOGS_218<12){
+            ROUTE_LOGS_218++;
+            android.util.Log.i("LiquidGlass218","LENS_SHADER_ENTRY mode="+aaProbe208+
+                " strength="+strength+" style="+opticalStyle+" bounds="+rect.toShortString());
+        }
         RuntimeShader shader=null;
         if(gridRequested && !GRID_FAILED_217){
             synchronized(GRID_CACHE_217){
@@ -479,8 +485,14 @@ final class GlassLens191 {
             synchronized(CACHE){
                 shader=CACHE.get(owner);
                 if(shader==null){
-                    shader=new RuntimeShader(AGSL);
-                    CACHE.put(owner,shader);
+                    try {
+                        shader=new RuntimeShader(AGSL);
+                        CACHE.put(owner,shader);
+                        android.util.Log.i("LiquidGlass218","LENS_SHADER_CREATED production=true");
+                    } catch(Throwable failure218) {
+                        android.util.Log.e("LiquidGlass218","LENS_SHADER_FAILED production=true",failure218);
+                        throw failure218;
+                    }
                 }
             }
         }
