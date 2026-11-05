@@ -27,6 +27,7 @@ final class GlassLens191 {
         "uniform float edgeStrength;\n" +
         "uniform float diagnostic;\n" +
         "uniform float aaProbe208;\n" +
+        "uniform float gridSpacing216;\n" +
         "float depth(float2 p){\n" +
         " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
         " float r=clamp(radius,0.0,min(h.x,h.y));\n" +
@@ -129,6 +130,16 @@ final class GlassLens191 {
         "  return blended*(oldMag/max(length(blended),0.00001));\n" +
         " }\n" +
         " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
+        "}\n" +
+        "// V215 experimental mapping: corner-local direction continuity with original magnitude.\n" +
+        "float2 offset215(float2 p){\n" +
+        " float2 base=offset214(p,1.0);\n" +
+        " float w=cornerMask211(p);\n" +
+        " if(w<0.002)return base;\n" +
+        " float e=2.0;\n" +
+        " float2 avg=(offset214(p+float2(e,0.0),1.0)+offset214(p-float2(e,0.0),1.0)+offset214(p+float2(0.0,e),1.0)+offset214(p-float2(0.0,e),1.0))*0.25;\n" +
+        " float2 direction=mix(base,avg,w*0.65);\n" +
+        " return direction*(length(base)/max(length(direction),0.00001));\n" +
         "}\n" +
         "// Corner-only diagnostic: smooth the sampling displacement field, not the glass brightness.\n" +
         "float cornerMask211(float2 p){\n" +
@@ -262,6 +273,46 @@ final class GlassLens191 {
         "   for(int iy=-1;iy<=1;iy++){\n" +
         "    float2 sp=p+float2(float(ix),float(iy))*(1.0/3.0);\n" +
         "    float2 sq=sp+offset214(sp,mode);\n" +
+        "    float sm=min(min(sq.x-lo.x,hi.x-sq.x),min(sq.y-lo.y,hi.y-sq.y));\n" +
+        "    float2 sc=clamp(mix(sp,sq,smoothstep(0.0,14.0,sm)),lo,hi);\n" +
+        "    sumC+=wallpaper.eval(sc);sumB+=blurredWallpaper.eval(sc);\n" +
+        "   }\n" +
+        "  }\n" +
+        "  clear=sumC/9.0;blurred=sumB/9.0;\n" +
+        " }\n" +
+        " // V215 mode 18: warped coordinate grid, sampled through mode 16 mapping.\n" +
+        " if(aaProbe208>17.5 && aaProbe208<18.5){\n" +
+        "  float2 sq=p+offset214(p,1.0);\n" +
+        "  float sm=min(min(sq.x-lo.x,hi.x-sq.x),min(sq.y-lo.y,hi.y-sq.y));\n" +
+        "  float2 sc=clamp(mix(p,sq,smoothstep(0.0,14.0,sm)),lo,hi);\n" +
+        "  // White substrate; both minor and major black lines use the refracted sampling coordinate.\n" +
+        "  float spacing=clamp(gridSpacing216,8.0,16.0);\n" +
+        "  float2 minor=abs(fract(sc/spacing+0.5)-0.5)*spacing;\n" +
+        "  float2 major=abs(fract(sc/(spacing*5.0)+0.5)-0.5)*(spacing*5.0);\n" +
+        "  float minorDist=min(minor.x,minor.y);\n" +
+        "  float majorDist=min(major.x,major.y);\n" +
+        "  float minorInk=1.0-smoothstep(0.30,0.85,minorDist);\n" +
+        "  float majorInk=1.0-smoothstep(0.65,1.45,majorDist);\n" +
+        "  float ink=max(minorInk*0.82,majorInk);\n" +
+        "  return half4(half3(1.0-ink),1.0);\n" +
+        " }\n" +
+        " // V215 mode 19: mapping Jacobian compression (red) / stretch (green).\n" +
+        " if(aaProbe208>18.5 && aaProbe208<19.5){\n" +
+        "  float e=1.0;\n" +
+        "  float2 x=(offset214(p+float2(e,0.0),1.0)-offset214(p-float2(e,0.0),1.0))/(2.0*e)+float2(1.0,0.0);\n" +
+        "  float2 y=(offset214(p+float2(0.0,e),1.0)-offset214(p-float2(0.0,e),1.0))/(2.0*e)+float2(0.0,1.0);\n" +
+        "  float det=x.x*y.y-x.y*y.x;\n" +
+        "  float compression=1.0-smoothstep(0.2,1.0,det);\n" +
+        "  float stretch=smoothstep(1.0,2.4,max(length(x),length(y)));\n" +
+        "  return half4(half3(compression,stretch,0.18),1.0);\n" +
+        " }\n" +
+        " // V215 mode 20: local mapping continuity, preserving mode 16 displacement length and 3x3 sampling.\n" +
+        " if(aaProbe208>19.5 && aaProbe208<20.5){\n" +
+        "  half4 sumC=half4(0.0),sumB=half4(0.0);\n" +
+        "  for(int ix=-1;ix<=1;ix++){\n" +
+        "   for(int iy=-1;iy<=1;iy++){\n" +
+        "    float2 sp=p+float2(float(ix),float(iy))*(1.0/3.0);\n" +
+        "    float2 sq=sp+offset215(sp);\n" +
         "    float sm=min(min(sq.x-lo.x,hi.x-sq.x),min(sq.y-lo.y,hi.y-sq.y));\n" +
         "    float2 sc=clamp(mix(sp,sq,smoothstep(0.0,14.0,sm)),lo,hi);\n" +
         "    sumC+=wallpaper.eval(sc);sumB+=blurredWallpaper.eval(sc);\n" +
@@ -409,7 +460,11 @@ final class GlassLens191 {
         shader.setFloatUniform("diagnostic", (float) diagnostic);
         int aaProbe208=0;
         try { aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); } catch(Throwable ignored) {}
-        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(17,aaProbe208)));
+        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(20,aaProbe208)));
+        int gridSpacing216=12;
+        try { gridSpacing216=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_grid_spacing_216",12); } catch(Throwable ignored) {}
+        if(gridSpacing216!=8 && gridSpacing216!=12 && gridSpacing216!=16) gridSpacing216=12;
+        shader.setFloatUniform("gridSpacing216", (float)gridSpacing216);
         shader.setFloatUniform("style", (float) opticalStyle);
         shader.setFloatUniform("reflectionMode", (float) surfaceMode);
         shader.setFloatUniform("reflectionStrength", Math.max(0f, Math.min(2f, surfaceStrength / 100f)));

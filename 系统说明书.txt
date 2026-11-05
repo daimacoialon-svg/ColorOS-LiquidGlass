@@ -1,14 +1,9 @@
-ColorOS-LiquidGlass V1.9.205.214｜圆角方向场与折射位移连续性实验版
+ColorOS-LiquidGlass V1.9.205.216｜白底黑线折射采样网格诊断版
 
-基于 V213，保留 V209 的配置持久化修复、Dock 与文件夹挂载、实时通知、Root 快照字段顺序。
-
-测试设置（需 Root）：
-su -c 'settings put global liquidglass_aa_probe_208 13'  # V213 基准：统一法线 + 真实 9 点
-su -c 'settings put global liquidglass_aa_probe_208 15'  # 局部方向场连续过渡 + 真实 9 点
-su -c 'settings put global liquidglass_aa_probe_208 16'  # 模式 15 + 保持原有位移幅度的连续限幅对照
-su -c 'settings put global liquidglass_aa_probe_208 17'  # 模式 16 与模式 13 的最终位移差异热力图
-su -c 'settings put global liquidglass_aa_probe_208 0'   # 恢复正常
-
-注意：15/16 均为实验模式，仍需真机验证。16 通过保留 V213 限幅后的位移模长，隔离方向改变的影响，不保证折痕消失。
-未使用 dFdx/dFdy。建议保持相同壁纸和强度对比四角短斜线、立体感与帧率。
-源码版本：1.9.205.214。
+以 V215 为基线。模式18改为白底黑线，网格线通过与模式16相同的折射坐标映射。每五格加粗主网格。
+网格间距默认12px，可通过 Termux 设置8、12、16px：
+su -c 'settings put global liquidglass_grid_spacing_216 12'
+切换模式18：su -c 'settings put global liquidglass_aa_probe_208 18'
+恢复正常：su -c 'settings put global liquidglass_aa_probe_208 0'
+模式16、19、20及配置链不作主动改动。
+此版本未进行 Gradle 编译或真机 AGSL 验证。
