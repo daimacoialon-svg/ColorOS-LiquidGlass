@@ -64,32 +64,42 @@ final class UnifiedGlass230 {
         // Use a smooth rounded-rectangle distance instead of a quartic superellipse
         // (which produced a square-looking central shoulder and wrong corner radius).
         // Every join is softened; no nearest-edge branch or diagonal normal seam.
-        float smoothMax245(float a,float b,float k){
-            return 0.5*(a+b+sqrt((a-b)*(a-b)+k*k));
+        // V246: one smooth signed-distance field for the entire rounded shape.
+        // Unlike four independent edge ramps, corners and sides share a
+        // single scalar height field and therefore a single normal.
+        float smoothMax246(float a,float b,float eps){
+            return 0.5*(a+b+sqrt((a-b)*(a-b)+eps*eps));
         }
-        float surface230(float2 p){
+        float smoothPositive246(float a,float eps){
+            return 0.5*(a+sqrt(a*a+eps*eps));
+        }
+        float signedOutside246(float2 p){
             float2 halfSize=max((bounds.zw-bounds.xy)*0.5,float2(1.0));
             float r=clamp(radius,1.0,min(halfSize.x,halfSize.y));
-            float2 v=p-(bounds.xy+bounds.zw)*0.5;
-            // Smooth absolute and smooth positive-part remove axis and corner seams.
-            float soft=max(0.8,min(halfSize.x,halfSize.y)*0.007);
-            float2 av=sqrt(v*v+float2(soft*soft));
-            float2 q=av-(halfSize-float2(r));
-            float qmax=smoothMax245(q.x,q.y,soft);
-            float2 qp=0.5*(q+sqrt(q*q+float2(soft*soft)));
-            float outer=sqrt(dot(qp,qp)+soft*soft)-soft;
-            float signedOutside=outer+min(qmax,0.0)-r;
-            // Optical shoulder follows the actual native rounded-rectangle contour.
-            // Distance is normalized by short side, not width/height independently.
-            float shortSide=min(halfSize.x,halfSize.y)*2.0;
-            float depth=max(0.0,-signedOutside);
-            float shoulderWidth=shortSide*mix(0.11,0.25,clamp(thickness230,0.0,1.0));
+            float2 center=(bounds.xy+bounds.zw)*0.5;
+            float eps=max(0.35,min(halfSize.x,halfSize.y)*0.003);
+            float2 v=p-center;
+            float2 a=sqrt(v*v+float2(eps*eps));
+            float2 q=a-(halfSize-float2(r));
+            float2 outside=float2(smoothPositive246(q.x,eps),
+                                  smoothPositive246(q.y,eps));
+            float interior=min(smoothMax246(q.x,q.y,eps),0.0);
+            return length(outside)+interior-r;
+        }
+        float surface230(float2 p){
+            float2 size=max(bounds.zw-bounds.xy,float2(2.0));
+            float shortSide=min(size.x,size.y);
+            float depth=max(0.0,-signedOutside246(p));
+            float shoulderWidth=shortSide*mix(0.14,0.29,clamp(thickness230,0.0,1.0));
             float t=clamp(depth/max(shoulderWidth,1.0),0.0,1.0);
-            // C1 at both ends, and C2 through the shoulder transition.
-            float smooth=t*t*t*(t*(t*6.0-15.0)+10.0);
-            // The interior is almost flat; optical curvature lives in the edge,
-            // without generating a separate square plate in the center.
-            return smooth;
+            float edge=t*t*t*(t*(t*6.0-15.0)+10.0);
+            // A weak continuous inner meniscus prevents a visibly rectangular
+            // central shelf.  The edge remains the dominant optical curvature.
+            float2 center=(bounds.xy+bounds.zw)*0.5;
+            float2 uv=(p-center)/max(size*0.5,float2(1.0));
+            float radial=dot(uv,uv);
+            float inner=1.0-0.065*clamp(radial,0.0,1.0);
+            return edge*inner;
         }
         float2 normalSlope230(float2 p){
             float e=1.0;

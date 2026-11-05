@@ -1,4 +1,4 @@
-ColorOS-LiquidGlass V1.9.205.245｜原生圆角连续折射实验版
+ColorOS-LiquidGlass V1.9.205.246｜原生圆角连续折射实验版
 
 基于 V1.9.205.244 完整 Android Studio 源码，保持现有 UI、SharedPreferences、Root 快照、Launcher 配置和诊断 1～6 的键与定义不变。保留 A/B/C 动态折射对照键 liquidglass_refraction_ab_244。
 
@@ -17,3 +17,4 @@ Termux 实验命令：
   su -c 'settings delete global liquidglass_refraction_ab_244'
 
 说明：本版是待真机验证的几何改进，不宣称已达到参考 iOS 27 的视觉效果；未在当前环境完成 Android 编译或真机测试。
+\n\nV1.9.205.246：统一圆角矩形平滑有符号距离场，修复四边过渡拼接的几何来源；增加轻微内部弯月面曲率。保留原有设置键与诊断模式。尚未完成真机验证。\n
