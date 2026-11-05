@@ -1,5 +1,16 @@
-ColorOS-LiquidGlass V1.9.205.234｜连续光学体积过渡实验版
+ColorOS-LiquidGlass V1.9.205.235｜真实光学链路诊断版
 
-基于 V233 源码，修改统一玻璃 AGSL 渲染器：扩大曲面厚度向内部过渡范围，采用连续余弦剖面；修正双界面后表面法线方向；保持位移连续有界。
-保留 LG230 原有配置键、UI、实时通知、Root 快照、重启恢复和关闭实验时的旧渲染回退路径；没有迁移或重置用户配置。
-注意：本版是实验性光学近似，并非 iOS 光学算法复刻；尚未经过 Android 真机编译和视觉验证。建议对比 0/50/100% 强度，观察边缘到中心过渡及横向纹理连续性。
+基线：V1.9.205.234。此版不声称已经实现目标 iOS 风格光学效果。
+
+新增：在现有统一材质 Shader 内直接观测实际执行的六个阶段。
+通过 Termux 执行（Root）：
+ su -c 'settings put global liquidglass_optical_diagnostic_235 1'
+模式：0 正常；1 位移（红色=X，绿色=Y，中性灰=零位移）；2 法线；3 高度场；4 原始壁纸采样；5 折射采样但无环境反射；6 完整合成。
+每次切换后等待页面刷新或轻微滑动；建议按 4→5→1→2→3→0 顺序截图，测试不同形状文件夹与 Dock。
+完成后务必恢复：su -c 'settings put global liquidglass_optical_diagnostic_235 0'
+可查看日志：su -c 'logcat -d -s LiquidGlass235:I LiquidGlass230:I *:S'
+
+此诊断开关不进入用户配置持久化，也不修改 LG230 的字段、顺序或旧有键。
+原 UI、SharedPreferences、UI→Launcher 直达、Root 快照、重启恢复链路保持不变。
+诊断仅在统一材质启用且成功进入该 Shader 时显示；若仍是普通画面，检查作用域、日志及材质开关。
+保留 V229 回退逻辑。未进行真实设备效果验证。

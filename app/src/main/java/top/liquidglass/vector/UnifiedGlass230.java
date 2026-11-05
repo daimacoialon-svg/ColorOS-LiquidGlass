@@ -1,6 +1,7 @@
 package top.liquidglass.vector;
 
 import android.graphics.BitmapShader;
+import android.provider.Settings;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RectF;
@@ -20,6 +21,11 @@ final class UnifiedGlass230 {
     private static final WeakHashMap<View,RuntimeShader> CACHE=new WeakHashMap<>();
     private static boolean failed=false;
     private static int logs=0;
+    private static volatile int diagnostic235=0;
+    private static int probeCounter235=0;
+    private static int probeLogs235=0;
+    // Diagnostic is read-only and intentionally NOT part of LG230 persistence.
+    private static final String DIAG_KEY_235="liquidglass_optical_diagnostic_235";
 
     private static final String AGSL="""
         uniform shader wallpaper;
@@ -32,6 +38,7 @@ final class UnifiedGlass230 {
         uniform float environment230;
         uniform float quality230;
         uniform float blurMix;
+        uniform float diagnostic235;
 
         // Signed distance: positive within this particular rounded container.
         float inside230(float2 p){
@@ -99,6 +106,29 @@ final class UnifiedGlass230 {
             float2 slope=normalSlope230(p);
             float2 delta=warp230(p,slope);
             float2 q=safe230(p+delta);
+            // V235: isolate actual shader stages without replacing the production path.
+            // 1 displacement, 2 normals, 3 continuous surface, 4 raw source,
+            // 5 warped source only, 6 final material (same as mode 0).
+            if(diagnostic235>0.5 && diagnostic235<1.5){
+                float2 size=max(bounds.zw-bounds.xy,float2(1.0));
+                float2 disp=(q-p)/max(size,float2(1.0));
+                return half4(half3(clamp(0.5+disp.x*5.0,0.0,1.0),
+                    clamp(0.5+disp.y*5.0,0.0,1.0),0.5),1.0);
+            }
+            if(diagnostic235>1.5 && diagnostic235<2.5){
+                float3 nn=normalize(float3(-slope*(13.0+8.0*thickness230),1.0));
+                return half4(half3(nn*0.5+0.5),1.0);
+            }
+            if(diagnostic235>2.5 && diagnostic235<3.5){
+                float h=surface230(p);
+                return half4(half3(h,h,h),1.0);
+            }
+            if(diagnostic235>3.5 && diagnostic235<4.5){
+                return transmission230(p);
+            }
+            if(diagnostic235>4.5 && diagnostic235<5.5){
+                return transmission230(q);
+            }
             float edgeZone=clamp(length(slope)*35.0,0.0,1.0);
             half4 base=transmission230(q);
             // Optional AA, restricted to bent regions: the clear interior remains
@@ -148,6 +178,14 @@ final class UnifiedGlass230 {
     static boolean draw(View view,Canvas canvas,RectF rect,float radius,
             BitmapShader wallpaper,BitmapShader blurredWallpaper,RectF valid,float blurMix){
         MaterialConfig230.State s=MaterialConfig230.get();
+        // Settings.Global is a transient, opt-in test switch; normal mode is 0.
+        // Sampling every 60 draws avoids a binder read for every frame.
+        if((++probeCounter235 % 60)==1){
+            try{
+                int next=Settings.Global.getInt(view.getContext().getContentResolver(),DIAG_KEY_235,0);
+                diagnostic235=Math.max(0,Math.min(6,next));
+            }catch(Throwable ignored){diagnostic235=0;}
+        }
         if(!s.enabled || failed)return false;
         try{
             RuntimeShader shader;
@@ -169,9 +207,13 @@ final class UnifiedGlass230 {
             shader.setFloatUniform("environment230",s.environment/100f);
             shader.setFloatUniform("quality230",(float)s.quality);
             shader.setFloatUniform("blurMix",Math.max(0f,Math.min(1f,blurMix)));
+            shader.setFloatUniform("diagnostic235",(float)diagnostic235);
             Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             paint.setShader(shader);
             canvas.drawRoundRect(rect,radius,radius,paint);
+            if(diagnostic235!=0 && probeLogs235++<24)Log.i("LiquidGlass235",
+                "OPTICAL_STAGE mode="+diagnostic235+" bounds="+rect.toShortString()+
+                " valid="+valid.toShortString()+" blurMix="+blurMix);
             if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_234 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             return true;
