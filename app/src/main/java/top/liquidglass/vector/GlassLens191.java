@@ -62,6 +62,24 @@ final class GlassLens191 {
         " float cap=clamp(small*0.115,10.0,24.0);\n" +
         " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
         "}\n" +
+        "// Corner-only diagnostic: smooth the sampling displacement field, not the glass brightness.\n" +
+        "float cornerMask211(float2 p){\n" +
+        " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
+        " float r=clamp(radius,1.0,min(h.x,h.y));\n" +
+        " float2 a=abs(p-(bounds.xy+bounds.zw)*0.5);\n" +
+        " float2 cornerStart=max(h-float2(r*1.35),float2(0.0));\n" +
+        " float2 w=smoothstep(cornerStart,cornerStart+float2(max(3.0,r*0.45)),a);\n" +
+        " float d=max(depth(p),0.0);\n" +
+        " return w.x*w.y*(1.0-smoothstep(max(3.0,r*0.65),max(6.0,r*1.5),d));\n" +
+        "}\n" +
+        "float2 cornerOffset211(float2 p){\n" +
+        " float2 base=offsetAt(p);\n" +
+        " float mask=cornerMask211(p);\n" +
+        " if(mask<0.002)return base;\n" +
+        " float e=1.15;\n" +
+        " float2 smoothOffset=(offsetAt(p+float2(e,0.0))+offsetAt(p-float2(e,0.0))+offsetAt(p+float2(0.0,e))+offsetAt(p-float2(0.0,e)))*0.25;\n" +
+        " return mix(base,smoothOffset,mask*0.85);\n" +
+        "}\n" +
         "half4 main(float2 p){\n" +
         " float d=max(depth(p),0.0);\n" +
         " float2 delta=offsetAt(p);\n" +
@@ -147,6 +165,26 @@ final class GlassLens191 {
         "   blurred=mix(blurred,sumB/9.0,half(band));\n" +
         "  }\n" +
         " }\n" +
+        " // V211 probe 6: corner-mask heatmap, white=corner correction domain.\n" +
+        " if(aaProbe208>5.5 && aaProbe208<6.5){\n" +
+        "  float m=cornerMask211(p);\n" +
+        "  return half4(half3(m,0.12+0.55*m,1.0-m),1.0);\n" +
+        " }\n" +
+        " // V211 probe 7: real 3x3 supersampling with corner-local displacement smoothing.\n" +
+        " // Deliberately experimental: original offsetAt() remains untouched in normal modes.\n" +
+        " if(aaProbe208>6.5 && aaProbe208<7.5){\n" +
+        "  half4 sumC=half4(0.0),sumB=half4(0.0);\n" +
+        "  for(int ix=-1;ix<=1;ix++){\n" +
+        "   for(int iy=-1;iy<=1;iy++){\n" +
+        "    float2 sp=p+float2(float(ix),float(iy))*(1.0/3.0);\n" +
+        "    float2 sq=sp+cornerOffset211(sp);\n" +
+        "    float sm=min(min(sq.x-lo.x,hi.x-sq.x),min(sq.y-lo.y,hi.y-sq.y));\n" +
+        "    float2 sc=clamp(mix(sp,sq,smoothstep(0.0,14.0,sm)),lo,hi);\n" +
+        "    sumC+=wallpaper.eval(sc);sumB+=blurredWallpaper.eval(sc);\n" +
+        "   }\n" +
+        "  }\n" +
+        "  clear=sumC/9.0;blurred=sumB/9.0;\n" +
+        " }\n" +
         " // V210 probe 5: visualize actual displacement-gradient severity.\n" +
         " if(aaProbe208>4.5 && aaProbe208<5.5){\n" +
         "  float2 sx=p+float2(1.0,0.0),sy=p+float2(0.0,1.0);\n" +
@@ -226,7 +264,7 @@ final class GlassLens191 {
         shader.setFloatUniform("diagnostic", (float) diagnostic);
         int aaProbe208=0;
         try { aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); } catch(Throwable ignored) {}
-        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(5,aaProbe208)));
+        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(7,aaProbe208)));
         shader.setFloatUniform("style", (float) opticalStyle);
         shader.setFloatUniform("reflectionMode", (float) surfaceMode);
         shader.setFloatUniform("reflectionStrength", Math.max(0f, Math.min(2f, surfaceStrength / 100f)));

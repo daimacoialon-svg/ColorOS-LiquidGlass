@@ -1,24 +1,19 @@
-ColorOS-LiquidGlass V1.9.205.210｜曲面过渡带采样诊断版
+ColorOS-LiquidGlass V1.9.205.211｜四角局部斜向折痕定位实验版
 
-基于 V209，保留首次配置键写入修复、UI 实时通知、Root 快照与 Dock 持久化。
-本版重点为诊断而非声称已解决锯齿。正常模式 0 继续沿用 V207 自适应采样。
+基于 V210，保留 V209 的 UI 配置保存修复和 V210 的诊断模式 0–5。
+本版不修改默认光学算法，仅增加两个实验模式。
 
-诊断命令（Termux root）：
-su -c 'settings put global liquidglass_aa_probe_208 0'  正常自适应
-su -c 'settings put global liquidglass_aa_probe_208 1'  采样等级热力图
-su -c 'settings put global liquidglass_aa_probe_208 2'  全玻璃真实九点采样
-su -c 'settings put global liquidglass_aa_probe_208 3'  采样足迹热力图
-su -c 'settings put global liquidglass_aa_probe_208 4'  仅曲面过渡带真实九点采样
-su -c 'settings put global liquidglass_aa_probe_208 5'  折射位移变化率热力图
+模式 2：全区域真实 3×3 亚像素折射采样（已由用户确认能消除阶梯锯齿，但四角有短斜线）。
+模式 5：折射位移梯度热力图（已显示四角短斜线）。
+模式 6：四角局部修正区域热力图（亮色为修正覆盖区域）。
+模式 7：真实 3×3 亚像素采样 + 仅四角局部折射位移平滑。此模式用于对比短斜线是否改善，不作为正式默认算法。
 
-诊断模式可能需要滑动桌面或重启 Launcher 触发 Shader uniform 刷新。
-模式 2、4 的性能开销较高，仅用于短时对比，完成后恢复 0。
-诊断热力图的高亮区域不是已确认的锯齿位置，需要与实际截图比较。
+Termux 命令：
+su -c 'settings put global liquidglass_aa_probe_208 2'
+su -c 'settings put global liquidglass_aa_probe_208 5'
+su -c 'settings put global liquidglass_aa_probe_208 6'
+su -c 'settings put global liquidglass_aa_probe_208 7'
+su -c 'settings put global liquidglass_aa_probe_208 0'
 
-Git：
-cd ~/ColorOS-LiquidGlass-V1.0-Source
-git add .
-git commit -m "V1.9.205.210 版本"
-git push origin main
-
-本包未进行真机编译与运行验证。
+请保持同一壁纸、折射强度及文件夹位置，比较模式 2 与 7 的阶梯锯齿和四角局部斜线。
+本源码尚未完成 Gradle 编译和真机 AGSL 验证。若发生 Shader 错误请回退到 V209/V210。
