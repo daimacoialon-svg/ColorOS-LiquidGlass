@@ -23,3 +23,8 @@ V1.9.205.255｜Kyant 原版引擎多场景测试版
 
 
 V1.9.205.258：Launcher FolderIcon 诊断从不存在的 onLayout 声明改为实例 dispatchDraw Hook + OnLayoutChangeListener；每2.5秒限流，默认关闭，只读无像素捕获。开启：su -c settings put global liquidglass_kyant_probe_258 1；关闭设置为0；Vector 日志搜索 KYANT258。原版 Kyant Shader 未修改。
+
+V1.9.205.259｜Launcher 实例几何验证版
+沿用 V258 已在 ColorOS 15 真机确认的 FolderIcon.dispatchDraw 挂载点；首次实例挂载立即输出几何坐标，附实例 identityHashCode，布局变化和限流绘制检查可跟踪屏幕位置变化。每实例250ms最多检查一次，变化日志每实例至少间隔2.5秒；无像素采样、不替换渲染。
+启用：su -c settings put global liquidglass_kyant_probe_259 1；关闭：将1改为0；Vector 搜索 KYANT259。需重启 Launcher 使 Hook 生效。
+注意：尚未完成 CI 编译或真机验证；旧版 V258 全局设置不控制 V259。
