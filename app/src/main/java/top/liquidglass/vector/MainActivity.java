@@ -238,7 +238,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass  ·  光学工作台",27,true);body.addView(heading);
-        TextView version=text("V1.9.205.230  ·  新统一玻璃材质实验 · 稳定引擎可回退",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.231  ·  新统一玻璃材质实验 · 稳定引擎可回退",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         category229("01  总览与预设","常用操作集中管理；页面打开不会覆盖已有配置。");
         section("稳定引擎风格预设（兼容）","用于 V229 正式引擎；V230 实验材质的统一参数位于下方第三板块。预设不会覆盖已保存的 V230 光学参数，也不会强制切换容器开关。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);

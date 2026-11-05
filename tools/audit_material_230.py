@@ -24,7 +24,7 @@ assert 'publishMaterialVerified(' in U and 'publishMaterialVerified(' in C
 assert 'MaterialConfig230.snapshot(context)' in C
 assert 'if(aaProbe208==0 && UnifiedGlass230.draw(' in L
 assert 'if(!s.enabled || failed)return false;' in S
-assert 'MATERIAL_SHADER_FAILED_230 fallback=V229' in S
+assert 'MATERIAL_SHADER_FAILED_231 fallback=V229' in S
 assert 'canvas.drawRoundRect(rect,radius,radius,paint);' in S
 assert 'uniform float strength230;' in S
 assert 'uniform float thickness230;' in S
@@ -43,6 +43,6 @@ assert 'new State(false,70,55,60,0)' in M
 for old in ['nonlinear_107','thickness_107','interior_107','focus_107','reflection_107','surface_mode_195','surface_strength_195','surface_softness_195']:
     assert old in U and old in C and old in P
 assert (R/'root-helper/99-liquidglass-wallpaper.sh').read_bytes()==(R/'app/src/main/assets/99-liquidglass-wallpaper.sh').read_bytes()
-assert "versionName '1.9.205.230'" in (R/'app/build.gradle').read_text()
-assert 'ColorOS-LiquidGlass-V1.9.205.230-APK' in (R/'.github/workflows/build-apk.yml').read_text()
+assert "versionName '1.9.205.231'" in (R/'app/build.gradle').read_text()
+assert 'ColorOS-LiquidGlass-V1.9.205.231-APK' in (R/'.github/workflows/build-apk.yml').read_text()
 print('PASS V230: LG1 33 unchanged, LG230 persisted/direct/root/boot, five controls, single-pass shader, V229 fallback, legacy keys and version metadata')
