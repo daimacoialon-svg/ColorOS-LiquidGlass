@@ -10,3 +10,6 @@ ColorOS-LiquidGlass V1.9.205.218｜二维透镜路由诊断与图标柔和光影
 日志：su -c 'logcat -d -v time | grep -E "LENS_ROUTE_218|LENS_SHADER_|SHADER_ERROR|CONFIG_APPLIED_203" | tail -80'
 
 未在真机验证 AGSL 编译及实际折射效果；请先备份 V217，安装后核对日志。
+
+
+V1.9.205.219 修复：AGSL 函数 cornerMask211 在 offset215 调用之前定义，解决 RuntimeShader 编译时 unknown identifier cornerMask211 导致的二维曲面透镜整体失效。保留 V218 其他逻辑与配置映射。需真机验证。

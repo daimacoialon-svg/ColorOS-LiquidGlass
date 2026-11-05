@@ -132,16 +132,6 @@ final class GlassLens191 {
         " }\n" +
         " return raw*cap/sqrt(cap*cap+dot(raw,raw));\n" +
         "}\n" +
-        "// V215 experimental mapping: corner-local direction continuity with original magnitude.\n" +
-        "float2 offset215(float2 p){\n" +
-        " float2 base=offset214(p,1.0);\n" +
-        " float w=cornerMask211(p);\n" +
-        " if(w<0.002)return base;\n" +
-        " float e=2.0;\n" +
-        " float2 avg=(offset214(p+float2(e,0.0),1.0)+offset214(p-float2(e,0.0),1.0)+offset214(p+float2(0.0,e),1.0)+offset214(p-float2(0.0,e),1.0))*0.25;\n" +
-        " float2 direction=mix(base,avg,w*0.65);\n" +
-        " return direction*(length(base)/max(length(direction),0.00001));\n" +
-        "}\n" +
         "// Corner-only diagnostic: smooth the sampling displacement field, not the glass brightness.\n" +
         "float cornerMask211(float2 p){\n" +
         " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
@@ -151,6 +141,16 @@ final class GlassLens191 {
         " float2 w=smoothstep(cornerStart,cornerStart+float2(max(3.0,r*0.45)),a);\n" +
         " float d=max(depth(p),0.0);\n" +
         " return w.x*w.y*(1.0-smoothstep(max(3.0,r*0.65),max(6.0,r*1.5),d));\n" +
+        "}\n" +
+        "// V215 experimental mapping: corner-local direction continuity with original magnitude.\n" +
+        "float2 offset215(float2 p){\n" +
+        " float2 base=offset214(p,1.0);\n" +
+        " float w=cornerMask211(p);\n" +
+        " if(w<0.002)return base;\n" +
+        " float e=2.0;\n" +
+        " float2 avg=(offset214(p+float2(e,0.0),1.0)+offset214(p-float2(e,0.0),1.0)+offset214(p+float2(0.0,e),1.0)+offset214(p-float2(0.0,e),1.0))*0.25;\n" +
+        " float2 direction=mix(base,avg,w*0.65);\n" +
+        " return direction*(length(base)/max(length(direction),0.00001));\n" +
         "}\n" +
         "float2 cornerOffset211(float2 p){\n" +
         " float2 base=offsetAt(p);\n" +
