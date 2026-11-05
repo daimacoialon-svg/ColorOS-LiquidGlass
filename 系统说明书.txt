@@ -1,11 +1,5 @@
-ColorOS-LiquidGlass V1.9.205.254｜Kyant Backdrop 光学渲染测试版
+V1.9.205.255｜Kyant 原版引擎多场景测试版
 
-本版本在 V253 的正式 :backdrop Gradle 依赖上，增加 KyantEngine254Activity 测试页面。
-测试页面直接使用上游 rememberLayerBackdrop、layerBackdrop、drawBackdrop、vibrancy、blur、lens、RoundedRectangle 和 Highlight.Plain。
-使用网格背景验证光学形变；测试页不等同于上游演示 APK 全部 UI/参数，也不代表已接管 Launcher。
-原版 backdrop 源码和 Shader 未修改；旧版 Launcher/Dock 渲染逻辑保留。
-进入模块设置，点击“V254 Kyant 完整 Backdrop 透镜测试”。
-如果出现黑屏、闪退或无折射，请上传 GitHub 构建日志和 LSPosed 日志。
-构建命令：./gradlew :liquidglass-module:assembleDebug
-许可：保留上游 LICENSE（Apache-2.0）。
-状态：源码已集成，当前环境未完成 Android SDK 编译及真机运行验证。
+保留上游 backdrop 原始光学公式，新增原版壁纸、网格、高对比背景，文件夹/Dock/竖条形状切换和拖动边界测试。
+测试界面不接管 Launcher。未完成 CI 编译或真机验证。
+保留 V254 原有设置和 Hook。

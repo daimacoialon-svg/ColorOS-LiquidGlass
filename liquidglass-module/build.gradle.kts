@@ -10,8 +10,8 @@ android {
         applicationId = "top.liquidglass.vector"
         minSdk = 28
         targetSdk = 28
-        versionCode = 19205254
-        versionName = "1.9.205.254"
+        versionCode = 19205255
+        versionName = "1.9.205.255"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -23,10 +23,7 @@ android {
 dependencies {
     compileOnly(project(":xposed-stubs"))
     implementation(project(":backdrop"))
-
-    // V254 修复：测试 Activity 直接使用 RoundedRectangle
     implementation(libs.kyant.shapes)
-
     implementation(libs.androidx.activity.compose)
     implementation(libs.compose.foundation)
     implementation(libs.compose.ui)
