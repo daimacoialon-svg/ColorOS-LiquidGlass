@@ -24,6 +24,7 @@ final class UnifiedGlass230 {
     private static volatile int diagnostic235=0;
     private static int probeCounter235=0;
     private static int probeLogs235=0;
+    private static int routeLogs237=0;
     // Diagnostic is read-only and intentionally NOT part of LG230 persistence.
     private static final String DIAG_KEY_235="liquidglass_optical_diagnostic_235";
 
@@ -52,48 +53,38 @@ final class UnifiedGlass230 {
         // gradient has a medial-axis seam (the X visible in V235 diagnostics).
         // Use a smooth superellipse only for optical height/normal calculation;
         // the actual container is still clipped by drawRoundRect.
+        // V238: one differentiable rounded-superellipse height field. The
+        // quartic radius has no nearest-edge branch, avoiding diagonal X seams.
         float surface230(float2 p){
             float2 size=max(bounds.zw-bounds.xy,float2(2.0));
-            float2 center=(bounds.xy+bounds.zw)*0.5;
-            float2 uv=(p-center)/max(size*0.5,float2(1.0));
-            // A fourth-power norm has continuous first derivatives everywhere,
-            // including on the diagonals and center axes.
-            float radial=pow(pow(abs(uv.x),4.0)+pow(abs(uv.y),4.0),0.25);
-            // Smoothly rise from the perimeter towards the center; avoid a
-            // separate flat plateau and keep finite, gentle interior curvature.
-            float reach=mix(0.94,0.68,clamp(thickness230,0.0,1.0));
-            float t=clamp((1.0-radial)/reach,0.0,1.0);
-            float ramp=t*t*(3.0-2.0*t);
-            float dome=0.10*(1.0-radial*radial);
-            return max(0.0,0.86*ramp+0.14*dome);
+            float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/max(size*0.5,float2(1.0));
+            float radial=pow(pow(abs(uv.x),4.0)+pow(abs(uv.y),4.0)+0.00000001,0.25);
+            float depth=clamp(1.0-radial,0.0,1.0);
+            float shoulder=mix(0.19,0.48,clamp(thickness230,0.0,1.0));
+            // Smooth shoulder reaches farther into the glass than a thin rim.
+            float t=clamp(depth/max(shoulder,0.01),0.0,1.0);
+            float smooth=t*t*(3.0-2.0*t);
+            float dome=clamp(1.0-radial*radial,0.0,1.0);
+            return 0.55*smooth+0.45*dome;
         }
         float2 normalSlope230(float2 p){
             float e=1.0;
             return float2(surface230(p+float2(e,0.0))-surface230(p-float2(e,0.0)),
                           surface230(p+float2(0.0,e))-surface230(p-float2(0.0,e)))/(2.0*e);
         }
-        float3 refract230(float3 incident,float3 normal,float eta){
-            float cosI=clamp(-dot(normal,incident),-1.0,1.0);
-            float k=1.0-eta*eta*(1.0-cosI*cosI);
-            if(k<0.0)return reflect(incident,normal);
-            return eta*incident+(eta*cosI-sqrt(max(0.0,k)))*normal;
-        }
         float2 warp230(float2 p,float2 slope){
             float2 size=max(bounds.zw-bounds.xy,float2(2.0));
             float shortSide=min(size.x,size.y);
-            float2 center=(bounds.xy+bounds.zw)*0.5;
-            float2 uv=(p-center)/max(size*0.5,float2(1.0));
-            float3 frontN=normalize(float3(-slope*(13.0+8.0*thickness230),1.0));
-            float3 rayInside=refract230(float3(0.0,0.0,-1.0),frontN,1.0/1.47);
-            // Rear surface must face the incoming ray (+Z); the V233 -Z
-            // normal was reversed and could produce an incorrect refraction.
-            float2 rearSlope=-uv*(0.022+0.018*thickness230);
-            float3 rearN=normalize(float3(-rearSlope,1.0));
-            float3 rayOut=refract230(rayInside,rearN,1.47);
-            float z=max(abs(rayOut.z),0.30);
-            float2 displacement=rayOut.xy/z*shortSide*(0.08+0.10*thickness230)*strength230;
-            // Continuous bounded response, including at strength 100%.
-            float limit=clamp(shortSide*0.11,7.0,32.0);
+            // The normal and thickness are shared by transmission and reflection.
+            float scale=(11.0+13.0*thickness230);
+            float3 n=normalize(float3(-slope*scale,1.0));
+            // Paraxial two-interface approximation with a smoothly varying
+            // optical path; avoids discontinuities from independent edge maps.
+            float eta=1.0/1.47;
+            float2 lateral=(-n.xy/max(n.z,0.35))*(1.0-eta);
+            float opticalDepth=(0.12+0.17*thickness230)*shortSide;
+            float2 displacement=lateral*opticalDepth*strength230;
+            float limit=clamp(shortSide*0.17,9.0,42.0);
             return displacement*limit/sqrt(limit*limit+dot(displacement,displacement));
         }
         float2 safe230(float2 p){
@@ -134,10 +125,10 @@ final class UnifiedGlass230 {
             if(diagnostic235>4.5 && diagnostic235<5.5){
                 return transmission230(q);
             }
-            float edgeZone=clamp(length(slope)*35.0,0.0,1.0);
+            float3 n=normalize(float3(-slope*(11.0+13.0*thickness230),1.0));
+            float grazing=clamp(1.0-n.z,0.0,1.0);
+            float edgeZone=smoothstep(0.01,0.16,grazing);
             half4 base=transmission230(q);
-            // Optional AA, restricted to bent regions: the clear interior remains
-            // true single-sample transmission, with no blanket glass blur.
             if(quality230>0.5 && edgeZone>0.07){
                 float span=0.58;
                 half4 aa5=(base + transmission230(q+float2(span,0.0))
@@ -150,32 +141,27 @@ final class UnifiedGlass230 {
                         +transmission230(q+float2(-span,span))
                         +transmission230(q+float2(span,-span))
                         +transmission230(q+float2(-span,-span)))/9.0;
-                    base=mix(base,aa9,half(smoothstep(0.08,0.45,edgeZone)));
+                    base=mix(base,aa9,half(edgeZone*0.65));
                 } else {
-                    base=mix(base,aa5,half(smoothstep(0.08,0.45,edgeZone)));
+                    base=mix(base,aa5,half(edgeZone*0.65));
                 }
             }
-
-            // Refraction, reflection and glancing highlights share the SAME
-            // normal and curvature: they cannot drift out of alignment.
-            float3 n=normalize(float3(-slope*(13.0+8.0*thickness230),1.0));
-            float3 light=normalize(float3(-0.48,-0.58,0.66));
-            float grazing=pow(clamp(1.0-n.z,0.0,1.0),0.80);
-            float fresnel=(0.045+0.65*pow(grazing,0.75))*environment230*strength230;
-            float2 envDir=normalize(float2(-n.x-0.31,-n.y-0.20)+float2(0.0001));
-            float2 envP=safe230(p+envDir*(10.0+35.0*environment230));
-            float3 envRgb=float3(wallpaper.eval(envP).rgb);
+            // Schlick Fresnel, shared surface normal. The reflected environment
+            // is approximated from actual wallpaper pixels, not a fixed tint.
+            float cosTheta=clamp(n.z,0.0,1.0);
+            float f0=0.04;
+            float fresnel=f0+(1.0-f0)*pow(1.0-cosTheta,5.0);
+            float2 envDir=normalize(float2(-n.x-0.23,-n.y-0.17)+float2(0.0001));
+            float envReach=(9.0+33.0*environment230)*strength230;
+            float3 envA=float3(wallpaper.eval(safe230(p+envDir*envReach)).rgb);
+            float3 envB=float3(wallpaper.eval(safe230(p-envDir*envReach*0.55)).rgb);
+            float3 envRgb=mix(envA,envB,0.25);
             float3 baseRgb=float3(base.rgb);
-            float envLum=dot(envRgb,float3(0.2126,0.7152,0.0722));
-            float baseLum=dot(baseRgb,float3(0.2126,0.7152,0.0722));
-            float contrast=clamp(abs(envLum-baseLum)*2.1,0.0,1.0);
-            float highlight=pow(clamp(dot(n,light),0.0,1.0),6.0)*grazing;
-            float materialReflect=clamp(fresnel*(0.85+0.65*contrast),0.0,0.52);
-            float3 color=mix(baseRgb,envRgb,materialReflect);
-            // Colored, curvature-dependent response instead of an independent
-            // white line / luminous frame painted on top.
-            color+=(1.0-color)*(highlight*(0.09+0.14*contrast)*environment230*strength230);
-            color*=1.0-(1.0-clamp(dot(n,light),0.0,1.0))*grazing*0.055*environment230*strength230;
+            float reflectWeight=clamp(fresnel*environment230*(0.35+0.65*strength230),0.0,0.65);
+            float3 color=mix(baseRgb,envRgb,reflectWeight);
+            float3 light=normalize(float3(-0.48,-0.58,0.66));
+            float spec=pow(clamp(dot(n,light),0.0,1.0),24.0)*edgeZone;
+            color+=(1.0-color)*spec*0.11*environment230*strength230;
             return half4(half3(clamp(color,0.0,1.0)),1.0);
         }
         """;
@@ -199,7 +185,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass230","MATERIAL_SHADER_CREATED_236 smoothSuperellipse=true");
+                    Log.i("LiquidGlass230","MATERIAL_SHADER_CREATED_238 continuousSurface=true");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
@@ -216,10 +202,14 @@ final class UnifiedGlass230 {
             Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             paint.setShader(shader);
             canvas.drawRoundRect(rect,radius,radius,paint);
+            if(routeLogs237++<20)Log.i("LiquidGlass238",
+                "OPTICAL_PIPELINE_238 wallpaper=bound blurred=bound bounds="+rect.toShortString()+
+                " valid="+valid.toShortString()+" blurMix="+blurMix+
+                " mode="+diagnostic235+" material=singlePass");
             if(diagnostic235!=0 && probeLogs235++<24)Log.i("LiquidGlass235",
                 "OPTICAL_STAGE mode="+diagnostic235+" bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix);
-            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_236 dimensions="+rect.width()+"x"+rect.height()+
+            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_238 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             return true;
         }catch(Throwable fail){
