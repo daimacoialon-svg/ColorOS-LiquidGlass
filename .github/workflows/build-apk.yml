@@ -12,13 +12,13 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -31,21 +31,26 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.4.0'
+
+      - name: Check Gradle environment
+        run: |
+          chmod +x ./gradlew
+          java -version
+          ./gradlew --version
 
       - name: Check project modules
-        run: gradle --no-daemon projects
+        run: |
+          ./gradlew --no-daemon projects
 
       - name: Verify Kyant dependencies
         run: |
-          gradle --no-daemon \
+          ./gradlew --no-daemon \
             :liquidglass-module:dependencies \
             --configuration debugRuntimeClasspath
 
       - name: Build debug APK
         run: |
-          gradle --no-daemon --stacktrace \
+          ./gradlew --no-daemon --stacktrace \
             :liquidglass-module:assembleDebug
 
       - name: Upload APK
