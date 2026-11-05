@@ -1,13 +1,17 @@
-ColorOS-LiquidGlass V1.9.205.226｜采样质量证据采集版
+ColorOS-LiquidGlass V1.9.205.227｜自适应曲面轮廓实验版
 
-稳定基线：完整继承 V1.9.205.225 的正式绘制代码。此版本不修改任何正式 Shader、图标、文件夹或 Dock 绘制逻辑。
+稳定基线：V1.9.205.225/V226 的正式二维曲面位移、5/9 点局部采样与图标光学绘制保持不变。
 
-诊断方式：使用 tools/lens_sampling_diagnostics_226.sh 进行只读设备信息和渲染日志采集，不自动启用旧版绘制/实验模式。请将脚本复制到 /sdcard/lens_sampling_diagnostics_226.sh，然后在 Termux 执行：
-  su -c 'sh /sdcard/lens_sampling_diagnostics_226.sh'
-结果保存在 Download/liquidglass_lens_226_时间戳/。
+本版在 GlassLens191 的 V221 正式 Shader 内增加单次渲染的曲面轮廓光学分量：按曲面法线、边缘深度和光照方向计算薄层轮廓与向内衰减的透射高光。不会叠加第二个 Canvas 描边层。原有 edgeStrength 参数仍控制轮廓总强度；如果原有边缘高光开关关闭，新轮廓也关闭。
 
-测试方法：使用相同壁纸和固定容器位置，在折射强度 0%、50%、100% 各截图一次，分别测试水平线、竖线和斜线纹理。截图是视觉证据；日志只辅助检查 Shader 回退、采样模式和设备显示信息。仅凭截图或日志不能直接证明位移场折叠。
+安全回退（Termux）：
+  su -c settings put global liquidglass_contour_227 0
+恢复新轮廓：
+  su -c settings put global liquidglass_contour_227 1
+以上开关在 Shader 每次绘制时读取，便于现场对比。V219 Shader 回退时新轮廓自动不生效。
 
-本版未增加运行时 1/5/9 点切换：在没有隔离验证采样根因前，避免改变 V225 的稳定画面。也没有加入新 UI 设置或 Root 快照字段，原有参数链完全不变。
+测试：在相同壁纸、同一位置、折射 0%/50%/100% 分别拍照，观察纯色区域轮廓与高对比水平线阶梯；再关闭新轮廓复拍以隔离效果。
 
-构建状态：未执行完整 Android Gradle 编译；需通过 GitHub Actions 验证。
+重要：本版没有声称彻底修复高强度采样阶梯；二维位移函数未更改，以保护稳定视觉基线。没有新增 UI 或 Root 快照字段，新增项是独立的 Settings.Global 实验开关，旧 UI 参数映射不变。
+
+编译：请使用项目内 GitHub Actions；当前环境未完成 Android Gradle 编译与真机测试。

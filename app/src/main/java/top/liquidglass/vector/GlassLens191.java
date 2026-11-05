@@ -141,6 +141,7 @@ final class GlassLens191 {
         "uniform float reflectionStrength;\n" +
         "uniform float reflectionSoftness;\n" +
         "uniform float edgeStrength;\n" +
+        "uniform float contour227;\n" +
         "float depth219(float2 p){\n" +
         " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
         " float r=clamp(radius,0.0,min(h.x,h.y));\n" +
@@ -276,9 +277,25 @@ final class GlassLens191 {
         " float outline=clamp(edgeStrength,0.0,1.0)*(0.10*rim+0.085*meniscus*fresnel)\n" +
         "  *(0.25+0.75*pow(facing,3.0))*(1.0-0.46*cornerFade);\n" +
         " float shadow=(1.0-smoothstep(0.8,5.6,d))*smoothstep(0.0,0.9,d)*0.030*(1.0-0.55*cornerFade);\n" +
+        // V227: additive contour material within the SAME production shader. No second canvas pass.
+        " float2 edgeUV=(p-(bounds.xy+bounds.zw)*0.5)/max(bounds.zw-bounds.xy,float2(2.0));\n" +
+        " float2 inward=normalize(float2(-slope.x,-slope.y)+float2(0.0001));\n" +
+        " float3 contourNormal=normalize(float3(-slope*5.0,1.0));\n" +
+        " float3 keyLight=normalize(float3(-0.62,-0.72,0.90));\n" +
+        " float directional=dot(contourNormal,keyLight);\n" +
+        " float edgeDepth=max(depth219(p),0.0);\n" +
+        " float edgeThin=exp(-pow((edgeDepth-1.25)/1.65,2.0));\n" +
+        " float edgeBody=exp(-pow((edgeDepth-6.0)/8.5,2.0));\n" +
+        " float angle=clamp(directional*0.5+0.5,0.0,1.0);\n" +
+        " float bright=smoothstep(0.48,0.92,angle);\n" +
+        " float dark=1.0-smoothstep(0.12,0.48,angle);\n" +
+        " float contourGain=clamp(contour227,0.0,1.0)*clamp(edgeStrength,0.0,1.0);\n" +
+        " float contourLight=contourGain*(0.085*edgeThin+0.095*edgeBody)*bright;\n" +
+        " float contourShade=contourGain*(0.018*edgeThin+0.027*edgeBody)*dark;\n" +
         " float3 color=float3(result.rgb);\n" +
         " color+=(1.0-color)*clamp(reflect+glint+outline,0.0,0.28);\n" +
-        " color*=1.0-shadow;\n" +
+        " color+=(1.0-color)*contourLight;\n" +
+        " color*=1.0-shadow-contourShade;\n" +
         " result.rgb=half3(clamp(color,0.0,1.0));\n" +
         " return result;\n" +
         "}\n";
@@ -828,6 +845,16 @@ final class GlassLens191 {
         // uniform or production configuration schema is introduced.
         shader.setFloatUniform("edgeStrength", usingGrid ? gridSpacing217/16f :
             (edgeEnabled ? Math.max(0f, Math.min(1f, edgeStrength / 100f)) : 0f));
+        // V227: reversible production contour; legacy/fallback shaders do not expose this uniform.
+        // Existing edgeStrength and surface controls remain the single source of truth.
+        if(!debugShader){
+            int contour227=1;
+            try { contour227=android.provider.Settings.Global.getInt(
+                owner.getContext().getContentResolver(),"liquidglass_contour_227",1); }
+            catch(Throwable ignored) {}
+            try { shader.setFloatUniform("contour227", contour227==0?0f:1f); }
+            catch(Throwable ignored) { /* V219 fallback has no contour227 uniform */ }
+        }
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         paint.setShader(shader);
         canvas.drawRoundRect(rect, radius, radius, paint);
