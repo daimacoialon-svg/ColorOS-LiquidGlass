@@ -419,6 +419,7 @@ public final class MainActivity extends Activity {
         TextView serviceHint=text("V221：保留已验证的 UI→Launcher 实时参数和独立二维透镜路由。新 Shader 尝试平滑距离场、局部 5/9 点采样及角部位移修正，若创建失败自动回退 V219。图标取消外圈月晕，改为薄内缘光影。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
+        action("V254 Kyant 完整 Backdrop 透镜测试", () -> startActivity(new android.content.Intent(this, KyantEngine254Activity.class)));
         action("V251 Kyant 原版 Shader 桥接测试（独立界面）", () -> startActivity(new android.content.Intent(this, KyantBridgeTestActivity251.class)));
         setContentView(scroll);
         audit193("UI_RENDER_COMPLETE_NO_IMPLICIT_WRITE");
