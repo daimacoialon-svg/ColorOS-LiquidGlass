@@ -27,3 +27,12 @@ V1.9.205.249｜开源光学思路对照实验（不代表已通过真机验证�
 保留 AB=0/1/2 原始算法；新增 AB=3 真实壁纸采样位移实验，采用统一圆角矩形 SDF 法线与非线性边缘采样剖面，位移幅度与剖面宽度绑定以降低折返风险。此实现是参考开源技术思路的独立实验，不是复制开源项目的原始 Shader。
 切换：su -c settings put global liquidglass_refraction_ab_244 3（实验）或 0（原版）。诊断模式：su -c settings put global liquidglass_optical_diagnostic_235 5（实际变形壁纸），恢复 0。请先确认源码中的真实键名再执行。
 本版未通过 Android SDK 编译或真机验证，建议保留 V248 作为回滚包。
+
+
+V1.9.205.250｜Kyant Backdrop 独立引擎源码基线
+- kyant-backdrop-engine/：来自用户上传的 AndroidLiquidGlass-kmp.zip（kmp 分支），保留完整上游工程、backdrop 模块、Shader、依赖声明、示例及 LICENSE。
+- 原 ColorOS LSPosed 模块与渲染逻辑保持原样；本版本没有把 Compose 库强行注入 Launcher，也未开启 SystemUI 作用域。
+- 上游项目使用 Kotlin Multiplatform、Compose、Android Multiplatform Library、shapes 依赖；其 Gradle 工程独立于原项目，可分别导入 Android Studio。
+- 进入 kyant-backdrop-engine 运行 ./gradlew :backdrop:tasks 进行依赖与构建环境检查（需要网络及相应 Android SDK / JDK）；完整编译与真机验证尚未完成。
+- 上游 LICENSE 为 Apache-2.0，保留版权声明；原模块不因包含上游源码而自动拥有已验证的完整玻璃效果。
+- 下一步是构建独立 Android 测试宿主、确认 Shader 效果，再设计 View/Launcher 桥接层。
