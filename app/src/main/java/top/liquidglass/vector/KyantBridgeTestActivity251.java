@@ -25,10 +25,8 @@ public final class KyantBridgeTestActivity251 extends Activity {
             try {
                 if(bridge==null)bridge=new KyantViewBridge251();
                 float left=w*0.10f,top=h*0.25f,ww=w*0.80f,hh=Math.min(w*0.80f,h*0.43f);
-                // Crop to local coordinates so AGSL coord=bitmap coord.
-                Bitmap crop=Bitmap.createBitmap(b,(int)left,(int)top,(int)ww,(int)hh);
-                bridge.draw(c,crop,left,top,ww,hh,Math.min(ww,hh)*0.20f,Math.min(ww,hh)*0.23f,Math.min(ww,hh)*0.18f,0.08f);
-                crop.recycle();
+                // V252: feed full backdrop; keep real off-glass pixels for sampling.
+                bridge.draw(c,b,left,top,ww,hh,Math.min(ww,hh)*0.20f,Math.min(ww,hh)*0.23f,Math.min(ww,hh)*0.18f,0.08f);
             }catch(Throwable ex){p.setColor(Color.RED);p.setTextSize(26);c.drawText(ex.getClass().getSimpleName()+": "+ex.getMessage(),20,h/2f,p);}
             b.recycle();
         }

@@ -6,6 +6,7 @@ import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.graphics.RuntimeShader;
 import android.graphics.Shader;
+import android.graphics.Matrix;
 import android.os.Build;
 
 /** Experimental Android View bridge to Kyant's ORIGINAL rounded-rect AGSL.
@@ -23,8 +24,14 @@ public final class KyantViewBridge251 {
     public void draw(Canvas canvas, Bitmap backdrop, float x, float y, float width, float height,
                      float radius, float heightPx, float amountPx, float depthEffect) {
         if (backdrop == null || backdrop.isRecycled() || width <= 0 || height <= 0) return;
-        // Caller supplies a view-local backdrop, avoiding double translation.
-        effect.setInputShader("content", new BitmapShader(backdrop, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP));
+        // V252: backdrop is the FULL view/screen-aligned bitmap, not a tight crop.
+        // The bitmap shader is shifted into the glass-local coordinate space;
+        // this retains actual pixels outside every glass edge for refraction.
+        BitmapShader input = new BitmapShader(backdrop, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+        Matrix localToBackdrop = new Matrix();
+        localToBackdrop.setTranslate(-x, -y);
+        input.setLocalMatrix(localToBackdrop);
+        effect.setInputShader("content", input);
         effect.setFloatUniform("size", width, height);
         effect.setFloatUniform("offset", 0f, 0f);
         effect.setFloatUniform("cornerRadii", radius, radius, radius, radius);

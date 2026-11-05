@@ -43,3 +43,9 @@ V1.9.205.251｜Kyant 原版 Shader View 桥接验证版
 - 新增 KyantBridgeTestActivity251.java：高对比网格测试，入口在设置主界面底部。
 - 尚未注入 ColorOS Launcher；原有文件夹、Dock、SystemUI Hook 不变；测试图只验证原版折射 Shader 的 Android View 渲染，未复刻 Compose 的整套光照/色散/模糊合成。
 - 需 Android 13+ / API 33+；未进行 Android SDK 编译及真机测试。
+
+V1.9.205.252｜独立上游构建入口与背景采样修正版
+1. 修复 V251 测试页紧贴玻璃裁切背景导致的 CLAMP 拉伸：传入整幅背景，BitmapShader 通过 localMatrix 映射到玻璃本地坐标。
+2. 新增 tools/build_kyant_upstream_252.sh：独立编译真正的上游 androidApp（backdrop、Shapes、Compose 依赖按上游 Gradle 解析）。
+3. 上游完整光学引擎仍在独立工程，尚未作为 LSPosed app 的依赖；当前 app 内依然是单 Shader 实验，不得视为完整引擎移植。
+4. 尚未在本环境完成 Android SDK/Gradle 编译及真机验证。下一步必须先验证独立上游构建和桥接采样，再设计系统进程适配。
