@@ -227,7 +227,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.222  ·  全容器防折叠透镜与矢量图标薄内缘",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.223  ·  全容器透镜与图标光学编译修复",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -350,7 +350,7 @@ public final class MainActivity extends Activity {
             legacyContainer.setVisibility(show?View.VISIBLE:View.GONE);
             legacyButton.setText(show?"收起旧版实验参数":"展开旧版二维折射实验");
         });
-        section("维护与状态","V222 对整片文件夹与 Dock 玻璃使用同一连续单调映射；取消 V221 只针对底部和角部的采样特例。保留 V219 稳定 Shader 作为异常回退。");
+        section("维护与状态","V223 保留 V222 对整片文件夹与 Dock 玻璃使用的连续单调映射；取消 V221 只针对底部和角部的采样特例。保留 V219 稳定 Shader 作为异常回退。");
         final LinearLayout lensDiagnostics222=column();
         Button showLensDiagnostics222=new Button(this);
         showLensDiagnostics222.setAllCaps(false);
@@ -367,7 +367,7 @@ public final class MainActivity extends Activity {
         action("4 · 全域九点采样实验（临时）",()->setLensDiagnostic222(4));
         action("0 · 关闭诊断并恢复正常透镜",()->setLensDiagnostic222(0));
         current=beforeLensDiagnostics222;
-        showLensDiagnostics222.setOnClickListener(v->{
+        showLensDiagnostics222.setOnClickListener(clickedDiagnostics222->{
             boolean open=lensDiagnostics222.getVisibility()!=View.VISIBLE;
             lensDiagnostics222.setVisibility(open?View.VISIBLE:View.GONE);
             showLensDiagnostics222.setText(open?"收起全容器折射诊断":"展开全容器折射诊断（默认关闭）");
@@ -411,7 +411,7 @@ public final class MainActivity extends Activity {
             rootStatusHandler.removeCallbacks(rootStatusPoll);
             rootStatusHandler.postDelayed(rootStatusPoll,1000);
         }));
-        TextView serviceHint=text("V222：已验证的 UI→Launcher 实时参数链保持不变。正式 Shader 采用全容器单调变形 + 线性过滤；四组对照诊断默认关闭，手动开启后请务必恢复模式 0。",12,false);current.addView(serviceHint);
+        TextView serviceHint=text("V223：修复诊断按钮 Lambda 变量重名；UI→Launcher 实时参数链保持不变。正式 Shader 采用全容器单调变形 + 线性过滤；四组对照诊断默认关闭，手动开启后请务必恢复模式 0。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
         setContentView(scroll);

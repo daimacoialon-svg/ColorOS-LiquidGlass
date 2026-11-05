@@ -1,4 +1,9 @@
-ColorOS-LiquidGlass V1.9.205.222｜全容器单调二维曲面与图标矢量内缘光学
+ColorOS-LiquidGlass V1.9.205.223｜全容器单调二维曲面与图标矢量内缘光学
+
+V1.9.205.223 编译修复：修正 MainActivity.onCreate() 内诊断面板点击回调的 v 参数与布局变量 v 重名问题。
+仅改动 UI Lambda 变量命名与发布版本信息；保留 V222 的二维曲面透镜、矢量图标光学、参数链和诊断开关逻辑。
+本版未在当前环境运行完整 Gradle/Android SDK 编译，需以 GitHub Actions assembleDebug 结果为准。
+
 
 适用：OnePlus 13T / ColorOS 15 / KernelSU / Vector LSPosed（桌面作用域）
 
@@ -56,5 +61,5 @@ python3 tools/audit_map_222.py
 【Termux Git】
 cd ~/ColorOS-LiquidGlass-V1.0-Source
 git add .
-git commit -m "V1.9.205.222 版本"
+git commit -m "V1.9.205.223 版本"
 git push origin main
