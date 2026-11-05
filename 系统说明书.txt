@@ -1,3 +1,12 @@
+V1.9.205.257｜Launcher 只读几何与背景源可行性诊断版
+
+本版新增 Launcher FolderIcon onLayout 只读 Hook，默认关闭；不会捕获桌面像素、不会替换文件夹或 Dock 渲染。
+目的：确认实际坐标、可见区域、父 View、根 View、硬件加速情况，为后续安全背景采样设计提供真机依据。
+
+启用：Termux 执行 su -c settings put global liquidglass_kyant_probe_257 1；重启桌面进程或重启手机后，移动/布局文件夹并在 Vector 日志中搜索 KYANT257。
+关闭：su -c settings put global liquidglass_kyant_probe_257 0。默认关闭，日志节流 2.5 秒。
+注意：Launcher 壁纸可能由独立 Surface 绘制；本版不声称已经获得真实桌面背景。下一步必须根据日志判断背景源并避免递归采样。
+
 V1.9.205.256｜原生 View 到 Kyant 单帧背景桥接诊断版
 
 本版新增独立测试 Activity：原生 Android View 绘制背景→在本模块进程内生成 Bitmap 快照→Compose layerBackdrop→Kyant 原版 lens 光学渲染。提供文件夹/Dock 形状、拖动、手动重新采样、复位。
