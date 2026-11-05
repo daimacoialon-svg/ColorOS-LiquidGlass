@@ -1,3 +1,12 @@
+V1.9.205.260｜Launcher 背景来源元数据诊断版
+
+继承 V259 已验证的 FolderIcon.dispatchDraw 实例监听；默认关闭，仅在全局设置 liquidglass_kyant_probe_260=1 时执行。
+新增：KYANT260_GEOMETRY、KYANT260_SOURCE_TREE（文件夹至根视图的父类链、各容器子 View 数）、KYANT260_WINDOW（窗口 FLAG_SHOW_WALLPAPER 标记）、KYANT260_SOURCE_POLICY。
+开启：su -c settings put global liquidglass_kyant_probe_260 1；重启 Launcher/手机后，在 Vector 日志搜索 KYANT260。
+关闭：su -c settings put global liquidglass_kyant_probe_260 0。
+注意：FLAG_SHOW_WALLPAPER 只说明窗口声明请求展示壁纸，不能证明壁纸的真实 Surface 或像素可被 View 捕获。父容器树也不能证明绘制层级的实际背景内容。此版本不读取 WallpaperManager 图片、不执行 View.draw 截图、不读取 Surface、不更改原有玻璃渲染或 Kyant Shader。
+已完成源码检查和 ZIP 打包，未在 GitHub Actions 或真机验证。保留原有工程结构与工作流。
+
 V1.9.205.257｜Launcher 只读几何与背景源可行性诊断版
 
 本版新增 Launcher FolderIcon onLayout 只读 Hook，默认关闭；不会捕获桌面像素、不会替换文件夹或 Dock 渲染。
