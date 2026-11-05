@@ -1,14 +1,9 @@
-ColorOS-LiquidGlass V1.9.205.228｜环境曲面边缘折射实验版
+ColorOS-LiquidGlass V1.9.205.229｜统一曲面光学与设置分区重构
 
-基于 V227 完整源码，保留 V221 正式二维透镜及 V225 图标光学效果。
-新增环境折射层在同一正式 AGSL Shader 内完成，不添加第二次 Canvas 绘制。
-仅在圆角容器边缘的内侧 meniscus 区域施加连续的非线性采样位移；中心区域仍保持原有折射。
-V227 的叠加亮边在新环境折射启用时自动关闭，避免重复强调轮廓。
-
-实验开关（Settings.Global，默认开启）：
-  su -c 'settings put global liquidglass_environment_228 0'  # 关闭 V228，恢复 V227
-  su -c 'settings put global liquidglass_environment_228 1'  # 开启 V228
-旧轮廓开关：liquidglass_contour_227，V228 开启时自动屏蔽其额外亮边。
-
-测试：同一壁纸、文件夹位置和强度，比较 0%、50%、100%，并重点检查四角斜线、边缘阶梯、滑动靠近屏幕边界。
-注意：实验实现未经真机 AGSL 编译验证；请保留 V225/V226 稳定 APK 以便回退。
+基于 V1.9.205.228 原始源码增量修改。
+1. 设置页按总览、玻璃容器、统一曲面光学、材质背景、应用图标、实验维护分区；保持原 SharedPreferences glass 键、数值范围、持久化 commit、直接 Launcher 广播和后台 Root 快照逻辑。
+2. 正常二维曲面透镜的位移场、采样与抗锯齿路径不修改。环境反射改为使用同一 slope219 曲面法线与壁纸局部亮度梯度，加入掠射角反射与局部环境响应。
+3. 新反射算法默认启用，可在 Termux 执行：su -c 'settings put global liquidglass_unified_optics_229 0' 回退 V228 反射公式；设为 1 恢复 V229。切换后重启桌面以确保 Shader 重新绑定。
+4. 原 V228 的 environment228、contour227 实验开关保持不变。没有自动覆盖用户配置。
+5. 这是实验版，尚未完成真机光学验证；无法保证已经消除阶梯锯齿、短线或达到参考图。
+6. 更新仅保留系统说明书，不增加 README 或更新说明文件。

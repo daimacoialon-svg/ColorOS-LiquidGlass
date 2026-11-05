@@ -68,6 +68,16 @@ public final class MainActivity extends Activity {
         current=card;
     }
     private LinearLayout current;
+    // Presentation-only category headers: never read/write a preference.
+    private void category229(String title,String subtitle){
+        TextView heading=text(title,21,true);
+        LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);
+        hp.setMargins(dp(2),dp(18),dp(2),dp(5));body.addView(heading,hp);
+        TextView note=text(subtitle,12,false);
+        LinearLayout.LayoutParams np=new LinearLayout.LayoutParams(-1,-2);
+        np.setMargins(dp(2),0,dp(2),dp(14));body.addView(note,np);
+    }
+
     private void toggle(String label,String key,boolean def){
         Switch s=new Switch(this);s.setText(label);s.setTextColor(ink);s.setTextSize(14);s.setPadding(0,dp(8),0,dp(8));s.setChecked(prefs.getBoolean(key,def));
         s.setOnCheckedChangeListener((v,checked)->{
@@ -196,8 +206,9 @@ public final class MainActivity extends Activity {
         audit193("UI_ON_CREATE_V194");
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
-        TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.225  ·  恢复 V221 透镜 · 图标非位移内缘光学",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView heading=text("Liquid Glass  ·  光学工作台",27,true);body.addView(heading);
+        TextView version=text("V1.9.205.229  ·  统一曲面光学 · 设置分区重构",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        category229("01  总览与预设","常用操作集中管理；页面打开不会覆盖已有配置。");
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -209,6 +220,7 @@ public final class MainActivity extends Activity {
         ios186.setOnClickListener(clickedView186 -> applyOpticalStyle186(1));
         TextView styleNote186=text("泡泡：连续边缘透镜与环境响应高光。iOS 风格：较弱曲率与柔和反射。两者均为模拟光学风格，并非苹果原生渲染。手动调整下方参数不会自动覆盖这两套预设。",12,false);
         current.addView(styleNote186);
+        category229("02  玻璃容器","文件夹、Dock 和图标独立启用；尊重手动关闭。");
         section("玻璃材质总览","文件夹与 Dock 共用光学参数；两者可分别启用。预设不会强制打开旧版实验模式。");
         toggle("启用桌面文件夹玻璃（开机恢复，手动关闭后保持关闭）", "enabled",true);
         TextView presetInfo=text("首次配置默认启用文件夹与 Dock 玻璃；重启时恢复上次保存的开关状态，手动关闭不会被强制打开。",12,false);current.addView(presetInfo);
@@ -231,6 +243,7 @@ public final class MainActivity extends Activity {
         toggle("启用 Dock 玻璃（默认开启，手动关闭后保持关闭）","dock_glass_204",true);
         TextView dockInfo=text("Dock 保持原有尺寸和位置；V132 与文件夹共用直接背景采样及透镜位移 Shader，并按容器几何自适应。",12,false);current.addView(dockInfo);
 
+        category229("03  统一曲面光学","折射与环境反射共享曲面法线；原折射位移场不改动。");
         section("二维曲面透镜","统一曲面负责文件夹和 Dock 的背景折射与厚度。反射、高光和底色分别调整，避免把不同效果混在同一滑块。");
         slider("二维曲面折射强度 (%)","nonlinear_107",65,0,100);
         TextView unifiedInfo162=text("0% 为无曲面位移，100% 最强。文件夹和 Dock 共用同一张二维高度场，不叠加旧版折射。",12,false);
@@ -253,6 +266,7 @@ public final class MainActivity extends Activity {
             advancedLens219.setVisibility(open?View.VISIBLE:View.GONE);
             lensDetails219.setText(open?"收起曲面几何高级参数":"展开曲面几何高级参数");
         });
+        category229("04  材质与背景","模糊、透明度、色调仍使用原来的持久化键值。");
         section("玻璃外观","背景模糊和底色独立于折射；应用图标不会被自定义壁纸模糊处理。");
         slider("玻璃底色不透明度 (%)","glass_tint_opacity",18,0,100);
         microBlurSlider95();
@@ -270,7 +284,7 @@ public final class MainActivity extends Activity {
         TextView blurInfo=text("自定义模糊使用壁纸采样，不模糊应用图标。系统模糊开关不再强制开启；ColorOS 自身仍可能启用原生模糊。",12,false);current.addView(blurInfo);
         // V1.9.199: legacy soft-highlight controls removed from UI. Existing
         // preferences remain for compatibility; the unified surface owns reflection.
-        section("曲面环境反射","V185：依据二维曲面方向与实时壁纸明暗计算柔和表面反射。不是仅沿容器轮廓绘制亮线；当前只能反映壁纸环境，不能捕获其他应用窗口。");
+        section("同曲面环境反射","V229：环境反射与二维折射共用同一坡度法线和曲率。支持按原参数调节，壁纸环境只是近似反射源。");
         TextView surfaceLabel=text("环境反射与动态边缘高光",13,false);current.addView(surfaceLabel);
         Spinner surfaceSpinner=new Spinner(this);
         String[] surfaceModes={"0 · 关闭新增环境反射","1 · 柔和曲面环境反射","2 · 曲面反射 + 动态边缘高光","3 · 增强动态边缘高光"};
@@ -286,7 +300,7 @@ public final class MainActivity extends Activity {
         });
         slider("环境反射与高光强度 (%)","surface_strength_195",100,0,200);
         slider("反射柔和度 (%)","surface_softness_195",100,50,200);
-        TextView surfaceHint=text("V190 模式 3：环境反射开关仅控制反射光学层，不关闭二维折射与壁纸采样；柔和度控制局部高光的方向性，轮廓清晰度仍受曲面坡度影响。",12,false);
+        TextView surfaceHint=text("V229：统一法线驱动的环境反射；旧曲面透镜采样保持不变。可通过 Root 全局开关 liquidglass_unified_optics_229=0 回退 V228 反射公式。",12,false);
         current.addView(surfaceHint);
         section("玻璃底色色调","选择玻璃底色的冷暖色调与叠加浓度；与模糊、折射、表面反射独立。");
         TextView tintLabel=text("色调",13,false);current.addView(tintLabel);
@@ -299,8 +313,10 @@ public final class MainActivity extends Activity {
         });
         slider("底色色调强度 (%)","tint_strength",30,0,90);
         TextView tintInfo=text("底色色调强度为 0% 时不添加颜色；原生模式不添加色调。颜色变化需在玻璃底色不透明度和当前渲染路径允许的情况下观察。",12,false);current.addView(tintInfo);
+        category229("05  应用图标","图标光学与文件夹二维折射相互独立。");
         section("应用图标内缘立体光影","图标轮廓内侧的细薄光学描边，不位移图标像素、不绘制外圈厚白边；亮暗随对角方向缓和变化。");
         toggle("应用图标薄内缘明暗光学效果","icon_optics_204",true);
+        category229("06  实验与维护","诊断功能保持隔离，避免污染正常渲染。");
         section("旧版兼容与实验","旧二维壁纸折射仅用于对照测试。默认折叠，避免误以为它是第二套必需的光学系统。");
         final LinearLayout legacyContainer=column();
         final Button legacyButton=new Button(this);

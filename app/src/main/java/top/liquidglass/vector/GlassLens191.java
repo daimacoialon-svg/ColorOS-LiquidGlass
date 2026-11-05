@@ -143,6 +143,7 @@ final class GlassLens191 {
         "uniform float edgeStrength;\n" +
         "uniform float contour227;\n" +
         "uniform float environment228;\n" +
+        "uniform float unified229;\n" +
         "float depth219(float2 p){\n" +
         " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
         " float r=clamp(radius,0.0,min(h.x,h.y));\n" +
@@ -283,6 +284,18 @@ final class GlassLens191 {
         " float ambient=clamp(dot(backdrop,float3(0.2126,0.7152,0.0722)),0.0,1.0);\n" +
         " float reflect=enabled*gain*curvature*(0.014+0.078*pow(facing,5.0))*(0.55+0.45*ambient);\n" +
         " float glint=dynamic*gain*curvature*spec*0.14;\n" +
+        // V229: reflection and refraction share slope219. The displacement map
+        // and all sampling/AA code above remain byte-for-byte unchanged.
+        " float lensFresnel=pow(1.0-clamp(normal.z,0.0,1.0),1.45);\n" +
+        " float2 envAxis=normalize(luminanceGradient+float2(0.0001));\n" +
+        " float2 lensAxis=normalize(slope+float2(0.0001));\n" +
+        " float envAlignment=0.5+0.5*dot(envAxis,lensAxis);\n" +
+        " float envContrast=clamp(length(luminanceGradient)*11.0,0.0,1.0);\n" +
+        " float unifiedRim=curvature*(0.035+0.13*lensFresnel)*(0.45+0.55*ambient);\n" +
+        " float unifiedEnv=curvature*envContrast*(0.02+0.075*envAlignment);\n" +
+        " float unifiedReflect=enabled*gain*(unifiedRim+unifiedEnv);\n" +
+        " reflect=mix(reflect,unifiedReflect,clamp(unified229,0.0,1.0));\n" +
+        " glint=mix(glint,dynamic*gain*curvature*spec*0.085,clamp(unified229,0.0,1.0));\n" +
         " float d=max(depth219(p),0.0);\n" +
         " float rim=exp(-pow((d-0.80)/0.92,2.0));\n" +
         " float meniscus=exp(-pow((d-4.6)/4.8,2.0));\n" +
@@ -868,6 +881,13 @@ final class GlassLens191 {
                 owner.getContext().getContentResolver(),"liquidglass_environment_228",1); }
             catch(Throwable ignored) { }
             try { shader.setFloatUniform("environment228",env228==0?0f:1f); }
+            catch(Throwable ignored) { }
+            // Reversible V229 optical response; existing persisted UI keys are unchanged.
+            int unified229=1;
+            try { unified229=android.provider.Settings.Global.getInt(
+                owner.getContext().getContentResolver(),"liquidglass_unified_optics_229",1); }
+            catch(Throwable ignored) { }
+            try { shader.setFloatUniform("unified229",unified229==0?0f:1f); }
             catch(Throwable ignored) { }
         }
         // V227: reversible production contour; legacy/fallback shaders do not expose this uniform.
