@@ -52,6 +52,8 @@ final class MaterialConfig230 {
             if(raw.equals(applied))return false;
             active=new State(on==1,s,t,e,q);
             applied=raw;
+            // A direct UI change must recover a failed shader without Launcher restart.
+            UnifiedGlass230.reset240(direct?"ui_config_changed":"snapshot_changed");
             Log.i("LiquidGlass230","MATERIAL_APPLIED_230 source="+(direct?"UI_DIRECT":"GLOBAL")+
                 " enabled="+(on==1)+" strength="+s+" thickness="+t+
                 " environment="+e+" quality="+q);

@@ -19,7 +19,16 @@ import java.util.WeakHashMap;
 final class UnifiedGlass230 {
     private UnifiedGlass230(){}
     private static final WeakHashMap<View,RuntimeShader> CACHE=new WeakHashMap<>();
-    private static boolean failed=false;
+    // V240: recoverable shader failures; no permanent process-wide kill switch.
+    private static int consecutiveFailures240=0;
+    private static long retryAfter240=0L;
+    private static boolean lastEnabled240=false;
+    static void reset240(String reason){
+        synchronized(CACHE){ CACHE.clear(); }
+        consecutiveFailures240=0;
+        retryAfter240=0L;
+        Log.i("LiquidGlass240","OPTICAL_RESET_240 reason="+reason);
+    }
     private static int logs=0;
     private static volatile int diagnostic235=0;
     private static int probeCounter235=0;
@@ -106,7 +115,14 @@ final class UnifiedGlass230 {
         half4 main(float2 p){
             float2 slope=normalSlope230(p);
             float2 delta=warp230(p,slope);
-            float2 q=safe230(p+delta);
+            // V240: a smooth valid-domain falloff prevents hard-clamp lines across
+        // faces and wallpaper details. Fade the warp before it hits source edges.
+        float2 innerLo=validBounds.xy+float2(3.0);
+        float2 innerHi=validBounds.zw-float2(3.0);
+        float margin=min(min(p.x-innerLo.x,innerHi.x-p.x),
+                         min(p.y-innerLo.y,innerHi.y-p.y));
+        float edgeGuard=smoothstep(0.0,16.0,max(0.0,margin));
+        float2 q=safe230(p+delta*edgeGuard);
             // V235: isolate actual shader stages without replacing the production path.
             // 1 displacement, 2 normals, 3 continuous surface, 4 raw source,
             // 5 warped source only, 6 final material (same as mode 0).
@@ -163,6 +179,8 @@ final class UnifiedGlass230 {
             float3 envRgb=mix(envA,envB,0.25);
             float3 baseRgb=float3(base.rgb);
             float reflectWeight=clamp(fresnel*environment230*(0.25+0.75*strength230),0.0,0.24);
+            // Transmission remains dominant. Reflection is a local perturbation
+            // of the real wallpaper, never an opaque colored overlay.
             float3 color=mix(baseRgb,envRgb,reflectWeight);
             float3 light=normalize(float3(-0.48,-0.58,0.66));
             float spec=pow(clamp(dot(n,light),0.0,1.0),24.0)*edgeZone;
@@ -182,7 +200,13 @@ final class UnifiedGlass230 {
                 diagnostic235=Math.max(0,Math.min(6,next));
             }catch(Throwable ignored){diagnostic235=0;}
         }
-        if(!s.enabled || failed)return false;
+        if(!s.enabled){
+            if(lastEnabled240){reset240("disabled");}
+            lastEnabled240=false;
+            return false;
+        }
+        if(!lastEnabled240){reset240("enabled");lastEnabled240=true;}
+        if(android.os.SystemClock.uptimeMillis()<retryAfter240)return false;
         try{
             RuntimeShader shader;
             synchronized(CACHE){
@@ -216,11 +240,21 @@ final class UnifiedGlass230 {
                 " valid="+valid.toShortString()+" blurMix="+blurMix);
             if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_239 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
+            if(consecutiveFailures240!=0){
+                Log.i("LiquidGlass240","OPTICAL_RECOVERED_240 failures="+consecutiveFailures240);
+                consecutiveFailures240=0;
+                retryAfter240=0L;
+            }
             return true;
         }catch(Throwable fail){
-            // Never disable the V229 lens.  The caller immediately uses it.
-            failed=true;
-            Log.e("LiquidGlass230","MATERIAL_SHADER_FAILED_234 fallback=V229",fail);
+            // Fall back to V229 for this frame, then rebuild with bounded backoff.
+            // Avoid tight retry loops if a device rejects RuntimeShader.
+            consecutiveFailures240=Math.min(12,consecutiveFailures240+1);
+            long delay=Math.min(30000L,250L*(1L<<Math.min(7,consecutiveFailures240-1)));
+            retryAfter240=android.os.SystemClock.uptimeMillis()+delay;
+            synchronized(CACHE){CACHE.remove(view);}
+            Log.e("LiquidGlass240","OPTICAL_FAILURE_240 attempt="+consecutiveFailures240+
+                " retryMs="+delay+" fallback=V229",fail);
             return false;
         }
     }
