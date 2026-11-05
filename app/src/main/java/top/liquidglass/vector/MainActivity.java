@@ -145,13 +145,15 @@ public final class MainActivity extends Activity {
             +" nativeAlpha="+prefs.getBoolean("native_alpha_probe",false));
     }
     private void putIntIfChanged193(String key,int value){
-        if(prefs.getInt(key,value)==value)return;
-        prefs.edit().putInt(key,value).commit();
+        if(prefs.contains(key) && prefs.getInt(key,value)==value)return;
+        boolean saved=prefs.edit().putInt(key,value).commit();
+        android.util.Log.i("LiquidGlass209","CONFIG_209_INT_SAVE key="+key+" value="+value+" committed="+saved);
+        if(!saved)return;
         audit193("USER_CHANGED_"+key);
         notifyConfigChanged128();
     }
     private void putBooleanIfChanged193(String key,boolean value){
-        if(prefs.getBoolean(key,value)==value)return;
+        if(prefs.contains(key) && prefs.getBoolean(key,value)==value)return;
         boolean saved=prefs.edit().putBoolean(key,value).commit();
         android.util.Log.i("LiquidGlass204","CONFIG_204_SWITCH_SAVE key="+key+" value="+value+" committed="+saved+" readback="+prefs.getBoolean(key,!value));
         if(!saved)return;
@@ -171,7 +173,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.205  ·  实时同步与 Dock 自动恢复",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.209  ·  配置链一致性修复",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);

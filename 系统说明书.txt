@@ -1,15 +1,11 @@
-ColorOS-LiquidGlass V1.9.205.208｜亚像素抗锯齿定位诊断版
+ColorOS-LiquidGlass V1.9.205.209｜配置链一致性修复版
 
-基于 V207，保留原有折射、Dock、实时参数同步与设置持久化。
+基于 V208 源码，保留 V208 的抗锯齿诊断模式。
 
-新增：在 Termux 中以 root 执行以下命令，切换 Shader 诊断模式：
+修复：MainActivity 的布尔与整数配置写入去重判断，只有配置键已存在且值相等时才跳过写入。原实现把目标值作为 getBoolean/getInt 默认值，导致首次保存尚不存在的键时错误跳过。
+修复：整数参数只有在 commit 成功后才通知 Launcher。
+诊断：新增 CONFIG_209_INT_SAVE 日志，保留 CONFIG_204_SWITCH_SAVE。
 
-su -c 'settings put global liquidglass_aa_probe_208 0'  # 正常 V207 自适应模式（默认）
-su -c 'settings put global liquidglass_aa_probe_208 1'  # 采样等级热力图：蓝=1点、黄=4点、红=9点
-su -c 'settings put global liquidglass_aa_probe_208 2'  # 强制真实 3x3 九点折射采样（诊断用，耗电更高）
-su -c 'settings put global liquidglass_aa_probe_208 3'  # 折射采样足迹热力图：绿=低风险、红=高风险
+验证建议：UI 关闭再开启“启用桌面文件夹玻璃”，检查 glass.xml 中 enabled=true，Root 快照以 LG1|1| 开头，Launcher 日志 enabled=true。
 
-修改后如画面未刷新，可轻微滑动桌面或重新进入桌面；比较时请在同一壁纸、相同折射强度下进行。
-测试完请务必切回模式0。模式2为性能诊断，不建议长期使用。
-注意：模式1反映 V207 的风险门槛，不代表最终真实像素采样数量；V207 可能在风险过渡区混合采样。
-本版本未进行 Android 真机编译与 AGSL 设备运行验证，如出现 Shader 编译错误请回退 V207 并提供日志。
+注意：未在本环境进行 Android Gradle 编译或真机测试。
