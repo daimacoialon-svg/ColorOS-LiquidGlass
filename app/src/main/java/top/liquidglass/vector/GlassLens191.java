@@ -26,6 +26,7 @@ final class GlassLens191 {
         "uniform float reflectionSoftness;\n" +
         "uniform float edgeStrength;\n" +
         "uniform float diagnostic;\n" +
+        "uniform float aaProbe208;\n" +
         "float depth(float2 p){\n" +
         " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
         " float r=clamp(radius,0.0,min(h.x,h.y));\n" +
@@ -76,14 +77,16 @@ final class GlassLens191 {
         " // Pre-gate by meniscus shoulder to avoid expensive Jacobian tests in the center.\n" +
         " float shoulderWidth=clamp(min(bounds.z-bounds.x,bounds.w-bounds.y)*0.38,18.0,75.0);\n" +
         " float shoulderAA=smoothstep(2.0,8.0,d)*(1.0-smoothstep(shoulderWidth*0.65,shoulderWidth*1.05,d));\n" +
-        " if(shoulderAA>0.005 && strength>0.01){\n" +
+        " float risk=0.0;\n" +
+        " float footprint=1.0;\n" +
+        " if((shoulderAA>0.005 && strength>0.01) || aaProbe208>0.5){\n" +
         "  float2 px=p+float2(1.0,0.0),py=p+float2(0.0,1.0);\n" +
         "  float2 qx=px+offsetAt(px),qy=py+offsetAt(py);\n" +
         "  float2 jx=mix(float2(1.0,0.0),qx-q,safety);\n" +
         "  float2 jy=mix(float2(0.0,1.0),qy-q,safety);\n" +
-        "  float footprint=max(length(jx),length(jy));\n" +
+        "  footprint=max(length(jx),length(jy));\n" +
         "  float anisotropy=abs(dot(jx,jy))/(0.01+length(jx)*length(jy));\n" +
-        "  float risk=shoulderAA*max(smoothstep(1.10,2.25,footprint),smoothstep(0.20,0.85,anisotropy)*0.6);\n" +
+        "  risk=shoulderAA*max(smoothstep(1.10,2.25,footprint),smoothstep(0.20,0.85,anisotropy)*0.6);\n" +
         "  if(risk>0.12){\n" +
         "   float2 ax=jx*0.29,ay=jy*0.29;\n" +
         "   half4 c4=(wallpaper.eval(clamp(sampleAt+ax+ay,lo,hi))+wallpaper.eval(clamp(sampleAt+ax-ay,lo,hi))+wallpaper.eval(clamp(sampleAt-ax+ay,lo,hi))+wallpaper.eval(clamp(sampleAt-ax-ay,lo,hi)))*0.25;\n" +
@@ -98,6 +101,32 @@ final class GlassLens191 {
         "    blurred=mix(blurred,(b4*4.0+b9+blurredWallpaper.eval(sampleAt))/9.0,w9);\n" +
         "   }\n" +
         "  }\n" +
+        " }\n" +
+                " // V208 diagnostic 1: show actual V207 sampling gates (blue=1, yellow=4, red=9).\n" +
+        " if(aaProbe208>0.5 && aaProbe208<1.5){\n" +
+        "  if(risk>0.68) return half4(1.0,0.12,0.12,1.0);\n" +
+        "  if(risk>0.12) return half4(1.0,0.83,0.08,1.0);\n" +
+        "  return half4(0.05,0.25,1.0,1.0);\n" +
+        " }\n" +
+        " // V208 diagnostic 2: real nine-point 3x3 subpixel supersampling.\n" +
+        " // Re-evaluate offsetAt for each subpixel, not a linearized Jacobian.\n" +
+        " if(aaProbe208>1.5 && aaProbe208<2.5){\n" +
+        "  half4 sumC=half4(0.0),sumB=half4(0.0);\n" +
+        "  for(int ix=-1;ix<=1;ix++){\n" +
+        "   for(int iy=-1;iy<=1;iy++){\n" +
+        "    float2 sp=p+float2(float(ix),float(iy))*(1.0/3.0);\n" +
+        "    float2 sq=sp+offsetAt(sp);\n" +
+        "    float sm=min(min(sq.x-lo.x,hi.x-sq.x),min(sq.y-lo.y,hi.y-sq.y));\n" +
+        "    float2 sc=clamp(mix(sp,sq,smoothstep(0.0,14.0,sm)),lo,hi);\n" +
+        "    sumC+=wallpaper.eval(sc);sumB+=blurredWallpaper.eval(sc);\n" +
+        "   }\n" +
+        "  }\n" +
+        "  clear=sumC/9.0;blurred=sumB/9.0;\n" +
+        " }\n" +
+        " // V208 diagnostic 3: map local sampling footprint and rapid distortion.\n" +
+        " if(aaProbe208>2.5 && aaProbe208<3.5){\n" +
+        "  float v=smoothstep(1.0,2.5,footprint);\n" +
+        "  return half4(half3(v,1.0-v,0.12),1.0);\n" +
         " }\n" +
         " half4 result=mix(clear,blurred,half(clamp(blurMix,0.0,1.0)));\n" +
         " if(diagnostic>10.5 && diagnostic<11.5){\n" +
@@ -168,6 +197,9 @@ final class GlassLens191 {
         shader.setFloatUniform("strength", Math.max(0f, Math.min(1f, strength)));
         shader.setFloatUniform("blurMix", Math.max(0f, Math.min(1f, blurMix)));
         shader.setFloatUniform("diagnostic", (float) diagnostic);
+        int aaProbe208=0;
+        try { aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); } catch(Throwable ignored) {}
+        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(3,aaProbe208)));
         shader.setFloatUniform("style", (float) opticalStyle);
         shader.setFloatUniform("reflectionMode", (float) surfaceMode);
         shader.setFloatUniform("reflectionStrength", Math.max(0f, Math.min(2f, surfaceStrength / 100f)));
