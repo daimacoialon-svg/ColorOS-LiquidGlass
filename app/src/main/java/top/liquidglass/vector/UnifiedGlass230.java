@@ -143,6 +143,29 @@ final class UnifiedGlass230 {
             float limit=min(shortSide*0.14,36.0);
             return raw*limit/sqrt(limit*limit+dot(raw,raw)+0.0001);
         }
+        // V249 experimental reference-inspired edge sampling map (AB=3).
+        // Unlike a painted rim, this moves the actual wallpaper sample.
+        // The derivative bound is controlled by a profile amplitude/width ratio;
+        // the legacy 0/1/2 algorithms remain byte-for-byte unchanged.
+        float2 opticalReference249(float2 p){
+            float2 size=max(bounds.zw-bounds.xy,float2(2.0));
+            float shortSide=min(size.x,size.y);
+            float width=max(4.0,min(shortSide*0.19,48.0));
+            float depth=max(0.0,-signedOutside246(p));
+            float t=clamp(depth/width,0.0,1.0);
+            // Inward-going sample shift that vanishes continuously at the
+            // outer silhouette and at the inner end of the optical shoulder.
+            float profile=16.0*t*t*(1.0-t)*(1.0-t);
+            float e=1.0;
+            float2 grad=float2(signedOutside246(p+float2(e,0.0))
+                -signedOutside246(p-float2(e,0.0)),
+                signedOutside246(p+float2(0.0,e))
+                -signedOutside246(p-float2(0.0,e)))/(2.0*e);
+            float2 n=grad/sqrt(dot(grad,grad)+0.0001);
+            float amplitude=width*0.12*clamp(strength230,0.0,1.0)
+                *(0.30+0.70*clamp(thickness230,0.0,1.0));
+            return -n*(amplitude*profile);
+        }
         float2 safe230(float2 p){
             float2 lo=validBounds.xy+float2(2.0);
             float2 hi=max(lo+float2(1.0),validBounds.zw-float2(2.0));
@@ -156,7 +179,7 @@ final class UnifiedGlass230 {
         }
         half4 main(float2 p){
             float2 slope=normalSlope230(p);
-            float2 delta=warp230(p,slope);
+            float2 delta=refractionAB244>2.5?opticalReference249(p):warp230(p,slope);
             // V240: a smooth valid-domain falloff prevents hard-clamp lines across
         // faces and wallpaper details. Fade the warp before it hits source edges.
         float2 innerLo=validBounds.xy+float2(3.0);
@@ -241,7 +264,7 @@ final class UnifiedGlass230 {
                 int next=Settings.Global.getInt(view.getContext().getContentResolver(),DIAG_KEY_235,0);
                 diagnostic235=Math.max(0,Math.min(6,next));
                 int ab=Settings.Global.getInt(view.getContext().getContentResolver(),REFRACTION_AB_KEY_244,0);
-                refractionAB244=Math.max(0,Math.min(2,ab));
+                refractionAB244=Math.max(0,Math.min(3,ab));
             }catch(Throwable ignored){diagnostic235=0;}
         }
         if(!s.enabled){
@@ -258,7 +281,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_248 fullDomainSuperellipse=true ab=enabled");
+                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_249 opticalReferenceAB3=true");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
@@ -283,7 +306,7 @@ final class UnifiedGlass230 {
             if(diagnostic235!=0 && probeLogs235++<24)Log.i("LiquidGlass235",
                 "OPTICAL_STAGE mode="+diagnostic235+" bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix);
-            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_248 dimensions="+rect.width()+"x"+rect.height()+
+            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_249 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             if(consecutiveFailures240!=0){
                 Log.i("LiquidGlass240","OPTICAL_RECOVERED_240 failures="+consecutiveFailures240);
