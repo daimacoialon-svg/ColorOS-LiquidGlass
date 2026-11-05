@@ -21,10 +21,10 @@ jobs:
         with:
           gradle-version: '8.9'
       - name: Build debug APK
-        run: gradle --no-daemon --stacktrace :app:assembleDebug
+        run: gradle --no-daemon --stacktrace :liquidglass-module:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: ColorOS-LiquidGlass-V1.9.205.244-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: path: liquidglass-module/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
