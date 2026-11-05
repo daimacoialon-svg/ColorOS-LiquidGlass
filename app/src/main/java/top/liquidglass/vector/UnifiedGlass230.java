@@ -31,6 +31,8 @@ final class UnifiedGlass230 {
     }
     private static int logs=0;
     private static volatile int diagnostic235=0;
+    private static volatile int refractionAB244=0;
+    private static final String REFRACTION_AB_KEY_244="liquidglass_refraction_ab_244";
     private static int probeCounter235=0;
     private static int probeLogs235=0;
     private static int routeLogs237=0;
@@ -49,6 +51,7 @@ final class UnifiedGlass230 {
         uniform float quality230;
         uniform float blurMix;
         uniform float diagnostic235;
+        uniform float refractionAB244;
 
         // Signed distance: positive within this particular rounded container.
         float inside230(float2 p){
@@ -99,7 +102,16 @@ final class UnifiedGlass230 {
             // One continuous displacement field, not four independent edge warps.
             // Smoothly saturate at the configured maximum without a hard cut.
             float amplitude=min(shortSide*0.115,32.0)*(0.20+0.80*thickness230)*strength;
-            float2 raw=-ns*amplitude;
+            // 0: original V243 mapping, 1: reversed sampling direction.
+            // 2: reversed mapping with a smooth center-attenuation experiment.
+            // All three use the identical seam-free V243 normal field.
+            float direction=refractionAB244<0.5?-1.0:1.0;
+            float2 raw=direction*ns*amplitude;
+            if(refractionAB244>1.5){
+                float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/(size*0.5);
+                float centerWeight=smoothstep(0.10,0.70,length(uv));
+                raw*=mix(0.25,1.0,centerWeight);
+            }
             float limit=min(shortSide*0.14,36.0);
             return raw*limit/sqrt(limit*limit+dot(raw,raw)+0.0001);
         }
@@ -200,6 +212,8 @@ final class UnifiedGlass230 {
             try{
                 int next=Settings.Global.getInt(view.getContext().getContentResolver(),DIAG_KEY_235,0);
                 diagnostic235=Math.max(0,Math.min(6,next));
+                int ab=Settings.Global.getInt(view.getContext().getContentResolver(),REFRACTION_AB_KEY_244,0);
+                refractionAB244=Math.max(0,Math.min(2,ab));
             }catch(Throwable ignored){diagnostic235=0;}
         }
         if(!s.enabled){
@@ -216,7 +230,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_243 analyticSuperellipse=true");
+                    Log.i("LiquidGlass243","MATERIAL_SHADER_CREATED_244 analyticSuperellipse=true ab=enabled");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
@@ -230,17 +244,18 @@ final class UnifiedGlass230 {
             shader.setFloatUniform("quality230",(float)s.quality);
             shader.setFloatUniform("blurMix",Math.max(0f,Math.min(1f,blurMix)));
             shader.setFloatUniform("diagnostic235",(float)diagnostic235);
+            shader.setFloatUniform("refractionAB244",(float)refractionAB244);
             Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             paint.setShader(shader);
             canvas.drawRoundRect(rect,radius,radius,paint);
             if(routeLogs237++<20)Log.i("LiquidGlass239",
-                "OPTICAL_PIPELINE_243 wallpaper=bound blurred=bound bounds="+rect.toShortString()+
+                "OPTICAL_PIPELINE_244 wallpaper=bound blurred=bound bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix+
-                " mode="+diagnostic235+" material=singlePass");
+                " mode="+diagnostic235+" ab="+refractionAB244+" material=singlePass");
             if(diagnostic235!=0 && probeLogs235++<24)Log.i("LiquidGlass235",
                 "OPTICAL_STAGE mode="+diagnostic235+" bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix);
-            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_243 dimensions="+rect.width()+"x"+rect.height()+
+            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_244 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             if(consecutiveFailures240!=0){
                 Log.i("LiquidGlass240","OPTICAL_RECOVERED_240 failures="+consecutiveFailures240);

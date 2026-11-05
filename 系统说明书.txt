@@ -1,12 +1,20 @@
-ColorOS-LiquidGlass V1.9.205.243｜对角折痕连续法线修复实验版
+ColorOS-LiquidGlass V1.9.205.244｜折射方向 A/B 真机对照实验版
 
-基于 V1.9.205.242，保留 V240 Shader 故障恢复机制和全部 LG1/LG230 参数键。
+基于 V1.9.205.243。保留 V243 无 X 形折痕的解析连续高度场、V240 Shader 故障恢复、LG1/LG230 配置持久化、诊断模式 1～6 原有定义。
 
-本版重点：
-1. 不再将圆角矩形最近边界距离场用于计算曲面高度/法线，避免其 max/min 最近边界切换形成 X 形折痕。
-2. 改用全域解析四次超椭圆高度场与平滑中心曲率，光学法线与折射位移均从同一高度场导出。
-3. 外部轮廓仍由 Launcher 传入的 rect/radius 及 Canvas.drawRoundRect 裁剪，不改变实际容器形状。
-4. 诊断模式 1～6 保持原有意义：1 位移、2 法线、3 高度、4 原始背景、5 折射背景、6 最终材质。
-5. 保留 V240 的退避重试、Shader 自动恢复及现有参数持久化链路。
+新增只读临时实验设置：liquidglass_refraction_ab_244（Settings.Global，不写入 LG1/LG230 配置快照）
+  0 = A：V243 原折射方向（默认；回归基线）
+  1 = B：反向折射采样位移（对照测试）
+  2 = C：反向位移并对中心附加平滑衰减（探索中心反向缩放）
+设置后桌面重绘时最多约 60 次 draw 读取一次，无需重启 Launcher。测试时请保持其余所有参数不变。
 
-注意：解析高度场消除最近边界方向切换，但边缘厚度的真实性仍需真机观察。未完成 APK 编译与真机验证。
+Termux 指令：
+  su -c 'settings put global liquidglass_refraction_ab_244 0'
+  su -c 'settings put global liquidglass_refraction_ab_244 1'
+  su -c 'settings put global liquidglass_refraction_ab_244 2'
+  su -c 'settings delete global liquidglass_refraction_ab_244'
+  su -c 'settings get global liquidglass_refraction_ab_244'
+
+观察重点：滑动时玻璃中央纹理是否缩小、边缘折射是否反向、壁纸与容器运动是否同步；本版未修改 Launcher 的采样坐标路径。诊断模式 1～3 用于检查几何，模式 5 对比采样，正常模式看最终效果。
+
+注意：此版是 A/B/C 实验，不能据此证明真实光学方向。未执行 Android APK 编译及真机验证。
