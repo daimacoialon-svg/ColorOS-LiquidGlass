@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# V1.9.205.196: verified config publication, PID identity and guaranteed lock cleanup.
+# V1.9.205.217: first-run boot defaults ON; explicit user OFF preserved, verified publication.
 # Source is checked twice before atomic replacement; never expose partial copies.
 # Android toybox inotifyd is optional; fallback works without it.
 PKG=top.liquidglass.vector
@@ -77,7 +77,7 @@ LASTSNAP=""
 make_snapshot125() {
   awk '
   BEGIN {
-    n=split("enabled:0 alpha:210 tint:0 tint_strength:30 highlight:0 diagnostics:0 highlight_strength:25 probe_mode:0 highlight_width:2 directional_light:1 native_blur_experiment:0 blur_radius_percent:100 native_alpha_probe:1 wallpaper_compare:0 real_refraction:0 custom_blur_dp:14 refraction_percent:35 glass_tint_opacity:18 custom_blur_mode:1 clear_refraction:0 dynamic_sheen_mode:0 surface_mode_195:3 surface_strength_195:100 surface_softness_195:100 icon_optics_204:0 dock_glass_204:0 nonlinear_107:65 thickness_107:55 interior_107:20 focus_107:45 reflection_107:30 optical_style_186:0", items, " ");
+    n=split("enabled:1 alpha:210 tint:0 tint_strength:30 highlight:0 diagnostics:0 highlight_strength:25 probe_mode:0 highlight_width:2 directional_light:1 native_blur_experiment:0 blur_radius_percent:100 native_alpha_probe:1 wallpaper_compare:0 real_refraction:0 custom_blur_dp:14 refraction_percent:35 glass_tint_opacity:18 custom_blur_mode:1 clear_refraction:0 dynamic_sheen_mode:0 surface_mode_195:3 surface_strength_195:100 surface_softness_195:100 icon_optics_204:1 dock_glass_204:1 nonlinear_107:65 thickness_107:55 interior_107:20 focus_107:45 reflection_107:30 optical_style_186:0", items, " ");
     for(i=1;i<=n;i++){split(items[i],pair,":"); keys[i]=pair[1]; values[pair[1]]=pair[2]}
   }
   /name="/ {
@@ -132,7 +132,7 @@ sync_config() {
   printf '%s' "$$" > "$local_sync_lock/pid"
   sed 's/.*) //' "/proc/$$/stat" 2>/dev/null | awk '{print $20}' > "$local_sync_lock/starttime"
   result=0
-  if [ ! -s "$PREF" ] || ! grep -q 'name="enabled"' "$PREF" 2>/dev/null; then
+  if [ ! -s "$PREF" ]; then
     echo "CONFIG_196 stage=PREF_MISSING" >> "$LOG"
     result=3
   else

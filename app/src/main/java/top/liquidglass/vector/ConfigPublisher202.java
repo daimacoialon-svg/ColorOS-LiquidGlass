@@ -20,8 +20,8 @@ final class ConfigPublisher202 {
         "interior_107","focus_107","reflection_107","optical_style_186"
     };
     private static final int[] DEFAULTS={
-        0,210,0,30,0,0,25,0,2,1,0,100,1,0,0,14,35,18,1,0,0,
-        3,100,100,0,1,65,55,20,45,30,0
+        1,210,0,30,0,0,25,0,2,1,0,100,1,0,0,14,35,18,1,0,0,
+        3,100,100,1,1,65,55,20,45,30,0
     };
     private static boolean boolKey(String k){
         return k.equals("enabled")||k.equals("highlight")||k.equals("diagnostics")||

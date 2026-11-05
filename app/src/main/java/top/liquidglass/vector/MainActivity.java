@@ -163,17 +163,25 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);prefs=getSharedPreferences("glass",0);
         ConfigMigration194.reconcileOnce(this,prefs);
-        // Default ON only for an unconfigured Dock. A user's explicit OFF survives reboot.
-        if(!prefs.contains("dock_glass_204")){
-            boolean dockDefaultCommitted=prefs.edit().putBoolean("dock_glass_204",true).commit();
-            android.util.Log.i("LiquidGlass204","DOCK_204_FIRST_DEFAULT_ON saved="+dockDefaultCommitted);
-            if(dockDefaultCommitted)notifyConfigChanged128();
+        // V217: persist first-run defaults before publishing. A saved explicit OFF
+        // remains authoritative across app restarts, Launcher restarts and reboot.
+        SharedPreferences.Editor firstDefaults217=prefs.edit();
+        boolean needsDefaults217=false;
+        if(!prefs.contains("enabled")){firstDefaults217.putBoolean("enabled",true);needsDefaults217=true;}
+        if(!prefs.contains("dock_glass_204")){firstDefaults217.putBoolean("dock_glass_204",true);needsDefaults217=true;}
+        if(!prefs.contains("icon_optics_204")){firstDefaults217.putBoolean("icon_optics_204",true);needsDefaults217=true;}
+        if(needsDefaults217){
+            boolean savedDefaults217=firstDefaults217.commit();
+            android.util.Log.i("LiquidGlass217","BOOT_DEFAULTS_217 committed="+savedDefaults217+
+                " folder="+prefs.getBoolean("enabled",true)+" dock="+prefs.getBoolean("dock_glass_204",true)+
+                " icon="+prefs.getBoolean("icon_optics_204",true));
+            if(savedDefaults217)notifyConfigChanged128();
         }
         audit193("UI_ON_CREATE_V194");
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.210  ·  曲面过渡带采样诊断",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.217  ·  透镜恢复与图标内缘光影",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -186,8 +194,8 @@ public final class MainActivity extends Activity {
         TextView styleNote186=text("泡泡：连续边缘透镜与环境响应高光。iOS 风格：较弱曲率与柔和反射。两者均为模拟光学风格，并非苹果原生渲染。手动调整下方参数不会自动覆盖这两套预设。",12,false);
         current.addView(styleNote186);
         section("玻璃材质总览","文件夹与 Dock 共用光学参数；两者可分别启用。预设不会强制打开旧版实验模式。");
-        toggle("启用桌面文件夹玻璃", "enabled",false);
-        TextView presetInfo=text("玻璃预设仅在手动点击时应用；文件夹与 Dock 共用玻璃渲染参数，不改变功能开关。",12,false);current.addView(presetInfo);
+        toggle("启用桌面文件夹玻璃（开机恢复，手动关闭后保持关闭）", "enabled",true);
+        TextView presetInfo=text("首次配置默认启用文件夹与 Dock 玻璃；重启时恢复上次保存的开关状态，手动关闭不会被强制打开。",12,false);current.addView(presetInfo);
         action("应用清透液态玻璃推荐参数",()->{
             prefs.edit().putBoolean("enabled",true)
                 .putInt("custom_blur_dp",2).putInt("custom_blur_tenths_95",20).putInt("custom_blur_mode",1)
@@ -257,8 +265,8 @@ public final class MainActivity extends Activity {
         });
         slider("底色色调强度 (%)","tint_strength",30,0,90);
         TextView tintInfo=text("底色色调强度为 0% 时不添加颜色；原生模式不添加色调。颜色变化需在玻璃底色不透明度和当前渲染路径允许的情况下观察。",12,false);current.addView(tintInfo);
-        section("应用图标光学高光","为桌面应用图标增加沿真实轮廓变化的细腻反光，不改变图标内容与点击区域。");
-        toggle("应用图标高光","icon_optics_204",false);
+        section("应用图标内缘光影","参考图标的真实轮廓，沿左上内缘投射柔和光亮，右下内缘叠加微弱阴影；保留原图标内容和点击区域。首次使用默认开启，手动关闭会保持关闭。");
+        toggle("应用图标内缘光影（高光 + 阴影）","icon_optics_204",true);
         section("旧版兼容与实验","旧二维壁纸折射仅用于对照测试。默认折叠，避免误以为它是第二套必需的光学系统。");
         final LinearLayout legacyContainer=column();
         final Button legacyButton=new Button(this);
@@ -279,13 +287,39 @@ public final class MainActivity extends Activity {
             legacyButton.setText(show?"收起旧版实验参数":"展开旧版二维折射实验");
         });
         section("维护与状态","Root 脚本更新、同步状态和诊断日志。");
+        action("退出折射诊断模式（恢复正常透镜）",()->{
+            // Settings.Global requires privileged write access. Use the existing
+            // KernelSU root path instead of calling putInt as an ordinary app.
+            new Thread(()->{
+                boolean ok=false;
+                Process process=null;
+                try{
+                    process=new ProcessBuilder("su","-c","settings put global liquidglass_aa_probe_208 0")
+                        .redirectErrorStream(true).start();
+                    ok=process.waitFor(7,java.util.concurrent.TimeUnit.SECONDS) && process.exitValue()==0;
+                    if(!ok && process.isAlive())process.destroyForcibly();
+                }catch(Throwable ignored){}
+                finally{if(process!=null)process.destroy();}
+                final boolean succeeded=ok;
+                if(succeeded){
+                    try{
+                        android.content.Intent refresh=new android.content.Intent("top.liquidglass.vector.CONFIG_CHANGED_128");
+                        refresh.setPackage("com.android.launcher");
+                        refresh.putExtra("lg_snapshot_203",ConfigPublisher202.snapshot(getApplicationContext()));
+                        sendBroadcast(refresh);
+                    }catch(Throwable ignored){}
+                }
+                runOnUiThread(()->Toast.makeText(this,succeeded?
+                    "已恢复模式 0；请返回桌面检查":"切换失败：请用 Termux 的 su 命令恢复模式 0",Toast.LENGTH_LONG).show());
+            },"LiquidGlass-DiagnosticReset217").start();
+        });
         rootStatus=text("正在检查 Root 脚本与运行进程…",12,false);current.addView(rootStatus);
         action("检查并更新 Root 辅助脚本",()->RootHelperUpdater.runAsync(this,result->{
             rootStatus.setText(result);
             rootStatusHandler.removeCallbacks(rootStatusPoll);
             rootStatusHandler.postDelayed(rootStatusPoll,1000);
         }));
-        TextView serviceHint=text("V194 修复 Root 配置事件与主服务之间的同步竞态。请检查并更新脚本后重启一次，确保运行的服务脚本也是最新。拖动滑块时只更新显示，松手后才应用配置。",12,false);current.addView(serviceHint);
+        TextView serviceHint=text("V217：请点击上方更新 Root 辅助脚本并重启一次，使文件夹玻璃和 Dock 在开机后恢复保存的状态。模式 18 的白底黑线网格为独立诊断 Shader，其他模式继续使用 V215 透镜。拖动滑块松手后应用配置。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
         setContentView(scroll);

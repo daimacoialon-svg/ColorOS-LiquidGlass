@@ -12,6 +12,8 @@ import java.util.WeakHashMap;
 final class GlassLens191 {
     private GlassLens191() {}
     private static final WeakHashMap<View, RuntimeShader> CACHE = new WeakHashMap<>();
+    // V217: never compile experimental grid code in the production lens.
+    private static final WeakHashMap<View, RuntimeShader> GRID_CACHE_217 = new WeakHashMap<>();
     static final String AGSL =
         "uniform shader wallpaper;\n" +
         "uniform shader blurredWallpaper;\n" +
@@ -27,7 +29,6 @@ final class GlassLens191 {
         "uniform float edgeStrength;\n" +
         "uniform float diagnostic;\n" +
         "uniform float aaProbe208;\n" +
-        "uniform float gridSpacing216;\n" +
         "float depth(float2 p){\n" +
         " float2 h=max((bounds.zw-bounds.xy)*0.5,float2(1.0));\n" +
         " float r=clamp(radius,0.0,min(h.x,h.y));\n" +
@@ -285,16 +286,9 @@ final class GlassLens191 {
         "  float2 sq=p+offset214(p,1.0);\n" +
         "  float sm=min(min(sq.x-lo.x,hi.x-sq.x),min(sq.y-lo.y,hi.y-sq.y));\n" +
         "  float2 sc=clamp(mix(p,sq,smoothstep(0.0,14.0,sm)),lo,hi);\n" +
-        "  // White substrate; both minor and major black lines use the refracted sampling coordinate.\n" +
-        "  float spacing=clamp(gridSpacing216,8.0,16.0);\n" +
-        "  float2 minor=abs(fract(sc/spacing+0.5)-0.5)*spacing;\n" +
-        "  float2 major=abs(fract(sc/(spacing*5.0)+0.5)-0.5)*(spacing*5.0);\n" +
-        "  float minorDist=min(minor.x,minor.y);\n" +
-        "  float majorDist=min(major.x,major.y);\n" +
-        "  float minorInk=1.0-smoothstep(0.30,0.85,minorDist);\n" +
-        "  float majorInk=1.0-smoothstep(0.65,1.45,majorDist);\n" +
-        "  float ink=max(minorInk*0.82,majorInk);\n" +
-        "  return half4(half3(1.0-ink),1.0);\n" +
+        "  float2 grid=abs(fract(sc/16.0)-0.5);\n" +
+        "  float line=1.0-smoothstep(0.018,0.065,min(grid.x,grid.y));\n" +
+        "  return half4(half3(0.08+line*0.82,0.18+line*0.78,0.24+line*0.68),1.0);\n" +
         " }\n" +
         " // V215 mode 19: mapping Jacobian compression (red) / stretch (green).\n" +
         " if(aaProbe208>18.5 && aaProbe208<19.5){\n" +
@@ -437,17 +431,57 @@ final class GlassLens191 {
         " result.rgb=half3(clamp(color,0.0,1.0));\n" +
         " return result;\n" +
         "}\n";
+    // The original V215 shader above is the verified normal-mode baseline.
+    // Only mode 18 compiles this isolated white-grid variant; a grid failure cannot
+    // disable normal 2D refraction, mode 16 or mode 20.
+    private static final String GRID_OLD_217 =
+        "  float2 grid=abs(fract(sc/16.0)-0.5);\n" +
+        "  float line=1.0-smoothstep(0.018,0.065,min(grid.x,grid.y));\n" +
+        "  return half4(half3(0.08+line*0.82,0.18+line*0.78,0.24+line*0.68),1.0);\n";
+    private static final String GRID_NEW_217 =
+        "  float spacing=clamp(edgeStrength*16.0,8.0,16.0);\n" +
+        "  float2 grid=abs(fract(sc/spacing)-0.5)*spacing;\n" +
+        "  float dist=min(grid.x,grid.y);\n" +
+        "  float minorInk=1.0-smoothstep(0.4,1.1,dist);\n" +
+        "  float2 majorGrid=abs(fract(sc/(spacing*5.0))-0.5)*(spacing*5.0);\n" +
+        "  float majorInk=1.0-smoothstep(0.8,1.8,min(majorGrid.x,majorGrid.y));\n" +
+        "  float ink=max(minorInk*0.78,majorInk);\n" +
+        "  return half4(half3(1.0-ink),1.0);\n";
+    private static final String WHITE_GRID_AGSL_217=AGSL.replace(GRID_OLD_217,GRID_NEW_217);
+    private static boolean GRID_FAILED_217=false;
+
     static void draw(View owner, Canvas canvas, RectF rect, float radius,
             BitmapShader wallpaper, BitmapShader blurredWallpaper, RectF valid,
             float strength, float blurMix, int diagnostic, boolean edgeEnabled,
             int edgeStrength, int surfaceMode, int surfaceStrength, int surfaceSoftness,
             int opticalStyle) {
-        RuntimeShader shader;
-        synchronized (CACHE) {
-            shader = CACHE.get(owner);
-            if (shader == null) {
-                shader = new RuntimeShader(AGSL);
-                CACHE.put(owner, shader);
+        int aaProbe208=0;
+        try { aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); } catch(Throwable ignored) {}
+        boolean gridRequested=aaProbe208==18;
+        RuntimeShader shader=null;
+        if(gridRequested && !GRID_FAILED_217){
+            synchronized(GRID_CACHE_217){
+                shader=GRID_CACHE_217.get(owner);
+                if(shader==null){
+                    try{
+                        if(!WHITE_GRID_AGSL_217.contains(GRID_NEW_217))throw new IllegalStateException("grid replacement missing");
+                        shader=new RuntimeShader(WHITE_GRID_AGSL_217);
+                        GRID_CACHE_217.put(owner,shader);
+                    }catch(Throwable t){
+                        GRID_FAILED_217=true;
+                        android.util.Log.e("LiquidGlass217","GRID_217_SHADER_FAILED; production lens preserved",t);
+                    }
+                }
+            }
+        }
+        boolean usingGrid=gridRequested && shader!=null;
+        if(shader==null){
+            synchronized(CACHE){
+                shader=CACHE.get(owner);
+                if(shader==null){
+                    shader=new RuntimeShader(AGSL);
+                    CACHE.put(owner,shader);
+                }
             }
         }
         shader.setInputShader("wallpaper", wallpaper);
@@ -458,18 +492,22 @@ final class GlassLens191 {
         shader.setFloatUniform("strength", Math.max(0f, Math.min(1f, strength)));
         shader.setFloatUniform("blurMix", Math.max(0f, Math.min(1f, blurMix)));
         shader.setFloatUniform("diagnostic", (float) diagnostic);
-        int aaProbe208=0;
-        try { aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); } catch(Throwable ignored) {}
-        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(20,aaProbe208)));
-        int gridSpacing216=12;
-        try { gridSpacing216=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_grid_spacing_216",12); } catch(Throwable ignored) {}
-        if(gridSpacing216!=8 && gridSpacing216!=12 && gridSpacing216!=16) gridSpacing216=12;
-        shader.setFloatUniform("gridSpacing216", (float)gridSpacing216);
+        // If the isolated grid cannot compile, show the known-good mode 16 lens.
+        shader.setFloatUniform("aaProbe208", (float)(gridRequested && !usingGrid ? 16 : Math.max(0,Math.min(20,aaProbe208))));
         shader.setFloatUniform("style", (float) opticalStyle);
         shader.setFloatUniform("reflectionMode", (float) surfaceMode);
         shader.setFloatUniform("reflectionStrength", Math.max(0f, Math.min(2f, surfaceStrength / 100f)));
         shader.setFloatUniform("reflectionSoftness", Math.max(0f, Math.min(1f, (surfaceSoftness - 50f) / 150f)));
-        shader.setFloatUniform("edgeStrength", edgeEnabled ? Math.max(0f, Math.min(1f, edgeStrength / 100f)) : 0f);
+        int gridSpacing217=12;
+        if(usingGrid){
+            try { gridSpacing217=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_grid_spacing_216",12); }
+            catch(Throwable ignored) {}
+            if(gridSpacing217!=8 && gridSpacing217!=12 && gridSpacing217!=16)gridSpacing217=12;
+        }
+        // In diagnostic mode 18 only, reuse an existing uniform. No new shader
+        // uniform or production configuration schema is introduced.
+        shader.setFloatUniform("edgeStrength", usingGrid ? gridSpacing217/16f :
+            (edgeEnabled ? Math.max(0f, Math.min(1f, edgeStrength / 100f)) : 0f));
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
         paint.setShader(shader);
         canvas.drawRoundRect(rect, radius, radius, paint);

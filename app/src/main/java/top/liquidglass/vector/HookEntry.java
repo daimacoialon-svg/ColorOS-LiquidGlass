@@ -8238,6 +8238,62 @@ public final class HookEntry implements IXposedHookLoadPackage {
             return null;
         }finally{if(bitmap!=null)bitmap.recycle();}
     }
+    // V217: cache shaders per icon view. All gradients are recomputed only when
+    // the drawable's geometry changes, not on every launcher redraw frame.
+    private static final class IconOpticsBrush217 {
+        final Paint ambient=new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Paint innerLight=new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Paint innerShade=new Paint(Paint.ANTI_ALIAS_FLAG);
+        final Paint contour=new Paint(Paint.ANTI_ALIAS_FLAG);
+        float left=Float.NaN,top=Float.NaN,right=Float.NaN,bottom=Float.NaN,density=Float.NaN;
+        void update(RectF r,float dp){
+            if(left==r.left && top==r.top && right==r.right && bottom==r.bottom && density==dp)return;
+            left=r.left;top=r.top;right=r.right;bottom=r.bottom;density=dp;
+            float diagonal=Math.max(1f,Math.min(r.width(),r.height()));
+            ambient.setStyle(Paint.Style.FILL);
+            ambient.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
+                new int[]{0x14FFFFFF,0x06FFFFFF,0x00000000,0x1100081B},
+                new float[]{0f,.26f,.55f,1f},android.graphics.Shader.TileMode.CLAMP));
+            innerLight.setStyle(Paint.Style.STROKE);
+            innerLight.setStrokeJoin(Paint.Join.ROUND);innerLight.setStrokeCap(Paint.Cap.ROUND);
+            innerLight.setStrokeWidth(Math.min(diagonal*.085f,Math.max(3f*dp,5.5f*dp)));
+            innerLight.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
+                new int[]{0x85FFFFFF,0x48FFFFFF,0x10FFFFFF,0x00FFFFFF},
+                new float[]{0f,.27f,.58f,1f},android.graphics.Shader.TileMode.CLAMP));
+            innerShade.setStyle(Paint.Style.STROKE);
+            innerShade.setStrokeJoin(Paint.Join.ROUND);innerShade.setStrokeCap(Paint.Cap.ROUND);
+            innerShade.setStrokeWidth(Math.min(diagonal*.07f,4.2f*dp));
+            innerShade.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
+                new int[]{0x00000820,0x00000820,0x17000B25,0x60000B25},
+                new float[]{0f,.43f,.76f,1f},android.graphics.Shader.TileMode.CLAMP));
+            contour.setStyle(Paint.Style.STROKE);
+            contour.setStrokeWidth(Math.max(.6f*dp,1f));
+            contour.setStrokeJoin(Paint.Join.ROUND);contour.setStrokeCap(Paint.Cap.ROUND);
+            contour.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
+                new int[]{0x88FFFFFF,0x40FFFFFF,0x10FFFFFF,0x30FFFFFF},
+                new float[]{0f,.32f,.7f,1f},android.graphics.Shader.TileMode.CLAMP));
+        }
+    }
+    private static final java.util.WeakHashMap<View,IconOpticsBrush217> ICON_BRUSHES_217=new java.util.WeakHashMap<>();
+    private static void drawIconInnerOptics217(View v,Canvas canvas,android.graphics.Path silhouette,RectF r,float density){
+        if(silhouette==null || silhouette.isEmpty())return;
+        IconOpticsBrush217 brushes;
+        synchronized(ICON_BRUSHES_217){
+            brushes=ICON_BRUSHES_217.get(v);
+            if(brushes==null){brushes=new IconOpticsBrush217();ICON_BRUSHES_217.put(v,brushes);}
+        }
+        brushes.update(r,density);
+        int saved=canvas.save();
+        try{
+            // Clip strictly to the actual alpha silhouette: glow and shade are
+            // projected inward, never painted over the wallpaper outside the icon.
+            canvas.clipPath(silhouette);
+            canvas.drawPath(silhouette,brushes.ambient);
+            canvas.drawPath(silhouette,brushes.innerLight);
+            canvas.drawPath(silhouette,brushes.innerShade);
+        }finally{canvas.restoreToCount(saved);}
+        canvas.drawPath(silhouette,brushes.contour);
+    }
     private static void drawIconEdge205(android.widget.TextView v,Canvas c){
         if(!iconOptics204 || !v.isShown() || v.getWidth()<=0 || v.getHeight()<=0)return;
         if(v.getContentDescription()==null || v.getContentDescription().length()==0)return;
@@ -8270,19 +8326,16 @@ public final class HookEntry implements IXposedHookLoadPackage {
         if(diagnostics && ICON_CONTOUR_LOG_2059.size()<40 && ICON_CONTOUR_LOG_2059.add(type+"|"+v.getContentDescription()))
             log("ICON_CONTOUR_20511 label="+v.getContentDescription()+" drawable="+type+
                 " alphaContour="+(contour!=null)+" fallback="+(contour==null)+" bounds="+bounds.toShortString());
-        if(contour==null){
-            // Restore the V1.9.205.6 visible optics rather than disappearing.
-            // This is intentionally a compatibility fallback, NOT a precise OEM silhouette.
-            float stroke=Math.max(density*.65f,1f);
-            float pad=stroke*.5f;
-            RectF r=new RectF(left+pad,top+pad,left+w-pad,top+h-pad);
-            float corner=Math.min(r.width(),r.height())*.265f;
-            ICON_EDGE_205.reset();ICON_EDGE_205.setAntiAlias(true);
-            ICON_EDGE_205.setStyle(Paint.Style.STROKE);
-            ICON_EDGE_205.setStrokeWidth(stroke);
-            ICON_EDGE_205.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x64FFFFFF,0x1CFFFFFF,0x00FFFFFF,0x38FFFFFF},null,
-                android.graphics.Shader.TileMode.CLAMP));
+        android.graphics.Path mapped=new android.graphics.Path();
+        float pad=Math.max(.35f*density,.5f);
+        RectF r=new RectF(left+pad,top+pad,left+w-pad,top+h-pad);
+        if(contour!=null){
+            android.graphics.Matrix matrix=new android.graphics.Matrix();
+            matrix.setScale(w/128f,h/128f);
+            matrix.postTranslate(left,top);
+            contour.transform(matrix,mapped);
+        }else{
+            // Prefer the actual adaptive icon mask over a guessed rounded square.
             boolean maskDrawn=false;
             try{
                 Drawable unwrapped=d;
@@ -8296,33 +8349,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         if(maskBounds.width()>1f && maskBounds.height()>1f && aspect>.92f && aspect<1.08f){
                             android.graphics.Matrix matrix=new android.graphics.Matrix();
                             matrix.setRectToRect(maskBounds,r,android.graphics.Matrix.ScaleToFit.CENTER);
-                            android.graphics.Path mapped=new android.graphics.Path();
-                            mask.transform(matrix,mapped);c.drawPath(mapped,ICON_EDGE_205);
-                            maskDrawn=true;
+                            mask.transform(matrix,mapped);maskDrawn=true;
                         }
                     }
                 }
-            }catch(Throwable t){if(diagnostics)log("ICON_MASK_20510_FALLBACK "+t.getClass().getSimpleName());}
-            if(!maskDrawn)c.drawRoundRect(r,corner,corner,ICON_EDGE_205);
-            ICON_EDGE_205.setShader(null);ICON_EDGE_205.setStyle(Paint.Style.FILL);
-            return;
+            }catch(Throwable t){if(diagnostics)log("ICON_MASK_217_FALLBACK "+t.getClass().getSimpleName());}
+            if(!maskDrawn){
+                float corner=Math.min(r.width(),r.height())*.265f;
+                mapped.addRoundRect(r,corner,corner,android.graphics.Path.Direction.CW);
+            }
         }
-        float stroke=Math.max(density*.52f,1f);
-        ICON_EDGE_205.reset();ICON_EDGE_205.setAntiAlias(true);
-        ICON_EDGE_205.setStyle(Paint.Style.STROKE);
-        ICON_EDGE_205.setStrokeWidth(stroke);
-        ICON_EDGE_205.setStrokeJoin(Paint.Join.ROUND);
-        ICON_EDGE_205.setStrokeCap(Paint.Cap.ROUND);
-        ICON_EDGE_205.setShader(new android.graphics.LinearGradient(left,top,left+w,top+h,
-            new int[]{0x54FFFFFF,0x20FFFFFF,0x08FFFFFF,0x26FFFFFF},null,
-            android.graphics.Shader.TileMode.CLAMP));
-        android.graphics.Matrix matrix=new android.graphics.Matrix();
-        matrix.setScale(w/128f,h/128f);
-        matrix.postTranslate(left,top);
-        android.graphics.Path mapped=new android.graphics.Path();
-        contour.transform(matrix,mapped);
-        c.drawPath(mapped,ICON_EDGE_205);
-        ICON_EDGE_205.setShader(null);ICON_EDGE_205.setStyle(Paint.Style.FILL);
+        drawIconInnerOptics217(v,c,mapped,r,density);
     }
     private static void hookIconOptics205(ClassLoader loader){
         String[] candidates={"com.android.launcher3.BubbleTextView",
