@@ -1,16 +1,13 @@
-ColorOS-LiquidGlass V1.9.205.235｜真实光学链路诊断版
+ColorOS-LiquidGlass V1.9.205.236｜连续曲面无交叉折痕实验版
 
-基线：V1.9.205.234。此版不声称已经实现目标 iOS 风格光学效果。
+基线：V1.9.205.235。仅修改 UnifiedGlass230 的实验光学高度场和相关日志；保留原 UI、SharedPreferences、实时通知、Root 快照、重启恢复及 V229 回退。
 
-新增：在现有统一材质 Shader 内直接观测实际执行的六个阶段。
-通过 Termux 执行（Root）：
- su -c 'settings put global liquidglass_optical_diagnostic_235 1'
-模式：0 正常；1 位移（红色=X，绿色=Y，中性灰=零位移）；2 法线；3 高度场；4 原始壁纸采样；5 折射采样但无环境反射；6 完整合成。
-每次切换后等待页面刷新或轻微滑动；建议按 4→5→1→2→3→0 顺序截图，测试不同形状文件夹与 Dock。
-完成后务必恢复：su -c 'settings put global liquidglass_optical_diagnostic_235 0'
-可查看日志：su -c 'logcat -d -s LiquidGlass235:I LiquidGlass230:I *:S'
+问题：V235 的圆角矩形最近边界距离场在内部中轴线上存在梯度分界，可能在法线和折射中形成交叉 X 折痕。
+本版实验：改用四次范数超椭圆连续高度场，中心保留柔和曲率；容器最终形状仍由 drawRoundRect 裁剪。此方法优先消除中轴线梯度接缝，尚不能保证最终玻璃效果或完全匹配圆角矩形边界。
 
-此诊断开关不进入用户配置持久化，也不修改 LG230 的字段、顺序或旧有键。
-原 UI、SharedPreferences、UI→Launcher 直达、Root 快照、重启恢复链路保持不变。
-诊断仅在统一材质启用且成功进入该 Shader 时显示；若仍是普通画面，检查作用域、日志及材质开关。
-保留 V229 回退逻辑。未进行真实设备效果验证。
+保留 V235 诊断键：liquidglass_optical_diagnostic_235（0 正常，1 位移，2 法线，3 高度，4 原始壁纸，5 纯折射，6 完整合成）。建议先对比模式 2、3、5、6。
+
+恢复正常：su -c 'settings put global liquidglass_optical_diagnostic_235 0'
+查看日志：su -c 'logcat -d -s LiquidGlass235:I LiquidGlass230:I *:S'
+
+注意：此版为可回退的光学实验，并未进行 Gradle 编译、真机性能或视觉验证。

@@ -47,23 +47,28 @@ final class UnifiedGlass230 {
             float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(halfSize-r);
             return r-length(max(q,float2(0.0)))-min(max(q.x,q.y),0.0);
         }
-        // V234: one continuous optical volume, not a separately drawn rim.
-        // The SDF provides a single differentiable shoulder over a substantial
-        // part of the container, including its rounded corners.
+        // V236 experimental C1-continuous superellipse optical surface.
+        // A rounded-rectangle SDF is exact for clipping, but its nearest-edge
+        // gradient has a medial-axis seam (the X visible in V235 diagnostics).
+        // Use a smooth superellipse only for optical height/normal calculation;
+        // the actual container is still clipped by drawRoundRect.
         float surface230(float2 p){
             float2 size=max(bounds.zw-bounds.xy,float2(2.0));
-            float d=max(inside230(p),0.0);
-            float shortSide=min(size.x,size.y);
-            float reach=clamp(shortSide*(0.24+0.20*thickness230),18.0,140.0);
-            float t=clamp(d/reach,0.0,1.0);
-            // Raised cosine: slope is zero at both ends, with no hard facet.
-            float shoulder=0.5-0.5*cos(3.14159265*t);
-            float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/max(size*0.5,float2(1.0));
-            float crown=clamp(1.0-0.12*dot(uv,uv),0.0,1.0);
-            return shoulder*(0.88+0.12*crown);
+            float2 center=(bounds.xy+bounds.zw)*0.5;
+            float2 uv=(p-center)/max(size*0.5,float2(1.0));
+            // A fourth-power norm has continuous first derivatives everywhere,
+            // including on the diagonals and center axes.
+            float radial=pow(pow(abs(uv.x),4.0)+pow(abs(uv.y),4.0),0.25);
+            // Smoothly rise from the perimeter towards the center; avoid a
+            // separate flat plateau and keep finite, gentle interior curvature.
+            float reach=mix(0.94,0.68,clamp(thickness230,0.0,1.0));
+            float t=clamp((1.0-radial)/reach,0.0,1.0);
+            float ramp=t*t*(3.0-2.0*t);
+            float dome=0.10*(1.0-radial*radial);
+            return max(0.0,0.86*ramp+0.14*dome);
         }
         float2 normalSlope230(float2 p){
-            float e=1.5;
+            float e=1.0;
             return float2(surface230(p+float2(e,0.0))-surface230(p-float2(e,0.0)),
                           surface230(p+float2(0.0,e))-surface230(p-float2(0.0,e)))/(2.0*e);
         }
@@ -194,7 +199,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass230","MATERIAL_SHADER_CREATED_234 continuousVolume=true");
+                    Log.i("LiquidGlass230","MATERIAL_SHADER_CREATED_236 smoothSuperellipse=true");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
@@ -214,7 +219,7 @@ final class UnifiedGlass230 {
             if(diagnostic235!=0 && probeLogs235++<24)Log.i("LiquidGlass235",
                 "OPTICAL_STAGE mode="+diagnostic235+" bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix);
-            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_234 dimensions="+rect.width()+"x"+rect.height()+
+            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_236 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             return true;
         }catch(Throwable fail){
