@@ -40,38 +40,29 @@ final class UnifiedGlass230 {
             float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(halfSize-r);
             return r-length(max(q,float2(0.0)))-min(max(q.x,q.y),0.0);
         }
-        // V231: C1-continuous SDF shoulder; one geometric surface for both
-        // transmission and environment response. No independent painted rim.
+        // V232: one rounded-container thickness profile; slope is shared by
+        // transmission, environment sampling and directional rim response.
         float surface230(float2 p){
             float2 size=max(bounds.zw-bounds.xy,float2(2.0));
-            float shortSide=min(size.x,size.y);
             float d=max(inside230(p),0.0);
-            float reach=clamp(shortSide*(0.10+0.11*thickness230),12.0,72.0);
+            float reach=clamp(min(size.x,size.y)*(0.085+0.12*thickness230),9.0,66.0);
             float t=clamp(d/reach,0.0,1.0);
-            // Quintic shoulder avoids the abrupt derivative changes of
-            // multiple independently combined edge masks.
-            float smooth=t*t*t*(t*(t*6.0-15.0)+10.0);
-            float2 u=(p-(bounds.xy+bounds.zw)*0.5)/(size*0.5);
-            float dome=1.0-(0.025+0.045*thickness230)*dot(u,u);
-            return smooth*max(dome,0.3);
+            // Smooth meniscus with zero slope at both ends, no hard rim.
+            float shoulder=t*t*(3.0-2.0*t);
+            return shoulder;
         }
         float2 normalSlope230(float2 p){
-            float stepPx=1.0;
-            float hx=(surface230(p+float2(stepPx,0.0))-surface230(p-float2(stepPx,0.0)))/(2.0*stepPx);
-            float hy=(surface230(p+float2(0.0,stepPx))-surface230(p-float2(0.0,stepPx)))/(2.0*stepPx);
-            return float2(hx,hy);
+            float e=1.25;
+            return float2(surface230(p+float2(e,0.0))-surface230(p-float2(e,0.0)),
+                          surface230(p+float2(0.0,e))-surface230(p-float2(0.0,e)))/(2.0*e);
         }
         float2 warp230(float2 p,float2 slope){
-            float shortSide=min(bounds.z-bounds.x,bounds.w-bounds.y);
-            float d=max(inside230(p),0.0);
-            float reach=clamp(shortSide*(0.10+0.11*thickness230),12.0,72.0);
-            float edge=1.0-smoothstep(0.0,reach,d);
-            float2 raw=slope*shortSide*(0.40+0.30*thickness230)*strength230;
-            // Continuous saturation prevents folding and discontinuous
-            // source-coordinate clipping at high optical strength.
-            float limit=clamp(shortSide*0.055,5.0,16.0);
-            float2 displacement=raw*limit/sqrt(limit*limit+dot(raw,raw));
-            return displacement*(0.22+0.78*edge);
+            float2 size=max(bounds.zw-bounds.xy,float2(2.0));
+            float shortSide=min(size.x,size.y);
+            // Refractive offset follows the same surface slope as reflection.
+            float2 raw=-slope*shortSide*(1.0+1.4*thickness230)*strength230;
+            float limit=clamp(shortSide*0.11,7.0,31.0);
+            return raw*limit/sqrt(limit*limit+dot(raw,raw));
         }
         float2 safe230(float2 p){
             float2 lo=validBounds.xy+float2(2.0);
@@ -112,25 +103,25 @@ final class UnifiedGlass230 {
 
             // Refraction, reflection and glancing highlights share the SAME
             // normal and curvature: they cannot drift out of alignment.
-            float3 n=normalize(float3(-slope*(9.0+4.0*thickness230),1.0));
+            float3 n=normalize(float3(-slope*(17.0+11.0*thickness230),1.0));
             float3 light=normalize(float3(-0.48,-0.58,0.66));
             float grazing=pow(clamp(1.0-n.z,0.0,1.0),0.80);
-            float fresnel=(0.024+0.27*grazing)*environment230*strength230;
+            float fresnel=(0.045+0.65*pow(grazing,0.75))*environment230*strength230;
             float2 envDir=normalize(float2(-n.x-0.31,-n.y-0.20)+float2(0.0001));
-            float2 envP=safe230(p+envDir*(5.0+19.0*environment230));
+            float2 envP=safe230(p+envDir*(10.0+35.0*environment230));
             float3 envRgb=float3(wallpaper.eval(envP).rgb);
             float3 baseRgb=float3(base.rgb);
             float envLum=dot(envRgb,float3(0.2126,0.7152,0.0722));
             float baseLum=dot(baseRgb,float3(0.2126,0.7152,0.0722));
             float contrast=clamp(abs(envLum-baseLum)*2.1,0.0,1.0);
             float highlight=pow(clamp(dot(n,light),0.0,1.0),6.0)*grazing;
-            float materialReflect=clamp(fresnel*(0.70+0.60*contrast),0.0,0.28);
+            float materialReflect=clamp(fresnel*(0.85+0.65*contrast),0.0,0.52);
             float3 color=mix(baseRgb,envRgb,materialReflect);
             // Colored, curvature-dependent response instead of an independent
             // white line / luminous frame painted on top.
-            color+=(1.0-color)*(highlight*(0.055+0.10*contrast)*environment230*strength230);
+            color+=(1.0-color)*(highlight*(0.09+0.14*contrast)*environment230*strength230);
             color*=1.0-(1.0-clamp(dot(n,light),0.0,1.0))*grazing*0.055*environment230*strength230;
-            return half4(half3(clamp(color,0.0,1.0)),base.a);
+            return half4(half3(clamp(color,0.0,1.0)),1.0);
         }
         """;
 
@@ -145,7 +136,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass230","MATERIAL_SHADER_CREATED_231 sdfContinuous=true singlePass=true");
+                    Log.i("LiquidGlass230","MATERIAL_SHADER_CREATED_232 meniscus=true singlePass=true");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
@@ -161,13 +152,13 @@ final class UnifiedGlass230 {
             Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             paint.setShader(shader);
             canvas.drawRoundRect(rect,radius,radius,paint);
-            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_231 dimensions="+rect.width()+"x"+rect.height()+
+            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_232 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             return true;
         }catch(Throwable fail){
             // Never disable the V229 lens.  The caller immediately uses it.
             failed=true;
-            Log.e("LiquidGlass230","MATERIAL_SHADER_FAILED_231 fallback=V229",fail);
+            Log.e("LiquidGlass230","MATERIAL_SHADER_FAILED_232 fallback=V229",fail);
             return false;
         }
     }

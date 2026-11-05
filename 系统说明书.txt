@@ -13,3 +13,5 @@ cd ~/ColorOS-LiquidGlass-V1.0-Source
 git add .
 git commit -m "V1.9.205.231 版本"
 git push origin main
+
+V1.9.205.232：统一曲面光学实验，修改曲面厚度、折射位移、环境采样及最终 alpha。保留旧配置键与稳定回退。尚未真机验证。
