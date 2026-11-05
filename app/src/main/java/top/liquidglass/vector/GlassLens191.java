@@ -165,6 +165,35 @@ final class GlassLens191 {
         "   blurred=mix(blurred,sumB/9.0,half(band));\n" +
         "  }\n" +
         " }\n" +
+        " // V212 probe 8: signed-distance gradient orientation (R=x, G=y, B=gradient magnitude).\n" +
+        " // Finite differences are used for diagnostic only; no dFdx/dFdy.\n" +
+        " if(aaProbe208>7.5 && aaProbe208<8.5){\n" +
+        "  float e=1.0;\n" +
+        "  float2 g=float2(depth(p+float2(e,0.0))-depth(p-float2(e,0.0)),depth(p+float2(0.0,e))-depth(p-float2(0.0,e)))/(2.0*e);\n" +
+        "  return half4(half3(0.5+0.5*g.x,0.5+0.5*g.y,clamp(length(g),0.0,1.0)),1.0);\n" +
+        " }\n" +
+        " // V212 probe 9: height-field normal slope orientation and magnitude.\n" +
+        " if(aaProbe208>8.5 && aaProbe208<9.5){\n" +
+        "  float2 g=normalSlope(p);\n" +
+        "  float m=length(g);\n" +
+        "  float2 unitG=g/max(m,0.0001);\n" +
+        "  return half4(half3(0.5+0.5*unitG.x,0.5+0.5*unitG.y,smoothstep(0.0,0.06,m)),1.0);\n" +
+        " }\n" +
+        " // V212 probe 10: local variation of normalSlope, highlighting kinks in the height field.\n" +
+        " if(aaProbe208>9.5 && aaProbe208<10.5){\n" +
+        "  float2 nx=normalSlope(p+float2(1.0,0.0))-normalSlope(p-float2(1.0,0.0));\n" +
+        "  float2 ny=normalSlope(p+float2(0.0,1.0))-normalSlope(p-float2(0.0,1.0));\n" +
+        "  float k=max(length(nx),length(ny));\n" +
+        "  float t=smoothstep(0.004,0.08,k);\n" +
+        "  return half4(half3(t,0.25*(1.0-t),1.0-t),1.0);\n" +
+        " }\n" +
+        " // V212 probe 11: displacement gradient with symmetric differences.\n" +
+        " if(aaProbe208>10.5 && aaProbe208<11.5){\n" +
+        "  float2 gx=offsetAt(p+float2(1.0,0.0))-offsetAt(p-float2(1.0,0.0));\n" +
+        "  float2 gy=offsetAt(p+float2(0.0,1.0))-offsetAt(p-float2(0.0,1.0));\n" +
+        "  float t=smoothstep(0.1,2.0,max(length(gx),length(gy)));\n" +
+        "  return half4(half3(t,1.0-abs(2.0*t-1.0),1.0-t),1.0);\n" +
+        " }\n" +
         " // V211 probe 6: corner-mask heatmap, white=corner correction domain.\n" +
         " if(aaProbe208>5.5 && aaProbe208<6.5){\n" +
         "  float m=cornerMask211(p);\n" +
@@ -264,7 +293,7 @@ final class GlassLens191 {
         shader.setFloatUniform("diagnostic", (float) diagnostic);
         int aaProbe208=0;
         try { aaProbe208=android.provider.Settings.Global.getInt(owner.getContext().getContentResolver(),"liquidglass_aa_probe_208",0); } catch(Throwable ignored) {}
-        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(7,aaProbe208)));
+        shader.setFloatUniform("aaProbe208", (float)Math.max(0,Math.min(11,aaProbe208)));
         shader.setFloatUniform("style", (float) opticalStyle);
         shader.setFloatUniform("reflectionMode", (float) surfaceMode);
         shader.setFloatUniform("reflectionStrength", Math.max(0f, Math.min(2f, surfaceStrength / 100f)));
