@@ -36,3 +36,10 @@ V1.9.205.250｜Kyant Backdrop 独立引擎源码基线
 - 进入 kyant-backdrop-engine 运行 ./gradlew :backdrop:tasks 进行依赖与构建环境检查（需要网络及相应 Android SDK / JDK）；完整编译与真机验证尚未完成。
 - 上游 LICENSE 为 Apache-2.0，保留版权声明；原模块不因包含上游源码而自动拥有已验证的完整玻璃效果。
 - 下一步是构建独立 Android 测试宿主、确认 Shader 效果，再设计 View/Launcher 桥接层。
+
+V1.9.205.251｜Kyant 原版 Shader View 桥接验证版
+- 新增 KyantOriginalShader251.java：逐字保存 Kyant kmp 的 RoundedRectRefractionShaderString 与 RoundedRectSDF（仅展开 Kotlin 字符串插值）；Apache-2.0 版权与 LICENSE 保留。
+- 新增 KyantViewBridge251.java：Android RuntimeShader + BitmapShader 的独立 View 桥接原型；输入必须是容器本地坐标下的背景 Bitmap。
+- 新增 KyantBridgeTestActivity251.java：高对比网格测试，入口在设置主界面底部。
+- 尚未注入 ColorOS Launcher；原有文件夹、Dock、SystemUI Hook 不变；测试图只验证原版折射 Shader 的 Android View 渲染，未复刻 Compose 的整套光照/色散/模糊合成。
+- 需 Android 13+ / API 33+；未进行 Android SDK 编译及真机测试。
