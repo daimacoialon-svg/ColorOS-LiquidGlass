@@ -72,20 +72,25 @@ final class UnifiedGlass230 {
             return float2(surface230(p+float2(e,0.0))-surface230(p-float2(e,0.0)),
                           surface230(p+float2(0.0,e))-surface230(p-float2(0.0,e)))/(2.0*e);
         }
+        // V239: Convert derivatives from screen pixels to normalized optical slopes.
+        // The V238 derivatives were tiny on large folders and therefore generated
+        // almost no visible wallpaper displacement even at maximum UI strength.
+        float2 opticalSlope239(float2 slope){
+            float2 size=max(bounds.zw-bounds.xy,float2(2.0));
+            float2 normalized=slope*size*0.5;
+            return normalized/(1.0+length(normalized)*0.42);
+        }
         float2 warp230(float2 p,float2 slope){
             float2 size=max(bounds.zw-bounds.xy,float2(2.0));
             float shortSide=min(size.x,size.y);
-            // The normal and thickness are shared by transmission and reflection.
-            float scale=(11.0+13.0*thickness230);
-            float3 n=normalize(float3(-slope*scale,1.0));
-            // Paraxial two-interface approximation with a smoothly varying
-            // optical path; avoids discontinuities from independent edge maps.
-            float eta=1.0/1.47;
-            float2 lateral=(-n.xy/max(n.z,0.35))*(1.0-eta);
-            float opticalDepth=(0.12+0.17*thickness230)*shortSide;
-            float2 displacement=lateral*opticalDepth*strength230;
-            float limit=clamp(shortSide*0.17,9.0,42.0);
-            return displacement*limit/sqrt(limit*limit+dot(displacement,displacement));
+            float2 ns=opticalSlope239(slope);
+            float strength=clamp(strength230,0.0,1.0);
+            // One continuous displacement field, not four independent edge warps.
+            // Smoothly saturate at the configured maximum without a hard cut.
+            float amplitude=min(shortSide*0.115,32.0)*(0.20+0.80*thickness230)*strength;
+            float2 raw=-ns*amplitude;
+            float limit=min(shortSide*0.14,36.0);
+            return raw*limit/sqrt(limit*limit+dot(raw,raw)+0.0001);
         }
         float2 safe230(float2 p){
             float2 lo=validBounds.xy+float2(2.0);
@@ -125,9 +130,9 @@ final class UnifiedGlass230 {
             if(diagnostic235>4.5 && diagnostic235<5.5){
                 return transmission230(q);
             }
-            float3 n=normalize(float3(-slope*(11.0+13.0*thickness230),1.0));
+            float3 n=normalize(float3(-opticalSlope239(slope)*(0.75+0.85*thickness230),1.0));
             float grazing=clamp(1.0-n.z,0.0,1.0);
-            float edgeZone=smoothstep(0.01,0.16,grazing);
+            float edgeZone=smoothstep(0.005,0.22,grazing);
             half4 base=transmission230(q);
             if(quality230>0.5 && edgeZone>0.07){
                 float span=0.58;
@@ -152,16 +157,16 @@ final class UnifiedGlass230 {
             float f0=0.04;
             float fresnel=f0+(1.0-f0)*pow(1.0-cosTheta,5.0);
             float2 envDir=normalize(float2(-n.x-0.23,-n.y-0.17)+float2(0.0001));
-            float envReach=(9.0+33.0*environment230)*strength230;
+            float envReach=(8.0+20.0*environment230)*strength230;
             float3 envA=float3(wallpaper.eval(safe230(p+envDir*envReach)).rgb);
             float3 envB=float3(wallpaper.eval(safe230(p-envDir*envReach*0.55)).rgb);
             float3 envRgb=mix(envA,envB,0.25);
             float3 baseRgb=float3(base.rgb);
-            float reflectWeight=clamp(fresnel*environment230*(0.35+0.65*strength230),0.0,0.65);
+            float reflectWeight=clamp(fresnel*environment230*(0.25+0.75*strength230),0.0,0.24);
             float3 color=mix(baseRgb,envRgb,reflectWeight);
             float3 light=normalize(float3(-0.48,-0.58,0.66));
             float spec=pow(clamp(dot(n,light),0.0,1.0),24.0)*edgeZone;
-            color+=(1.0-color)*spec*0.11*environment230*strength230;
+            color+=(1.0-color)*spec*0.075*environment230*strength230;
             return half4(half3(clamp(color,0.0,1.0)),1.0);
         }
         """;
@@ -185,7 +190,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass230","MATERIAL_SHADER_CREATED_238 continuousSurface=true");
+                    Log.i("LiquidGlass230","MATERIAL_SHADER_CREATED_239 continuousSurface=true");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
@@ -202,14 +207,14 @@ final class UnifiedGlass230 {
             Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             paint.setShader(shader);
             canvas.drawRoundRect(rect,radius,radius,paint);
-            if(routeLogs237++<20)Log.i("LiquidGlass238",
-                "OPTICAL_PIPELINE_238 wallpaper=bound blurred=bound bounds="+rect.toShortString()+
+            if(routeLogs237++<20)Log.i("LiquidGlass239",
+                "OPTICAL_PIPELINE_239 wallpaper=bound blurred=bound bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix+
                 " mode="+diagnostic235+" material=singlePass");
             if(diagnostic235!=0 && probeLogs235++<24)Log.i("LiquidGlass235",
                 "OPTICAL_STAGE mode="+diagnostic235+" bounds="+rect.toShortString()+
                 " valid="+valid.toShortString()+" blurMix="+blurMix);
-            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_238 dimensions="+rect.width()+"x"+rect.height()+
+            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_239 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             return true;
         }catch(Throwable fail){
