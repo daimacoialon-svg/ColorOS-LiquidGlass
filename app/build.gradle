@@ -4,10 +4,10 @@ android {
     compileSdk 35
     defaultConfig {
         applicationId 'top.liquidglass.vector'
-        minSdk 35
+        minSdk 28
         targetSdk 28
-        versionCode 19205217
-        versionName '1.9.205.217'
+        versionCode 19205219
+        versionName '1.9.205.219'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }

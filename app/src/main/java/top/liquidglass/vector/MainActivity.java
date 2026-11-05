@@ -110,7 +110,7 @@ public final class MainActivity extends Activity {
     }
     private String styleLabel186(){
         int style=prefs.getInt("optical_style_186",0);
-        return style==2?"泡泡液态玻璃":style==1?"iOS 27 风格":"自定义 / 旧版";
+        return style==2?"泡泡液态玻璃":style==1?"iOS 27 风格":"自定义参数（统一曲面）";
     }
     private void applyOpticalStyle186(int style){
         SharedPreferences.Editor e=prefs.edit();
@@ -125,7 +125,7 @@ public final class MainActivity extends Activity {
          .putInt("custom_blur_dp",style==2?1:1)
          .putInt("custom_blur_mode",1).commit();
         notifyConfigChanged128();
-        Toast.makeText(this,"已应用风格；独立透镜实验模式 4 将在配置刷新后生效",Toast.LENGTH_LONG).show();
+        Toast.makeText(this,"已应用二维曲面透镜风格，Launcher 将实时刷新玻璃参数",Toast.LENGTH_LONG).show();
         recreate();
     }
     // V193: opening, backgrounding and closing the settings UI are read-only.
@@ -163,6 +163,22 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle saved){
         super.onCreate(saved);prefs=getSharedPreferences("glass",0);
         ConfigMigration194.reconcileOnce(this,prefs);
+        // V219: disable retired visual overlays and legacy 2D displacement on
+        // first upgrade. Keep normal lens, folder, Dock, icon and blur settings.
+        if(!prefs.getBoolean("legacy_probe_cleanup_219",false)){
+            prefs.edit().putBoolean("diagnostics",false)
+                .putBoolean("wallpaper_compare",false).putInt("probe_mode",0)
+                .putBoolean("real_refraction",false).putInt("refraction_percent",0)
+                .putBoolean("clear_refraction",false)
+                .putBoolean("native_blur_experiment",false)
+                .putBoolean("native_alpha_probe",false)
+                .putInt("dynamic_sheen_mode",0).commit();
+            notifyConfigChanged128();
+            LegacyDiagnostics219.cleanupAsync(this,(success,reason)->{
+                if(success)notifyConfigChanged128();
+                else android.util.Log.w("LiquidGlass219","ROOT_DIAGNOSTICS_CLEANUP_FAILED "+reason);
+            });
+        }
         // V217: persist first-run defaults before publishing. A saved explicit OFF
         // remains authoritative across app restarts, Launcher restarts and reboot.
         SharedPreferences.Editor firstDefaults217=prefs.edit();
@@ -181,7 +197,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.217  ·  透镜恢复与图标内缘光影",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.219  ·  单路曲面透镜与图标内缘平滑过渡",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -209,7 +225,7 @@ public final class MainActivity extends Activity {
             Toast.makeText(this,"已应用统一透镜推荐参数；Dock 开关保持原状态",Toast.LENGTH_LONG).show();
             recreate();
         });
-        TextView presetHint=text("推荐参数是测试起点，不代表已达到 iOS 目标。旧二维折射默认关闭，避免与统一透镜叠加。",12,false);
+        TextView presetHint=text("推荐参数是测试起点，不代表已达到 iOS 目标。旧二维折射默认关闭；正式路径始终由统一曲面透镜负责。",12,false);
         current.addView(presetHint);
         
         toggle("启用 Dock 玻璃（默认开启，手动关闭后保持关闭）","dock_glass_204",true);
@@ -217,8 +233,26 @@ public final class MainActivity extends Activity {
 
         section("二维曲面透镜","统一曲面负责文件夹和 Dock 的背景折射与厚度。反射、高光和底色分别调整，避免把不同效果混在同一滑块。");
         slider("二维曲面折射强度 (%)","nonlinear_107",65,0,100);
-        TextView unifiedInfo162=text("0% 为无统一曲面位移；100% 为最强。建议先用 65% 比较 Dock 与各种文件夹。该滑块不控制背景模糊或底色透明度。",12,false);
+        TextView unifiedInfo162=text("0% 为无曲面位移，100% 最强。文件夹和 Dock 共用同一张二维高度场，不叠加旧版折射。",12,false);
         current.addView(unifiedInfo162);
+        final LinearLayout advancedLens219=column();
+        final Button lensDetails219=new Button(this);
+        lensDetails219.setText("展开曲面几何高级参数");lensDetails219.setAllCaps(false);
+        current.addView(lensDetails219);current.addView(advancedLens219);
+        advancedLens219.setVisibility(View.GONE);
+        final LinearLayout beforeAdvanced219=current;
+        current=advancedLens219;
+        slider("边缘曲面厚度 (%)","thickness_107",55,0,100);
+        slider("内区曲率过渡 (%)","interior_107",20,0,100);
+        slider("中心聚焦强度 (%)","focus_107",45,0,100);
+        slider("曲面局部反射比例 (%)","reflection_107",30,0,100);
+        current.addView(text("这四项与主折射强度分别控制透镜边缘宽度、中心到边缘的曲率、内部聚焦和环境反射的局部比例；均已接入同一个 Shader。",12,false));
+        current=beforeAdvanced219;
+        lensDetails219.setOnClickListener(clicked->{
+            boolean open=advancedLens219.getVisibility()!=View.VISIBLE;
+            advancedLens219.setVisibility(open?View.VISIBLE:View.GONE);
+            lensDetails219.setText(open?"收起曲面几何高级参数":"展开曲面几何高级参数");
+        });
         section("玻璃外观","背景模糊和底色独立于折射；应用图标不会被自定义壁纸模糊处理。");
         slider("玻璃底色不透明度 (%)","glass_tint_opacity",18,0,100);
         microBlurSlider95();
@@ -265,8 +299,8 @@ public final class MainActivity extends Activity {
         });
         slider("底色色调强度 (%)","tint_strength",30,0,90);
         TextView tintInfo=text("底色色调强度为 0% 时不添加颜色；原生模式不添加色调。颜色变化需在玻璃底色不透明度和当前渲染路径允许的情况下观察。",12,false);current.addView(tintInfo);
-        section("应用图标内缘光影","参考图标的真实轮廓，沿左上内缘投射柔和光亮，右下内缘叠加微弱阴影；保留原图标内容和点击区域。首次使用默认开启，手动关闭会保持关闭。");
-        toggle("应用图标内缘光影（高光 + 阴影）","icon_optics_204",true);
+        section("应用图标内缘平滑光影","通过真实轮廓距离场生成向中心平滑衰减的左上高光和右下弱阴影，不再使用浮雕式描边；保留原图标内容与点击区域。首次默认开启，手动关闭保持关闭。");
+        toggle("应用图标渐隐式内缘光影（非浮雕描边）","icon_optics_204",true);
         section("旧版兼容与实验","旧二维壁纸折射仅用于对照测试。默认折叠，避免误以为它是第二套必需的光学系统。");
         final LinearLayout legacyContainer=column();
         final Button legacyButton=new Button(this);
@@ -286,7 +320,14 @@ public final class MainActivity extends Activity {
             legacyContainer.setVisibility(show?View.VISIBLE:View.GONE);
             legacyButton.setText(show?"收起旧版实验参数":"展开旧版二维折射实验");
         });
-        section("维护与状态","Root 脚本更新、同步状态和诊断日志。");
+        section("维护与状态","V219 首次打开会自动关闭遗留的全局可视诊断开关并备份原值；之后可手动再次清理。不会复位正常折射、模糊与 Dock 参数。");
+        action("一键关闭所有旧版绘制和可视诊断模式",()->{
+            LegacyDiagnostics219.cleanupAsync(this,(success,reason)->{
+                if(success)notifyConfigChanged128();
+                Toast.makeText(this,success?"历史可视诊断已关闭，备份位于 /data/local/tmp/liquidglass_legacy_globals_before_219.txt":
+                    "关闭失败："+reason,Toast.LENGTH_LONG).show();
+            });
+        });
         action("退出折射诊断模式（恢复正常透镜）",()->{
             // Settings.Global requires privileged write access. Use the existing
             // KernelSU root path instead of calling putInt as an ordinary app.
@@ -319,7 +360,7 @@ public final class MainActivity extends Activity {
             rootStatusHandler.removeCallbacks(rootStatusPoll);
             rootStatusHandler.postDelayed(rootStatusPoll,1000);
         }));
-        TextView serviceHint=text("V217：请点击上方更新 Root 辅助脚本并重启一次，使文件夹玻璃和 Dock 在开机后恢复保存的状态。模式 18 的白底黑线网格为独立诊断 Shader，其他模式继续使用 V215 透镜。拖动滑块松手后应用配置。",12,false);current.addView(serviceHint);
+        TextView serviceHint=text("V219：更新 Root 辅助脚本后重启一次，可恢复 0.1dp 级模糊配置的开机同步。正式玻璃走轻量二维曲面 Shader 单次合成；旧的叠加描边和可视诊断已与正式绘制隔离。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
         setContentView(scroll);

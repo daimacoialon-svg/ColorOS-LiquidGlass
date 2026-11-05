@@ -33,7 +33,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // V173 clean optical renderer. 1=new independent path; 0=V172 fallback.
     private static int opticalPipeline173(View view) {
         try { return android.provider.Settings.Global.getInt(view.getContext().getContentResolver(),
-                "liquidglass_optical_pipeline_173", 1) == 0 ? 0 : 1; }
+                "liquidglass_legacy_renderer_219", 0) == 1 ? 0 : 1; }
         catch(Throwable ignored) { return 1; }
     }
     private static int newOpticalLog173=0;
@@ -1017,7 +1017,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             // V127: unchanged snapshots must not be reparsed on every restore/draw.
             if(configEverLoaded && raw.equals(lastBootSnapshot))return false;
             String[] v=raw.split("\\|",-1);
-            if(v.length!=16 && v.length!=20 && v.length!=21 && v.length!=22 && v.length!=25 && v.length!=27 && v.length!=32 && v.length!=33){log("BOOT_SNAPSHOT_REJECT reason=field_count count="+v.length);return false;}
+            if(v.length!=16 && v.length!=20 && v.length!=21 && v.length!=22 && v.length!=25 && v.length!=27 && v.length!=32 && v.length!=33 && v.length!=34){log("BOOT_SNAPSHOT_REJECT reason=field_count count="+v.length);return false;}
             // Parse all fields first: never partially apply a corrupt snapshot.
             // V194: validate every field before mutating any renderer state.
             int[] all=new int[v.length-1];
@@ -1027,7 +1027,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             boolean previousRefraction=REFRACTION_ENABLED;
             glassEnabled=x[0]==1;glassAlpha=x[1];tintMode=x[2];tintStrength=x[3];
             highlightEnabled=x[4]==1;diagnostics=x[5]==1;highlightStrength=x[6];
-            probeMode=x[7];highlightWidth=x[8];directionalLight=x[9]==1;
+            probeMode=0;highlightWidth=x[8];directionalLight=x[9]==1;
             nativeBlurExperiment=0;blurRadiusPercent=x[11];
             nativeAlphaProbe=false;wallpaperCompare=x[13]==1;REFRACTION_ENABLED=x[14]==1;
             if(v.length>=20){customBlurDp=clampInt(Integer.parseInt(v[16]),0,40);folderMicroBlurDp95=customBlurDp;refractionPercent=clampInt(Integer.parseInt(v[17]),0,100);glassTintOpacity=clampInt(Integer.parseInt(v[18]),0,100);customBlurMode=clampInt(Integer.parseInt(v[19]),0,2);}
@@ -1038,6 +1038,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
             if(v.length>=27){iconOptics204="1".equals(v[25]);dockGlass204="1".equals(v[26]);}
             // V122: optical parameters must reach Launcher via the root snapshot, not the blocked provider.
             if(v.length>=32){nonlinear107=clampInt(x[26],0,100);thickness107=clampInt(x[27],0,100);interior107=clampInt(x[28],0,100);focus107=clampInt(x[29],0,100);reflection107=clampInt(x[30],0,100);}
+            // V219: 0.1 dp blur survives Launcher restart and root publications.
+            if(v.length>=34)folderMicroBlurDp95=clampInt(x[32],0,400)/10f;
             // V194: optical style was previously Provider-only; now in root snapshot.
             opticalStyle186=v.length>=33?clampInt(x[31],0,2):0;
             syncCleanEdgeLighting177();
@@ -1095,7 +1097,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 directionalLight=c.getInt(9)==1;
                 int radiusIndex=c.getColumnIndex("blur_radius_percent");
                 blurRadiusPercent=radiusIndex>=0 ? Math.max(10,Math.min(100,c.getInt(radiusIndex))) : 100;
-                probeMode=Math.max(0,Math.min(3,c.getInt(7)));
+                probeMode=0; // V219: retired debug renderer cannot override production
                 int expIndex=c.getColumnIndex("native_blur_experiment");
                 nativeBlurExperiment=0; // OEM material switch is no longer forced
                 int alphaProbeIndex=c.getColumnIndex("native_alpha_probe");
@@ -3339,7 +3341,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static void syncCleanEdgeLighting177(){
         // V190: keep the edge-renderer path stable while switching ambient mode.
         // The new reflection shader independently applies surfaceMode185=0.
-        highlightEnabled=surfaceStrength194>0;
+        highlightEnabled=surfaceMode194>0 && surfaceStrength194>0;
         highlightStrength=clampInt(Math.round(surfaceStrength194*0.5f),0,100);
         highlightWidth=clampInt(Math.round(1f+(surfaceSoftness194-50f)*4f/150f),1,5);
         directionalLight=surfaceMode194>=2;
@@ -4752,6 +4754,82 @@ public final class HookEntry implements IXposedHookLoadPackage {
         int n=RESIDUAL_LOGS_120.getAndIncrement();
         if(n<80 || (n<800 && n%100==0)) log("RESIDUAL_ISOLATION_120 stage="+stage+" "+detail);
     }
+    // V219: clean one-pass optics path. No dependency on the enormous V93/V179
+    // experiment shader, no opaque direct bitmap painted underneath the lens,
+    // no legacy surface rims, and no old visual diagnostic modes.
+    private static int CLEAN_DRAW_LOG_219=0;
+    private static void drawCleanLens219(View view,Canvas canvas,RectF rect,float radius){
+        if(!glassEnabled || rect.width()<8f || rect.height()<8f)return;
+        scheduleReferenceLoad(view);
+        android.graphics.Bitmap frame=REFRACTION_FRAME;
+        boolean shaderDrawn=false;
+        if(frame!=null && !frame.isRecycled()){
+            android.util.DisplayMetrics display=view.getResources().getDisplayMetrics();
+            float sw=display.widthPixels,sh=display.heightPixels;
+            if(sw>0f && sh>0f && frame.getWidth()>0 && frame.getHeight()>0){
+                float[] pos=dynamicScreenPosition(view,dynamicState(view));
+                float left=pos[0]+rect.left,top=pos[1]+rect.top;
+                float sx=sw/frame.getWidth(),sy=sh/frame.getHeight();
+                android.graphics.BitmapShader wallpaper=new android.graphics.BitmapShader(frame,
+                    android.graphics.Shader.TileMode.DECAL,android.graphics.Shader.TileMode.DECAL);
+                Matrix m=new Matrix();
+                m.setValues(new float[]{sx,0f,rect.left-left,0f,sy,rect.top-top,0f,0f,1f});
+                wallpaper.setLocalMatrix(m);
+                float blurDp=customBlurMode==1?Math.max(0f,folderMicroBlurDp95):0f;
+                float blurPx=blurDp*display.density;
+                float blurMix=blurPx<=1f?0f:Math.min(1f,(blurPx-1f)/3f);
+                android.graphics.Bitmap filtered=blurMix>0f?preblur101(frame,blurPx):frame;
+                if(filtered==null || filtered.isRecycled())filtered=frame;
+                android.graphics.BitmapShader blurred=new android.graphics.BitmapShader(filtered,
+                    android.graphics.Shader.TileMode.DECAL,android.graphics.Shader.TileMode.DECAL);
+                Matrix bm=new Matrix();
+                bm.setValues(new float[]{sx*frame.getWidth()/filtered.getWidth(),0f,rect.left-left,
+                    0f,sy*frame.getHeight()/filtered.getHeight(),rect.top-top,0f,0f,1f});
+                blurred.setLocalMatrix(bm);
+                RectF valid=new RectF(rect.left-left,rect.top-top,
+                    rect.left-left+sw,rect.top-top+sh);
+                try{
+                    GlassLens191.draw(view,canvas,rect,radius,wallpaper,blurred,valid,
+                        nonlinear107/100f,blurMix,0,surfaceMode194>0,
+                        Math.round(surfaceStrength194*0.5f),surfaceMode194,
+                        surfaceStrength194,surfaceSoftness194,opticalStyle186,
+                        thickness107,interior107,focus107,reflection107);
+                    shaderDrawn=true;
+                    if(CLEAN_DRAW_LOG_219++<48)log("CLEAN_LENS_219 shader=191 singlePass=true"+
+                        " container="+(view.getBackground() instanceof DockBackground204?"DOCK":"FOLDER")+
+                        " lens="+nonlinear107+" blurTenths="+Math.round(folderMicroBlurDp95*10f)+
+                        " surface="+surfaceMode194+","+surfaceStrength194+","+surfaceSoftness194+
+                        " rect="+rect.toShortString());
+                }catch(Throwable t){
+                    if(CLEAN_DRAW_LOG_219++<48)log("CLEAN_LENS_219 shader=FAILED fallback=CROP reason="+
+                        t.getClass().getSimpleName()+" detail="+String.valueOf(t.getMessage()));
+                }
+                if(!shaderDrawn){
+                    // Graceful isolated fallback; never superimpose raw wallpaper on the lens.
+                    Paint fallback=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+                    fallback.setShader(blurMix>0f?blurred:wallpaper);
+                    canvas.drawRoundRect(rect,radius,radius,fallback);
+                }
+            }
+        }else if(CLEAN_DRAW_LOG_219++<48){
+            log("CLEAN_LENS_219 source=NOT_READY fallback=TINT_ONLY");
+        }
+        // Exactly one color/tint compositor after the refracted source.
+        if(glassTintOpacity>0){
+            Paint tint=new Paint(Paint.ANTI_ALIAS_FLAG);
+            int color=tintColor();
+            tint.setColor(Color.argb(Math.round(255f*glassTintOpacity/100f),
+                Color.red(color),Color.green(color),Color.blue(color)));
+            canvas.drawRoundRect(rect,radius,radius,tint);
+        }
+        if(tintMode!=0 && tintStrength>0 && glassTintOpacity>0){
+            Paint color=new Paint(Paint.ANTI_ALIAS_FLAG);
+            int tint=tintColor();
+            color.setColor(Color.argb(Math.round(255f*0.72f*tintStrength/90f*glassTintOpacity/100f),
+                Color.red(tint),Color.green(tint),Color.blue(tint)));
+            canvas.drawRoundRect(rect,radius,radius,color);
+        }
+    }
     private static void drawReferenceRefraction(View view,Canvas canvas,RectF rect,float radius) {
         final int pipeline173=opticalPipeline173(view);
         final int residualMode120=residualIsolation120(view);
@@ -4766,6 +4844,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
             " refractionEnabled="+REFRACTION_ENABLED+" frameReady="+(REFRACTION_FRAME!=null && !REFRACTION_FRAME.isRecycled())+
             " hardware="+canvas.isHardwareAccelerated());
         if(rect.width()<80 || rect.height()<80){lensTrace116("RETURN_SIZE","rect="+rect);return;}
+        if(pipeline173==1){
+            drawCleanLens219(view,canvas,rect,radius);
+            return;
+        }
         scheduleReferenceLoad(view);
         android.graphics.Bitmap frame=REFRACTION_FRAME;
         if(frame==null||frame.isRecycled()){
@@ -5766,7 +5848,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                                     if(activeCurvature180==4){
                                                         GlassLens191.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
                                                             valid173,overall173,blend101,opticalDiagnostic173,highlightEnabled,highlightStrength,
-                                                            surfaceMode194,surfaceStrength194,surfaceSoftness194,opticalStyle186);
+                                                            surfaceMode194,surfaceStrength194,surfaceSoftness194,opticalStyle186,
+                                                            thickness107,interior107,focus107,reflection107);
                                                     } else {
                                                     GlassLens173.draw(view,canvas,rect,contourRadius,wallpaper93,blurredWallpaper101,
                                                         valid173,overall173,blend101,opticalDiagnostic173,opticalSampling173,
@@ -6223,6 +6306,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
     }
     private static int glass123GateLogs=0;
     private static void drawFolderIconFusion(View v, Canvas canvas, boolean edgeOnly) {
+        // V219: no second post-children edge or rim on the same folder.
+        if(edgeOnly && opticalPipeline173(v)==1)return;
         long[] fusion1761=DRAW_CONTEXT_1761.get();
         if(fusion1761!=null)fusion1761[edgeOnly?4:3]++;
         drawTrace1761("FUSION_ENTRY",v,canvas,"edge="+edgeOnly+
@@ -6322,7 +6407,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     DynamicRefraction animation=dynamicState(v);
                     envelope=1.0f; // keep the native outline static; motion sheen lives in AGSL only
                 }
-                if(edgeOnly || refractionPathMode169()!=2)drawUnifiedMaterial(canvas,mask,edgeOnly,envelope);
+                if(opticalPipeline173(v)==0 && (edgeOnly || refractionPathMode169()!=2))
+                    drawUnifiedMaterial(canvas,mask,edgeOnly,envelope);
                 // V114: canvas has already been translated to rect.left/top.
                 // The diagnostic must use the SAME local geometry as blurShapeMask and
                 // drawUnifiedMaterial, rather than adding the folder origin twice.
@@ -6919,6 +7005,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
         }
     }
     private static void drawMaterialOnNativeCanvas(GradientDrawable drawable, Canvas canvas) {
+        // V219: OEM GradientDrawable should remain native: clean FolderIcon
+        // compositor owns all module tint and optical layers.
+        if(launcherContext==null)return;
+        try{if(android.provider.Settings.Global.getInt(launcherContext.getContentResolver(),
+            "liquidglass_legacy_renderer_219",0)!=1)return;}catch(Throwable ignored){return;}
         if(Boolean.TRUE.equals(MASK_RENDERING.get()) || !glassEnabled || probeMode==1)return;
         boolean tint=tintMode!=0 && tintStrength>0 && probeMode!=2;
         boolean shine=(highlightEnabled && highlightStrength>0 && probeMode!=3)||probeMode==2;
@@ -7779,7 +7870,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         app.registerReceiver(new android.content.BroadcastReceiver(){
                             @Override public void onReceive(android.content.Context c,android.content.Intent i){
                                 String direct=i.getStringExtra("lg_snapshot_203");
-                                if(direct!=null && direct.matches("LG1(\\|-?[0-9]+){32}")){
+                                if(direct!=null && direct.matches("LG1(\\|-?[0-9]+){33}")){
                                     latestDirectSnapshot203=direct;
                                     boolean applied=applySnapshot203(direct,"UI_DIRECT");
                                     log("CONFIG_203_DIRECT_RECEIVED applied="+applied);
@@ -8249,63 +8340,123 @@ public final class HookEntry implements IXposedHookLoadPackage {
             return null;
         }finally{if(bitmap!=null)bitmap.recycle();}
     }
-    // V217: cache shaders per icon view. All gradients are recomputed only when
-    // the drawable's geometry changes, not on every launcher redraw frame.
-    // V220: soft inset optics. Repeated strokes are clipped to the real alpha silhouette;
-    // their progressively decreasing alpha forms a genuine inward spatial falloff.
-    private static final class IconOpticsBrush217 {
-        final Paint ambient=new Paint(Paint.ANTI_ALIAS_FLAG);
-        final Paint innerLight=new Paint(Paint.ANTI_ALIAS_FLAG);
-        final Paint innerShade=new Paint(Paint.ANTI_ALIAS_FLAG);
-        float left=Float.NaN,top=Float.NaN,right=Float.NaN,bottom=Float.NaN,density=Float.NaN;
-        float width;
-        void update(RectF r,float dp){
-            if(left==r.left && top==r.top && right==r.right && bottom==r.bottom && density==dp)return;
-            left=r.left;top=r.top;right=r.right;bottom=r.bottom;density=dp;
-            width=Math.min(Math.min(r.width(),r.height())*.20f,10.0f*dp);
-            ambient.setStyle(Paint.Style.FILL);
-            ambient.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x08FFFFFF,0x03FFFFFF,0x00000000,0x07000913},
-                new float[]{0f,.28f,.65f,1f},android.graphics.Shader.TileMode.CLAMP));
-            innerLight.setStyle(Paint.Style.STROKE);
-            innerLight.setStrokeJoin(Paint.Join.ROUND);innerLight.setStrokeCap(Paint.Cap.ROUND);
-            innerLight.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x48FFFFFF,0x2AFFFFFF,0x07FFFFFF,0x00FFFFFF},
-                new float[]{0f,.26f,.62f,1f},android.graphics.Shader.TileMode.CLAMP));
-            innerShade.setStyle(Paint.Style.STROKE);
-            innerShade.setStrokeJoin(Paint.Join.ROUND);innerShade.setStrokeCap(Paint.Cap.ROUND);
-            innerShade.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x00000812,0x00000812,0x08000812,0x30000812},
-                new float[]{0f,.4f,.72f,1f},android.graphics.Shader.TileMode.CLAMP));
+    // V219: generate a contour-distance optical layer once per icon geometry.
+    // In contrast to a clipped STROKE (which looks like a raised bezel), the
+    // highlight actually decays towards the middle of the icon. The field uses
+    // the measured alpha silhouette, not just a guessed rounded-square rect.
+    private static final class IconOpticsField219 {
+        Drawable source;
+        android.graphics.Bitmap layer;
+        int width,height;
+        float density;
+        float originX,originY;
+        boolean matches(Drawable d,int w,int h,float dp,float x,float y){
+            return source==d && layer!=null && !layer.isRecycled() &&
+                width==w && height==h && density==dp && originX==x && originY==y;
         }
     }
-    private static final java.util.WeakHashMap<View,IconOpticsBrush217> ICON_BRUSHES_217=new java.util.WeakHashMap<>();
-    private static void drawIconInnerOptics217(View v,Canvas canvas,android.graphics.Path silhouette,RectF r,float density){
-        if(silhouette==null || silhouette.isEmpty())return;
-        IconOpticsBrush217 brushes;
-        synchronized(ICON_BRUSHES_217){
-            brushes=ICON_BRUSHES_217.get(v);
-            if(brushes==null){brushes=new IconOpticsBrush217();ICON_BRUSHES_217.put(v,brushes);}
+    private static final java.util.WeakHashMap<View,IconOpticsField219> ICON_FIELDS_219=new java.util.WeakHashMap<>();
+    private static int ICON_FIELD_LOGS_219=0;
+    private static void drawIconInnerOptics219(View owner,Canvas canvas,Path silhouette,
+            float left,float top,int width,int height,float density,Drawable source){
+        if(silhouette==null || silhouette.isEmpty() || width<10 || height<10 ||
+                width>512 || height>512)return;
+        IconOpticsField219 field;
+        synchronized(ICON_FIELDS_219){
+            field=ICON_FIELDS_219.get(owner);
+            if(field==null){field=new IconOpticsField219();ICON_FIELDS_219.put(owner,field);}
         }
-        brushes.update(r,density);
-        int saved=canvas.save();
-        try{
-            canvas.clipPath(silhouette);
-            canvas.drawPath(silhouette,brushes.ambient);
-            // Wide translucent strokes spread light inward. Narrow layers have low
-            // alpha, eliminating the bright, hard outer contour of V219.
-            for(int i=0;i<5;i++){
-                float fraction=(i+1f)/5f;
-                float falloff=(1f-fraction);
-                float stroke=brushes.width*(1.0f-fraction*.76f)*2f;
-                brushes.innerLight.setStrokeWidth(stroke);
-                brushes.innerShade.setStrokeWidth(stroke);
-                brushes.innerLight.setAlpha(Math.round(45f*falloff*falloff+3f));
-                brushes.innerShade.setAlpha(Math.round(38f*falloff*falloff+2f));
-                canvas.drawPath(silhouette,brushes.innerLight);
-                canvas.drawPath(silhouette,brushes.innerShade);
+        synchronized(field){
+            if(!field.matches(source,width,height,density,left,top)){
+                android.graphics.Bitmap mask=null;
+                try{
+                    mask=android.graphics.Bitmap.createBitmap(width,height,
+                        android.graphics.Bitmap.Config.ARGB_8888);
+                    Canvas mc=new Canvas(mask);
+                    mc.translate(-left,-top);
+                    Paint fill=new Paint(Paint.ANTI_ALIAS_FLAG);
+                    fill.setColor(Color.WHITE);
+                    mc.drawPath(silhouette,fill);
+                    int n=width*height;
+                    int[] alpha=new int[n];
+                    mask.getPixels(alpha,0,width,0,0,width,height);
+                    // Chamfer distance to transparency. Two linear passes are
+                    // enough at icon resolution, with no per-frame blur or strokes.
+                    float[] dist=new float[n];
+                    final float far=width+height+10f,diagonal=1.41421356f;
+                    for(int y=0;y<height;y++)for(int x=0;x<width;x++){
+                        int k=y*width+x;
+                        dist[k]=((alpha[k]>>>24)<5)?0f:
+                            (x==0||y==0||x==width-1||y==height-1?1f:far);
+                    }
+                    for(int y=0;y<height;y++)for(int x=0;x<width;x++){
+                        int k=y*width+x;
+                        if(dist[k]==0f)continue;
+                        if(x>0)dist[k]=Math.min(dist[k],dist[k-1]+1f);
+                        if(y>0){
+                            dist[k]=Math.min(dist[k],dist[k-width]+1f);
+                            if(x>0)dist[k]=Math.min(dist[k],dist[k-width-1]+diagonal);
+                            if(x+1<width)dist[k]=Math.min(dist[k],dist[k-width+1]+diagonal);
+                        }
+                    }
+                    for(int y=height-1;y>=0;y--)for(int x=width-1;x>=0;x--){
+                        int k=y*width+x;
+                        if(dist[k]==0f)continue;
+                        if(x+1<width)dist[k]=Math.min(dist[k],dist[k+1]+1f);
+                        if(y+1<height){
+                            dist[k]=Math.min(dist[k],dist[k+width]+1f);
+                            if(x>0)dist[k]=Math.min(dist[k],dist[k+width-1]+diagonal);
+                            if(x+1<width)dist[k]=Math.min(dist[k],dist[k+width+1]+diagonal);
+                        }
+                    }
+                    int[] optical=new int[n];
+                    float fadePx=Math.max(2f,Math.min(width,height)*0.135f);
+                    for(int y=0;y<height;y++)for(int x=0;x<width;x++){
+                        int k=y*width+x;
+                        float coverage=(alpha[k]>>>24)/255f;
+                        if(coverage<=0.01f)continue;
+                        float depth=Math.max(0f,dist[k]-0.5f);
+                        // Smooth monotonic decay: no abrupt inner outline.
+                        float u=depth/fadePx;
+                        float fade=(float)Math.exp(-1.38f*u*u);
+                        float dx=dist[y*width+Math.min(width-1,x+1)]-
+                            dist[y*width+Math.max(0,x-1)];
+                        float dy=dist[Math.min(height-1,y+1)*width+x]-
+                            dist[Math.max(0,y-1)*width+x];
+                        float inv=1f/(float)Math.sqrt(dx*dx+dy*dy+0.0001f);
+                        // Distance grows inwards, so the outward normal is -grad.
+                        float light=Math.max(0f,(dx*0.58f+dy*0.81f)*inv);
+                        float shade=Math.max(0f,(-dx*0.58f-dy*0.81f)*inv);
+                        float bright=fade*coverage*(4f+42f*light*light);
+                        float dark=fade*coverage*(17f*shade*shade);
+                        int a;
+                        if(bright>=dark){
+                            a=Math.min(255,Math.round(bright));
+                            optical[k]=(a<<24)|0x00F6FAFF;
+                        }else{
+                            a=Math.min(255,Math.round(dark));
+                            optical[k]=(a<<24)|0x00081930;
+                        }
+                    }
+                    android.graphics.Bitmap layer=android.graphics.Bitmap.createBitmap(width,height,
+                        android.graphics.Bitmap.Config.ARGB_8888);
+                    layer.setPixels(optical,0,width,0,0,width,height);
+                    field.source=source;
+                    field.width=width;field.height=height;field.density=density;
+                    field.originX=left;field.originY=top;
+                    field.layer=layer;
+                    if(diagnostics && ICON_FIELD_LOGS_219++<24)
+                        log("ICON_GRADIENT_219 built="+width+"x"+height+
+                            " fadePx="+fadePx+" source="+source.getClass().getSimpleName());
+                }catch(Throwable t){
+                    if(diagnostics && ICON_FIELD_LOGS_219++<24)
+                        log("ICON_GRADIENT_219 failed="+t.getClass().getSimpleName());
+                    return;
+                }finally{if(mask!=null)mask.recycle();}
             }
-        }finally{canvas.restoreToCount(saved);}
+            Paint p=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
+            canvas.drawBitmap(field.layer,left,top,p);
+        }
     }
     private static void drawIconEdge205(android.widget.TextView v,Canvas c){
         if(!iconOptics204 || !v.isShown() || v.getWidth()<=0 || v.getHeight()<=0)return;
@@ -8372,7 +8523,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 mapped.addRoundRect(r,corner,corner,android.graphics.Path.Direction.CW);
             }
         }
-        drawIconInnerOptics217(v,c,mapped,r,density);
+        drawIconInnerOptics219(v,c,mapped,left,top,Math.round(w),Math.round(h),density,d);
     }
     private static void hookIconOptics205(ClassLoader loader){
         String[] candidates={"com.android.launcher3.BubbleTextView",
@@ -8420,21 +8571,23 @@ public final class HookEntry implements IXposedHookLoadPackage {
             hookLauncherOptics204(p.classLoader);
             hookIconOptics205(p.classLoader);
             hookWallpaperOffsetRequests();
-            hookNativeDrawableDraw();
+            // V219: retired native GradientDrawable hook could paint another glass layer.
+            // hookNativeDrawableDraw();
             // V1.9.18: render from the confirmed preview drawBackground entry, not a nonexistent LayerBlurDrawable.draw override.
             Class<?> folderClass = find("com.android.launcher3.folder.Folder", p.classLoader);
             hook(folderClass, "onAttachedToWindow", new Class<?>[0], "Folder", false);
             hookDynamicFolderLifecycle(folderClass);
             hook(find("com.android.launcher3.folder.FolderIcon", p.classLoader), "dispatchDraw", new Class<?>[]{Canvas.class}, "FolderIcon", true);
-            hookTrackedFolderNativeBlur(p.classLoader);
+            // V219: no legacy hook may force-skip OEM native blur in production.
+            // hookTrackedFolderNativeBlur(p.classLoader);
             hookFolderIconCanvasFusion(p.classLoader);
-            hookFolderDrawChain165(p.classLoader);
-            probeBlurDrawImplementation(p.classLoader);
+            // hookFolderDrawChain165(p.classLoader); // obsolete read-only draw instrumentation
+            // probeBlurDrawImplementation(p.classLoader); // obsolete drawable instrumentation
             hookPreview(p.classLoader);
-            traceBlurMethods(p.classLoader);
-            hookFolderConditions(p.classLoader);
-            hookDecisionChain(p.classLoader);
-            hookNativeBlurConditions(p.classLoader);
+            // traceBlurMethods(p.classLoader); // obsolete method catalog
+            // hookFolderConditions(p.classLoader); // obsolete blur diagnostics
+            // hookDecisionChain(p.classLoader); // obsolete blur diagnostics
+            // hookNativeBlurConditions(p.classLoader); // historical OEM condition override
         }
         log("V1.9.21 NATIVE_CONTOUR_ALIGNMENT_READY package=" + p.packageName + " installed=" + installed + " failed=" + failed);
     }

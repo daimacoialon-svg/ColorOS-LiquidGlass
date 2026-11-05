@@ -36,7 +36,7 @@ final class ConfigMigration194 {
             if(raw==null||!raw.startsWith("LG1|")){Log.i(TAG,"MIGRATION_194 stage=WAIT_SNAPSHOT");return;}
             String[] parts=raw.split("\\|",-1);
             // Older runtime snapshots may be 31 fields, V194 has 32.
-            if(parts.length!=32 && parts.length!=33){Log.w(TAG,"MIGRATION_194 stage=REJECT_FIELDS count="+parts.length);return;}
+            if(parts.length!=32 && parts.length!=33 && parts.length!=34){Log.w(TAG,"MIGRATION_194 stage=REJECT_FIELDS count="+parts.length);return;}
             int[] v=new int[parts.length-1];
             for(int i=0;i<v.length;i++)v[i]=Integer.parseInt(parts[i+1]);
             if(v[0]!=0&&v[0]!=1)return;
@@ -49,7 +49,7 @@ final class ConfigMigration194 {
                 return;
             }
             boolean differs=false;
-            for(int i=0;i<v.length;i++){
+            for(int i=0;i<Math.min(v.length,NAMES.length);i++){
                 String key=NAMES[i];
                 if(isBool(key)){
                     if(!prefs.contains(key)||prefs.getBoolean(key,false)!=(v[i]!=0)){differs=true;break;}
@@ -71,7 +71,7 @@ final class ConfigMigration194 {
                 if(!be.commit()){Log.e(TAG,"MIGRATION_194 stage=BACKUP_FAILED");return;}
             }
             SharedPreferences.Editor edit=prefs.edit();
-            for(int i=0;i<v.length;i++){
+            for(int i=0;i<Math.min(v.length,NAMES.length);i++){
                 String name=NAMES[i];
                 // Existing user preferences are authoritative. Migration must not undo
                 // an explicit Dock OFF or diagnostics ON from the current settings UI.
@@ -81,7 +81,8 @@ final class ConfigMigration194 {
                 if(isBool(name))edit.putBoolean(name,v[i]!=0); else edit.putInt(name,v[i]);
             }
             // Boot snapshot stores integer dp but not the UI's tenths of a dp.
-            edit.putInt("custom_blur_tenths_95",Math.max(0,Math.min(400,v[15]*10)));
+            if(!prefs.contains("custom_blur_tenths_95"))
+                edit.putInt("custom_blur_tenths_95",Math.max(0,Math.min(400,v.length>=33?v[32]:v[15]*10)));
             edit.putBoolean(KEY,true);
             if(edit.commit())Log.i(TAG,"MIGRATION_194 stage=BOOT_TO_APP enabled=true fields="+v.length);
             else Log.e(TAG,"MIGRATION_194 stage=COMMIT_FAILED");
