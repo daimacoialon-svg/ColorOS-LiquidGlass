@@ -8251,38 +8251,32 @@ public final class HookEntry implements IXposedHookLoadPackage {
     }
     // V217: cache shaders per icon view. All gradients are recomputed only when
     // the drawable's geometry changes, not on every launcher redraw frame.
+    // V220: soft inset optics. Repeated strokes are clipped to the real alpha silhouette;
+    // their progressively decreasing alpha forms a genuine inward spatial falloff.
     private static final class IconOpticsBrush217 {
         final Paint ambient=new Paint(Paint.ANTI_ALIAS_FLAG);
         final Paint innerLight=new Paint(Paint.ANTI_ALIAS_FLAG);
         final Paint innerShade=new Paint(Paint.ANTI_ALIAS_FLAG);
-        final Paint contour=new Paint(Paint.ANTI_ALIAS_FLAG);
         float left=Float.NaN,top=Float.NaN,right=Float.NaN,bottom=Float.NaN,density=Float.NaN;
+        float width;
         void update(RectF r,float dp){
             if(left==r.left && top==r.top && right==r.right && bottom==r.bottom && density==dp)return;
             left=r.left;top=r.top;right=r.right;bottom=r.bottom;density=dp;
-            float diagonal=Math.max(1f,Math.min(r.width(),r.height()));
+            width=Math.min(Math.min(r.width(),r.height())*.20f,10.0f*dp);
             ambient.setStyle(Paint.Style.FILL);
             ambient.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x14FFFFFF,0x06FFFFFF,0x00000000,0x1100081B},
-                new float[]{0f,.26f,.55f,1f},android.graphics.Shader.TileMode.CLAMP));
+                new int[]{0x08FFFFFF,0x03FFFFFF,0x00000000,0x07000913},
+                new float[]{0f,.28f,.65f,1f},android.graphics.Shader.TileMode.CLAMP));
             innerLight.setStyle(Paint.Style.STROKE);
             innerLight.setStrokeJoin(Paint.Join.ROUND);innerLight.setStrokeCap(Paint.Cap.ROUND);
-            innerLight.setStrokeWidth(Math.min(diagonal*.11f,6.0f*dp));
             innerLight.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x44FFFFFF,0x28FFFFFF,0x0CFFFFFF,0x00FFFFFF},
-                new float[]{0f,.27f,.58f,1f},android.graphics.Shader.TileMode.CLAMP));
+                new int[]{0x48FFFFFF,0x2AFFFFFF,0x07FFFFFF,0x00FFFFFF},
+                new float[]{0f,.26f,.62f,1f},android.graphics.Shader.TileMode.CLAMP));
             innerShade.setStyle(Paint.Style.STROKE);
             innerShade.setStrokeJoin(Paint.Join.ROUND);innerShade.setStrokeCap(Paint.Cap.ROUND);
-            innerShade.setStrokeWidth(Math.min(diagonal*.095f,5.0f*dp));
             innerShade.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x00000820,0x00000820,0x0D000B25,0x28000B25},
-                new float[]{0f,.43f,.76f,1f},android.graphics.Shader.TileMode.CLAMP));
-            contour.setStyle(Paint.Style.STROKE);
-            contour.setStrokeWidth(Math.max(.35f*dp,.65f));
-            contour.setStrokeJoin(Paint.Join.ROUND);contour.setStrokeCap(Paint.Cap.ROUND);
-            contour.setShader(new android.graphics.LinearGradient(r.left,r.top,r.right,r.bottom,
-                new int[]{0x38FFFFFF,0x20FFFFFF,0x08FFFFFF,0x12FFFFFF},
-                new float[]{0f,.32f,.7f,1f},android.graphics.Shader.TileMode.CLAMP));
+                new int[]{0x00000812,0x00000812,0x08000812,0x30000812},
+                new float[]{0f,.4f,.72f,1f},android.graphics.Shader.TileMode.CLAMP));
         }
     }
     private static final java.util.WeakHashMap<View,IconOpticsBrush217> ICON_BRUSHES_217=new java.util.WeakHashMap<>();
@@ -8296,14 +8290,22 @@ public final class HookEntry implements IXposedHookLoadPackage {
         brushes.update(r,density);
         int saved=canvas.save();
         try{
-            // Clip strictly to the actual alpha silhouette: glow and shade are
-            // projected inward, never painted over the wallpaper outside the icon.
             canvas.clipPath(silhouette);
             canvas.drawPath(silhouette,brushes.ambient);
-            canvas.drawPath(silhouette,brushes.innerLight);
-            canvas.drawPath(silhouette,brushes.innerShade);
+            // Wide translucent strokes spread light inward. Narrow layers have low
+            // alpha, eliminating the bright, hard outer contour of V219.
+            for(int i=0;i<5;i++){
+                float fraction=(i+1f)/5f;
+                float falloff=(1f-fraction);
+                float stroke=brushes.width*(1.0f-fraction*.76f)*2f;
+                brushes.innerLight.setStrokeWidth(stroke);
+                brushes.innerShade.setStrokeWidth(stroke);
+                brushes.innerLight.setAlpha(Math.round(45f*falloff*falloff+3f));
+                brushes.innerShade.setAlpha(Math.round(38f*falloff*falloff+2f));
+                canvas.drawPath(silhouette,brushes.innerLight);
+                canvas.drawPath(silhouette,brushes.innerShade);
+            }
         }finally{canvas.restoreToCount(saved);}
-        canvas.drawPath(silhouette,brushes.contour);
     }
     private static void drawIconEdge205(android.widget.TextView v,Canvas c){
         if(!iconOptics204 || !v.isShown() || v.getWidth()<=0 || v.getHeight()<=0)return;
