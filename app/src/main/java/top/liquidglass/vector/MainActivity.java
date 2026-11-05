@@ -108,6 +108,36 @@ public final class MainActivity extends Activity {
     private void action(String label,Runnable run){
         Button b=new Button(this);b.setAllCaps(false);b.setText(label);b.setTextColor(blue);b.setOnClickListener(v->run.run());current.addView(b,new LinearLayout.LayoutParams(-1,dp(52)));
     }
+    // V222: opt-in visual diagnostics are NOT part of the saved glass settings.
+    // Exit returns all production paths to their normal, no-probe state.
+    private void setLensDiagnostic222(int requested){
+        final int mode=Math.max(0,Math.min(4,requested));
+        new Thread(()->{
+            Process process=null;
+            boolean ok=false;
+            try{
+                String command="settings put global liquidglass_aa_probe_208 0 && " +
+                    "settings put global liquidglass_lens_diagnostic_222 "+mode+" && " +
+                    "settings put global liquidglass_debug_opt_in_219 "+(mode==0?0:1);
+                process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
+                ok=process.waitFor(8,java.util.concurrent.TimeUnit.SECONDS) && process.exitValue()==0;
+                if(!ok && process.isAlive())process.destroyForcibly();
+            }catch(Throwable t){android.util.Log.w("LiquidGlass222","DIAGNOSTIC_COMMAND_FAILED",t);}
+            finally{if(process!=null)process.destroy();}
+            final boolean succeeded=ok;
+            if(succeeded){
+                try{
+                    android.content.Intent refresh=new android.content.Intent("top.liquidglass.vector.CONFIG_CHANGED_128");
+                    refresh.setPackage("com.android.launcher");
+                    refresh.putExtra("lg_snapshot_203",ConfigPublisher202.snapshot(getApplicationContext()));
+                    sendBroadcast(refresh);
+                }catch(Throwable t){android.util.Log.w("LiquidGlass222","DIAGNOSTIC_REFRESH_FAILED",t);}
+            }
+            runOnUiThread(()->Toast.makeText(this,succeeded?
+                (mode==0?"诊断已关闭，已恢复正常二维曲面透镜":"已切换全容器透镜诊断模式 "+mode):
+                "Root 诊断切换失败，请检查 KernelSU 授权",Toast.LENGTH_LONG).show());
+        },"LiquidGlass-Diagnostic222").start();
+    }
     private String styleLabel186(){
         int style=prefs.getInt("optical_style_186",0);
         return style==2?"泡泡液态玻璃":style==1?"iOS 27 风格":"自定义参数（统一曲面）";
@@ -197,7 +227,7 @@ public final class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(0xFFF3F6FA);
         body=column();body.setPadding(dp(18),dp(28),dp(18),dp(32));scroll.addView(body);
         TextView heading=text("Liquid Glass",28,true);body.addView(heading);
-        TextView version=text("V1.9.205.221  ·  图标薄内缘光学与局部 5/9 点采样",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
+        TextView version=text("V1.9.205.222  ·  全容器防折叠透镜与矢量图标薄内缘",13,false);LinearLayout.LayoutParams v=new LinearLayout.LayoutParams(-1,-2);v.setMargins(0,dp(4),0,dp(20));body.addView(version,v);
         section("一键切换玻璃风格","两种风格共享稳定壁纸采样与抗锯齿。按钮会同时应用光学模式和推荐参数；不会强制启用文件夹或 Dock。");
         TextView activeStyle186=text("当前风格："+styleLabel186(),15,true);current.addView(activeStyle186);
         LinearLayout styleButtons186=new LinearLayout(this);styleButtons186.setOrientation(LinearLayout.HORIZONTAL);current.addView(styleButtons186);
@@ -242,11 +272,11 @@ public final class MainActivity extends Activity {
         advancedLens219.setVisibility(View.GONE);
         final LinearLayout beforeAdvanced219=current;
         current=advancedLens219;
-        slider("边缘曲面厚度 (%)","thickness_107",55,0,100);
-        slider("内区曲率过渡 (%)","interior_107",20,0,100);
-        slider("中心聚焦强度 (%)","focus_107",45,0,100);
+        slider("曲面厚度感 (%)","thickness_107",55,0,100);
+        slider("内区曲率参与度 (%)","interior_107",20,0,100);
+        slider("中心聚焦参与度 (%)","focus_107",45,0,100);
         slider("曲面局部反射比例 (%)","reflection_107",30,0,100);
-        current.addView(text("这四项与主折射强度分别控制透镜边缘宽度、中心到边缘的曲率、内部聚焦和环境反射的局部比例；均已接入同一个 Shader。",12,false));
+        current.addView(text("前三项参与统一的全容器单调映射幅度，主折射强度控制整体位移；反射比例单独控制曲面高光。参数有固定上限，避免高强度局部折叠。",12,false));
         current=beforeAdvanced219;
         lensDetails219.setOnClickListener(clicked->{
             boolean open=advancedLens219.getVisibility()!=View.VISIBLE;
@@ -299,7 +329,7 @@ public final class MainActivity extends Activity {
         });
         slider("底色色调强度 (%)","tint_strength",30,0,90);
         TextView tintInfo=text("底色色调强度为 0% 时不添加颜色；原生模式不添加色调。颜色变化需在玻璃底色不透明度和当前渲染路径允许的情况下观察。",12,false);current.addView(tintInfo);
-        section("应用图标内缘立体光影","图标内侧窄带向中心自然渐隐：左上与右下角提亮，右上与左下角轻微压暗。取消 V220 外部模糊光晕；保留原图标内容、尺寸与点击区域。");
+        section("应用图标内缘立体光影","使用平滑矢量轮廓生成薄内缘明暗：左上、右下较亮，右上、左下较暗。取消旧像素法线的放射状内拉伪影，不在图标外形成月晕。");
         toggle("应用图标薄内缘明暗光学效果","icon_optics_204",true);
         section("旧版兼容与实验","旧二维壁纸折射仅用于对照测试。默认折叠，避免误以为它是第二套必需的光学系统。");
         final LinearLayout legacyContainer=column();
@@ -320,7 +350,28 @@ public final class MainActivity extends Activity {
             legacyContainer.setVisibility(show?View.VISIBLE:View.GONE);
             legacyButton.setText(show?"收起旧版实验参数":"展开旧版二维折射实验");
         });
-        section("维护与状态","V221 保留 V219 已验证的二维折射实时传递；正式 Shader 对底部中心和圆角过渡采取按需 5/9 点采样，失败自动回退 V219；不重置折射、模糊、Dock 与图标开关。");
+        section("维护与状态","V222 对整片文件夹与 Dock 玻璃使用同一连续单调映射；取消 V221 只针对底部和角部的采样特例。保留 V219 稳定 Shader 作为异常回退。");
+        final LinearLayout lensDiagnostics222=column();
+        Button showLensDiagnostics222=new Button(this);
+        showLensDiagnostics222.setAllCaps(false);
+        showLensDiagnostics222.setText("展开全容器折射诊断（默认关闭）");
+        current.addView(showLensDiagnostics222);
+        current.addView(lensDiagnostics222);
+        lensDiagnostics222.setVisibility(View.GONE);
+        final LinearLayout beforeLensDiagnostics222=current;
+        current=lensDiagnostics222;
+        current.addView(text("模式仅在开启时临时显示，不写入 33 项玻璃配置。4 号全域九点采样是诊断对照，可能明显增加 GPU 负担。",12,false));
+        action("1 · 全容器采样坐标网格",()->setLensDiagnostic222(1));
+        action("2 · 映射 Jacobian 压缩/拉伸热图",()->setLensDiagnostic222(2));
+        action("3 · 原图/折射左右分屏对照",()->setLensDiagnostic222(3));
+        action("4 · 全域九点采样实验（临时）",()->setLensDiagnostic222(4));
+        action("0 · 关闭诊断并恢复正常透镜",()->setLensDiagnostic222(0));
+        current=beforeLensDiagnostics222;
+        showLensDiagnostics222.setOnClickListener(v->{
+            boolean open=lensDiagnostics222.getVisibility()!=View.VISIBLE;
+            lensDiagnostics222.setVisibility(open?View.VISIBLE:View.GONE);
+            showLensDiagnostics222.setText(open?"收起全容器折射诊断":"展开全容器折射诊断（默认关闭）");
+        });
         action("一键关闭所有旧版绘制和可视诊断模式",()->{
             LegacyDiagnostics219.cleanupAsync(this,(success,reason)->{
                 if(success)notifyConfigChanged128();
@@ -335,7 +386,7 @@ public final class MainActivity extends Activity {
                 boolean ok=false;
                 Process process=null;
                 try{
-                    process=new ProcessBuilder("su","-c","settings put global liquidglass_aa_probe_208 0")
+                    process=new ProcessBuilder("su","-c","settings put global liquidglass_aa_probe_208 0 && settings put global liquidglass_lens_diagnostic_222 0 && settings put global liquidglass_debug_opt_in_219 0")
                         .redirectErrorStream(true).start();
                     ok=process.waitFor(7,java.util.concurrent.TimeUnit.SECONDS) && process.exitValue()==0;
                     if(!ok && process.isAlive())process.destroyForcibly();
@@ -360,7 +411,7 @@ public final class MainActivity extends Activity {
             rootStatusHandler.removeCallbacks(rootStatusPoll);
             rootStatusHandler.postDelayed(rootStatusPoll,1000);
         }));
-        TextView serviceHint=text("V221：保留已验证的 UI→Launcher 实时参数和独立二维透镜路由。新 Shader 尝试平滑距离场、局部 5/9 点采样及角部位移修正，若创建失败自动回退 V219。图标取消外圈月晕，改为薄内缘光影。",12,false);current.addView(serviceHint);
+        TextView serviceHint=text("V222：已验证的 UI→Launcher 实时参数链保持不变。正式 Shader 采用全容器单调变形 + 线性过滤；四组对照诊断默认关闭，手动开启后请务必恢复模式 0。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
         setContentView(scroll);

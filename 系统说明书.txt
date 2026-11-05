@@ -1,67 +1,60 @@
-ColorOS-LiquidGlass V1.9.205.221｜图标薄内缘光学与二维曲面局部抗锯齿
+ColorOS-LiquidGlass V1.9.205.222｜全容器单调二维曲面与图标矢量内缘光学
 
-一、适用环境
-- 一加 13T，ColorOS 15 / Android 15，KernelSU，LSPosed Vector。
-- Android Studio 工程，JDK 17，Android SDK 35；GitHub Actions workflow 构建 debug APK。
-- V1.9.205.219 的二维曲面折射与强度滑块已在用户真机确认恢复。此版在 V220 上修订；新光学视觉尚需真机验证。
+适用：OnePlus 13T / ColorOS 15 / KernelSU / Vector LSPosed（桌面作用域）
 
-二、本版改动
-1. 桌面应用图标薄内缘明暗光学
-   - 删除 V220 的外部 BlurMaskFilter 光晕/模糊描边（避免月晕）。
-   - 从图标真实透明度轮廓或自适应图标遮罩获取内缘距离场，图标外部无任何模块发光像素。
-   - 在图标内部约 5.8% 边长的最大光影范围，使用高斯连续衰减；内核主要集中在边缘数像素。
-   - 左上与右下圆角有柔和内向亮部；右上与左下圆角有更浅的内向暗部；直边保留微弱内缘亮线。
-   - 采用按图标 View / Drawable / 尺寸缓存的离屏位图，不每帧重新计算轮廓距离场；不改变图标点击区域。
-   - 配置沿用 icon_optics_204，不新增未同步的设置键，原开关状态保持不变。
+【本版基线与核心改动】
+1. 基于 V1.9.205.221 源码，保留 V219 已确认可用的二维透镜单路绘制与 UI→Launcher 实时参数链。
+2. 新增 GlassLens222.java：整片玻璃统一采用连续的圆角自适应超椭圆（4/8 范数混合）映射。
+   新位移不是底边中心、上沿或角部专用补丁，而是作用于文件夹及 Dock 的同一个采样坐标公式。
+   在映射范数 n∈[0,1]、振幅 a≤1.5 下，切向伸缩 1+a(1−n)^2，径向伸缩
+   1+a(1−n)(1−3n)，两者均为正；此设计约束了局部映射翻折风险。
+   这不等同于真机视觉效果保证，也无法自行恢复源壁纸不存在的分辨率细节。
+3. 删除 V221 正式透镜中偏重底部中心、角部的自适应九点采样特例。正式渲染默认单点，并明确开启
+   BitmapShader 线性过滤。新增全容器的诊断图/九点采样实验用于区分映射问题与纹理混叠。
+4. 正式 Shader 创建失败自动回退 V219 单路 Shader（不是曾经存在阶梯问题的 V221 Shader）。
+5. 图标不再使用从 128×128 软件位图逐行生成的折线轮廓，也不使用 chamfer 距离法线。
+   优先采用系统 AdaptiveIconDrawable 矢量 Mask，其他图标使用平滑圆角矩形轮廓。
+   在同一矢量轮廓内部绘制窄带高光：左上/右下偏亮，右上/左下较暗，不绘制外部月晕。
+   光学效果仅为叠加绘制，不会变形或挤压原图标像素。
 
-2. 二维曲面透镜图形平滑
-   - 正常模式优先尝试 V221 的独立 RuntimeShader；新增内区平滑距离场以降低圆角/长边交界的法线脊线。
-   - 角部折射位移做平缓、小幅的局部衰减，避免单靠压低 outline/shadow 试图掩盖采样折痕。
-   - 按像素风险分配采样：普通区域 1 点；高风险区域 5 点；底部中心高对比纹理与角区极高风险时可达 9 点。
-   - 每一个样本点重新评估各自的透镜位移和有效采样范围（真实亚像素采样，而非重复读取同一个坐标）。
-   - 1→5 和 5→9 之间用 smoothstep 权重连续混合，避免采样区域本身形成一条突变线。
-   - 不提供“全屏强制九点”，以减少多容器与桌面滑动时的 GPU 负担；实际性能仍需真机观察。
+【诊断方法】
+在设置 → 维护与状态 → “展开全容器折射诊断（默认关闭）”中选择：
+0 关闭，恢复正常透镜（也会关闭历史全局诊断开启键）
+1 全容器实际采样坐标网格（使用图像采样坐标，与真实容器一致）
+2 Jacobian 压缩 / 拉伸热图（红=压缩，蓝=拉伸；并非最终视觉颜色）
+3 左右对照（左原始壁纸、右折射壁纸）
+4 全域九点亚像素采样临时对照（计算量明显增加，不建议长期打开）
+所有模式都要求 Root 授权，仅通过 Settings.Global 保存诊断编号，默认 0，不占用玻璃 33 项配置。
+测试结束务必恢复模式 0；在各级强度下对比水平/竖直/45度网格及自然壁纸，注意滑动卡顿。
 
-3. 稳定性与参数一致性
-   - 保留 V219 已确认的文件夹/Dock 单路绘制、UI→Launcher 实时通知、33 项开机快照与 0.1dp 模糊精度。
-   - 如果 V221 Shader 创建失败，会先尝试已验证的 V219 生产 Shader；两者都失败才由绘制层回退到普通壁纸采样。
-   - 旧诊断 Shader 和老绘制模式仍只允许显式调试开关进入；V219 的旧诊断清理逻辑保持有效。
-   - 不重设原有的模糊、底色、Dock 或透镜强度参数；保持现有渲染选项和开关。
+Termux（可选，同 UI 按钮等效）：
+su -c 'settings put global liquidglass_aa_probe_208 0; settings put global liquidglass_debug_opt_in_219 1; settings put global liquidglass_lens_diagnostic_222 1'
+su -c 'settings put global liquidglass_lens_diagnostic_222 2'
+su -c 'settings put global liquidglass_lens_diagnostic_222 3'
+su -c 'settings put global liquidglass_lens_diagnostic_222 4'
+su -c 'settings put global liquidglass_lens_diagnostic_222 0; settings put global liquidglass_aa_probe_208 0; settings put global liquidglass_debug_opt_in_219 0'
+修改后可返回设置并触发通知刷新；UI 按钮更方便。
 
-三、编译与安装
-1. 用 Android Studio 打开解压后的 ColorOS-LiquidGlass-V1.9.205.221 顶层项目文件夹。
-2. 使用 JDK 17，Android SDK 35，构建 :app:assembleDebug；也可将源码提交到 main 由 .github/workflows/build-apk.yml 生成 debug APK。
-3. 安装新 APK，确认 LSPosed Vector 的 ColorOS Launcher 作用域仍启用，重启 Launcher 或手机。
-4. 本版没有修改 Root 辅助脚本配置结构，不需清除 SharedPreferences，也不必清空原有用户参数。
+【故障定位】
+su -c 'logcat -d -v time | grep -E "LENS_SHADER_CREATED production=222|LENS_SHADER_222_FAILED|production=219 fallback|CLEAN_LENS_219|LENS_SOURCE_222|CONFIG_APPLIED_203|ICON_VECTOR_222" | tail -120'
+- 出现 LENS_SOURCE_222 undersampled 表示壁纸截图分辨率比屏幕低，需优先排查输入质量。
+- 若 production=222 创建失败则回退 V219；若回退亦失败，会记录 CLEAN_LENS_219 shader=FAILED。
+- 四角短线可能还与原生 Launcher 底层像素或截屏缩放有关，不能仅凭源码宣称完全消除。
 
-四、建议真机测试
-- 先以 V220 相同壁纸、相同二维曲面强度作对照，重点比较底部中间黑白压缩层带和四角斜向短线。
-- 在 0%、50%、100% 强度下验证透镜立即响应；分别测试小/大正方文件夹、长条文件夹、Dock。
-- 检查天气图标的内缘：没有外部月晕，左上/右下适度提亮，右上/左下浅暗，中心不泛白。
-- 左右滑动桌面尤其是靠近右边缘时，注意是否出现新的采样拉伸、闪烁、发热或掉帧。
-- V221 是实验修正版，不表示阶梯和角区斜线已经通过真机验收；如出现异常，保留 V219 已确认可用的安装包便于回退。
+【配置与工程】
+- 33项 SharedPreferences / ConfigPublisher / GlassConfigProvider / Launcher / Root 启动快照字段顺序保持不变。
+- custom_blur_tenths_95 的 0.1dp 精度保留；Dock 手动关闭状态保留。
+- 正式绘制旧 Shader 隔离机制延续 V219；清理旧版诊断功能仍可使用。
+- 工程：Android Studio / AGP 8.x / Java 17 / Android SDK 35；通过 GitHub Actions gradle 8.9 编译。
+- 说明：本环境进行了静态检查与数值几何测试，未连接 ColorOS 真机，也不保证 APK 在真机上已验证。
 
-五、日志与排障
-Termux：
-su -c 'logcat -d -v time | grep -E "LiquidGlass221|LENS_SHADER_221_FAILED|LENS_SHADER_CREATED|ICON_INNER_221|CLEAN_LENS_219|CONFIG_APPLIED_203|BOOT_SNAPSHOT_REJECT" | tail -120'
-
-- LENS_SHADER_CREATED production=221 adaptiveSSAA=true：V221 Shader 已创建（不代表视觉无瑕疵）。
-- LENS_SHADER_221_FAILED fallback=219：V221 Shader 创建失败，尝试 V219 生产 Shader。
-- LENS_SHADER_CREATED production=219 fallback=true：成功退回稳定 V219 Shader。
-- CLEAN_LENS_219 shader=FAILED fallback=CROP：包括 V219 在内的可用生产 Shader 均无法使用，退回普通采样。
-- ICON_INNER_221：图标内缘位图在 diagnostics 开启时的缓存构建日志。
-- CONFIG_APPLIED_203：原有 Launcher 参数应用确认日志。
-
-六、源码检查与限制
+【离线检查】
 python3 tools/audit_config_219.py
-python3 tools/audit_v221.py
+python3 tools/audit_v222.py
+python3 tools/audit_map_222.py
 
-静态审计检查：33 项配置字段与默认值顺序、Root 与 APK 资源脚本一致性、UI 调用、单路透镜路由、V219 回退、图标无外晕、局部 5/9 点采样、版本号与源码字符串。
-由于当前工作环境没有 Android SDK / Gradle 和连接的 ColorOS 15 真机，本次源码包未通过完整 Android 构建或 GPU 真机渲染测试；需通过 Android Studio / GitHub Actions 编译验证。AGSL 的兼容性由设备运行时最终决定。
-
-七、Termux Git
-（将新版本源码覆盖到原固定项目目录后）
+【Termux Git】
 cd ~/ColorOS-LiquidGlass-V1.0-Source
 git add .
-git commit -m "V1.9.205.221 版本"
+git commit -m "V1.9.205.222 版本"
 git push origin main
