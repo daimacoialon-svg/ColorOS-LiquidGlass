@@ -40,29 +40,45 @@ final class UnifiedGlass230 {
             float2 q=abs(p-(bounds.xy+bounds.zw)*0.5)-(halfSize-r);
             return r-length(max(q,float2(0.0)))-min(max(q.x,q.y),0.0);
         }
-        // V232: one rounded-container thickness profile; slope is shared by
-        // transmission, environment sampling and directional rim response.
+        // V233 experimental two-interface ray approximation. Both surfaces
+        // share the same rounded-rectangle signed-distance geometry.
         float surface230(float2 p){
             float2 size=max(bounds.zw-bounds.xy,float2(2.0));
             float d=max(inside230(p),0.0);
-            float reach=clamp(min(size.x,size.y)*(0.085+0.12*thickness230),9.0,66.0);
+            float reach=clamp(min(size.x,size.y)*(0.10+0.16*thickness230),10.0,78.0);
             float t=clamp(d/reach,0.0,1.0);
-            // Smooth meniscus with zero slope at both ends, no hard rim.
-            float shoulder=t*t*(3.0-2.0*t);
-            return shoulder;
+            float shoulder=t*t*t*(t*(t*6.0-15.0)+10.0);
+            // Low-amplitude center crown, continuous through all four corners.
+            float2 uv=(p-(bounds.xy+bounds.zw)*0.5)/(size*0.5);
+            float crown=max(0.0,1.0-dot(uv,uv)*0.28);
+            return shoulder*(0.82+0.18*crown);
         }
         float2 normalSlope230(float2 p){
-            float e=1.25;
+            float e=1.0;
             return float2(surface230(p+float2(e,0.0))-surface230(p-float2(e,0.0)),
                           surface230(p+float2(0.0,e))-surface230(p-float2(0.0,e)))/(2.0*e);
+        }
+        float3 refract230(float3 incident,float3 normal,float eta){
+            float cosI=clamp(-dot(normal,incident),-1.0,1.0);
+            float k=1.0-eta*eta*(1.0-cosI*cosI);
+            if(k<0.0)return reflect(incident,normal);
+            return eta*incident+(eta*cosI-sqrt(max(0.0,k)))*normal;
         }
         float2 warp230(float2 p,float2 slope){
             float2 size=max(bounds.zw-bounds.xy,float2(2.0));
             float shortSide=min(size.x,size.y);
-            // Refractive offset follows the same surface slope as reflection.
-            float2 raw=-slope*shortSide*(1.0+1.4*thickness230)*strength230;
-            float limit=clamp(shortSide*0.11,7.0,31.0);
-            return raw*limit/sqrt(limit*limit+dot(raw,raw));
+            // The front and rear surfaces are deliberately not identical:
+            // front = meniscus, rear = weak broad curvature.
+            float2 center=(bounds.xy+bounds.zw)*0.5;
+            float2 rearSlope=(p-center)/max(size*size,float2(1.0));
+            float3 frontN=normalize(float3(-slope*(17.0+9.0*thickness230),1.0));
+            float3 rayInside=refract230(float3(0.0,0.0,-1.0),frontN,1.0/1.47);
+            float3 rearN=normalize(float3(rearSlope*shortSide*(0.25+thickness230),-1.0));
+            float3 rayOut=refract230(rayInside,rearN,1.47);
+            float z=max(abs(rayOut.z),0.25);
+            float2 displacement=rayOut.xy/z*shortSide*(0.045+0.065*thickness230)*strength230;
+            float limit=clamp(shortSide*0.12,8.0,36.0);
+            return displacement*limit/sqrt(limit*limit+dot(displacement,displacement));
         }
         float2 safe230(float2 p){
             float2 lo=validBounds.xy+float2(2.0);
@@ -136,7 +152,7 @@ final class UnifiedGlass230 {
                 if(shader==null){
                     shader=new RuntimeShader(AGSL);
                     CACHE.put(view,shader);
-                    Log.i("LiquidGlass230","MATERIAL_SHADER_CREATED_232 meniscus=true singlePass=true");
+                    Log.i("LiquidGlass230","MATERIAL_SHADER_CREATED_233 dualInterface=true");
                 }
             }
             shader.setInputShader("wallpaper",wallpaper);
@@ -152,13 +168,13 @@ final class UnifiedGlass230 {
             Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG|Paint.FILTER_BITMAP_FLAG);
             paint.setShader(shader);
             canvas.drawRoundRect(rect,radius,radius,paint);
-            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_232 dimensions="+rect.width()+"x"+rect.height()+
+            if(logs++<16)Log.i("LiquidGlass230","MATERIAL_RENDER_233 dimensions="+rect.width()+"x"+rect.height()+
                 " strength="+s.strength+" thick="+s.thickness+" env="+s.environment+" quality="+s.quality);
             return true;
         }catch(Throwable fail){
             // Never disable the V229 lens.  The caller immediately uses it.
             failed=true;
-            Log.e("LiquidGlass230","MATERIAL_SHADER_FAILED_232 fallback=V229",fail);
+            Log.e("LiquidGlass230","MATERIAL_SHADER_FAILED_233 fallback=V229",fail);
             return false;
         }
     }
