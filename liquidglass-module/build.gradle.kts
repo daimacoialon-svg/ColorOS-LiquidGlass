@@ -5,13 +5,13 @@ plugins {
 
 android {
     namespace = "top.liquidglass.vector"
-    compileSdk = 35
+    compileSdk = 37
     defaultConfig {
         applicationId = "top.liquidglass.vector"
         minSdk = 28
         targetSdk = 28
-        versionCode = 192052843
-        versionName = "1.9.205.284.3"
+        versionCode = 192052844
+        versionName = "1.9.205.284.4"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

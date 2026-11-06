@@ -1,4 +1,6 @@
-V1.9.205.284.2 构建环境修正：统一 compileSdk 35、Build Tools 35.0.0、androidApp targetSdk 35；GitHub Actions 安装 SDK 35 并使用 JDK 21、项目 Gradle Wrapper 9.7.1。Kyant 光学实现保持 V284 原样。尚未完成实际 Gradle 编译。
+V1.9.205.284.4｜恢复 V283 构建配置实验版
+
+恢复 V283 原始构建配置、Kyant Shapes / Compose 版本及 compileSdk 37，保留 V284 启动门控与参考帧诊断。V283 原包不含 GitHub Actions 工作流，因此使用修订后的工作流：尝试 SDK Manager channel 3 安装 API 37 或 37.1；若不可用将明确失败，而不会伪装构建成功。尚未完成完整 Gradle / GitHub Actions 编译。
 
 ColorOS-LiquidGlass V1.9.205.284｜Kyant 冷启动坐标门控与参考帧绘制间隔诊断版
 

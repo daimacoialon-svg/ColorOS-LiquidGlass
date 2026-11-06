@@ -5,13 +5,13 @@ plugins {
 
 android {
     namespace = "com.kyant.backdrop.catalog"
-    compileSdk = 35
-    buildToolsVersion = "35.0.0"
+    compileSdk = 37
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "com.kyant.backdrop.catalog"
         minSdk = 23
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 1
         versionName = "1.0.0"
         androidResources.localeFilters += arrayOf("en")
