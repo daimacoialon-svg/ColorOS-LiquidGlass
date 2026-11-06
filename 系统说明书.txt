@@ -100,3 +100,10 @@ V1.9.205.259｜Launcher 实例几何验证版
 注意：尚未完成 CI 编译或真机验证；旧版 V258 全局设置不控制 V259。
 
 V1.9.205.268.1：修复 KyantIsolatedHost268.kt 中 ViewTree Owner 引用编译失败，改用 Kotlin 扩展函数并显式声明 AndroidX 依赖。尚未通过 CI 编译验证。
+
+
+V1.9.205.268.2｜Compose 独立 Recomposer 与防重启修正版
+- 修复 V268.1 DecorView 缺少 ViewTreeLifecycleOwner 导致宿主初始化失败的问题：实验 ComposeView 使用显式父 Recomposer，不修改 DecorView 或 OplusDragLayer 的 Owner。
+- Recomposer 使用 AndroidUiDispatcher.Main 的 UI 帧时钟与独立 SupervisorJob，2.5 秒后释放 Composition、View、Recomposer、CoroutineScope 与 Owner。
+- 在创建宿主前将 liquidglass_kyant_host_probe_268 自动写回 0；若无法写回则拒绝实验，避免 Launcher 异常时重复触发。每次测试须手动重新开启。
+- 本版本仅用于 Compose 宿主可行性验证；没有接入 Kyant 透镜或修改正式文件夹/Dock。尚未完成 CI 和真机验证。

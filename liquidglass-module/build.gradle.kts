@@ -10,8 +10,8 @@ android {
         applicationId = "top.liquidglass.vector"
         minSdk = 28
         targetSdk = 28
-        versionCode = 192052681
-        versionName = "1.9.205.268.1"
+        versionCode = 192052682
+        versionName = "1.9.205.268.2"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -30,4 +30,5 @@ dependencies {
     implementation("androidx.savedstate:savedstate:1.3.3")
     implementation(libs.compose.foundation)
     implementation(libs.compose.ui)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 }
