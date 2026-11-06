@@ -9,7 +9,7 @@ import java.lang.reflect.Method;
 
 /** V270: one-shot, 200dp bounded Kyant wallpaper lens experiment in Launcher. */
 public final class KyantLauncherLensProbe270 {
-    private static final String KEY = "liquidglass_kyant_lens_probe_270";
+    private static final String KEY = "liquidglass_kyant_folder_probe_271";
     private static boolean attempted;
     private KyantLauncherLensProbe270() {}
     public static void install(ClassLoader loader) {
@@ -33,14 +33,14 @@ public final class KyantLauncherLensProbe270 {
                             }
                             view.post(() -> {
                                 try { KyantLauncherLens270.run(view); }
-                                catch (Throwable t) { XposedBridge.log("KYANT270_RUN_ERROR " + t.getClass().getSimpleName()); }
+                                catch (Throwable t) { XposedBridge.log("KYANT271_RUN_ERROR " + t.getClass().getSimpleName()); }
                             });
-                        } catch (Throwable t) { XposedBridge.log("KYANT270_CHECK_ERROR " + t.getClass().getSimpleName()); }
+                        } catch (Throwable t) { XposedBridge.log("KYANT271_CHECK_ERROR " + t.getClass().getSimpleName()); }
                     }
                 });
                 hooks++;
             }
-            XposedBridge.log("KYANT270_INSTALLED hooks=" + hooks + " defaultOff=true overlay=temporary_200dp noGlassReplacement=true");
-        } catch (Throwable t) { XposedBridge.log("KYANT270_INSTALL_ERROR " + t.getClass().getSimpleName()); }
+            XposedBridge.log("KYANT271_INSTALLED hooks=" + hooks + " defaultOff=true overlay=temporary_follow_folder noGlassReplacement=true");
+        } catch (Throwable t) { XposedBridge.log("KYANT271_INSTALL_ERROR " + t.getClass().getSimpleName()); }
     }
 }
