@@ -1,3 +1,11 @@
+V1.9.205.265｜现有壁纸参考帧 → Kyant 原版 Backdrop 独立验证版
+
+模块首页新增「V265 真实壁纸参考帧 Kyant 折射测试」。点击进入后，后台通过 su 读取 Launcher 已经同步的纯壁纸参考文件，解码到模块测试进程；用 Compose Image.layerBackdrop 和 Kyant 原版 drawBackdrop/lens 折射真实壁纸。可拖动透镜、切换文件夹/Dock 形状、重新读取。
+
+注意：模块 Activity 与 Launcher 不同进程，V264 Launcher 内的 Java Bitmap 引用不能跨进程直接共享。本版为隔离的视觉验证，故在模块进程中有一次文件传输和 Bitmap 解码，不能宣称跨进程零拷贝或正式 Launcher GPU 纹理接入。参考帧仅在进入测试或点击重新读取时加载，不逐帧解码。Root 访问失败会提示；不使用 WallpaperManager，不截屏，不读取图标，不更改正式文件夹/Dock 渲染。原版 Kyant shader 不修改。测试界面需要 KernelSU 授权模块应用 su。
+
+构建：GitHub Actions :liquidglass-module:assembleDebug。尚未在 CI/真机验证；若编译失败请提交完整报错。版本：V1.9.205.265。
+
 V1.9.205.264 | 壁纸参考帧生命周期与 Java 侧桥接诊断
 
 复用 HookEntry 现有 REFRACTION_FRAME 的后台解码结果，记录尺寸、像素配置、内存占用、文件时间戳和 generation。不开启时不输出逐帧日志。
