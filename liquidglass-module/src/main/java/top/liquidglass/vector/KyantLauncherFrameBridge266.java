@@ -33,6 +33,12 @@ public final class KyantLauncherFrameBridge266 {
         }
     }
 
+    /** Read-only handoff. Caller must not recycle or mutate the returned bitmap. */
+    public static Bitmap peekReferenceFrame270() {
+        Bitmap value = frame.get();
+        return value != null && !value.isRecycled() ? value : null;
+    }
+
     public static void install(ClassLoader loader) {
         try {
             Class<?> clazz = Class.forName("com.android.launcher3.folder.FolderIcon", false, loader);

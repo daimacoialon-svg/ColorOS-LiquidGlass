@@ -119,3 +119,11 @@ V1.9.205.269｜Launcher Compose 首帧与资源释放诊断版
 
 
 V1.9.205.269.1：修复 ComposeView 为 final 导致的 Kotlin 编译失败。改由外层 FrameLayout.dispatchDraw 记录宿主绘制；该回调只能证明宿主绘制流程执行，不单独证明 Compose 像素输出。
+
+
+V1.9.205.270｜Launcher Kyant 原版真实壁纸透镜实验
+- 开关：su -c settings put global liquidglass_kyant_lens_probe_270 1；实验前自动置零。
+- Launcher 内复用 KyantLauncherFrameBridge266 的现有 Bitmap，不做 CPU 裁剪或重新解码。Compose GPU 上传由图形框架管理，不承诺 GPU 零拷贝。
+- 桌面左上角临时显示约 200dp 方形壁纸+Kyant 透镜预览，约 2.5 秒后释放。不会覆盖原文件夹绘制。
+- 日志 KYANT270_*；真实像素输出及资源释放需真机验证。注意参考帧与真实壁纸引擎裁剪偏移可能不完全一致。
+- 不修改 Kyant 上游 Shader、Dock 或正式文件夹渲染。

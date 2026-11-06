@@ -8496,6 +8496,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             KyantLauncherFrameBridge266.install(p.classLoader);
             KyantLauncherHostProbe267.install(p.classLoader);
             KyantLauncherHostProbe268.install(p.classLoader);
+            KyantLauncherLensProbe270.install(p.classLoader);
             hookLauncherOptics204(p.classLoader);
             hookIconOptics205(p.classLoader);
             hookWallpaperOffsetRequests();
