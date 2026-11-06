@@ -142,3 +142,5 @@ V1.9.205.273｜旧玻璃几何复用与临时互斥接管诊断
 原有 HookEntry 直接提供 mBackground preview Drawable + basePreviewOffsetX/Y 的几何 Rect 和圆角；失败时保留 V272 的回退。仅在实验 Kyant View 已挂载的同一文件夹上跳过原有玻璃 drawFolderIconFusion，释放后自动恢复。实验覆盖层仍在图标上方，并非最终背景层融合；6 秒后自动释放。不要长期打开。
 
 V1.9.205.273.1：修复 FolderGlassGeometry272.java legacyGlassGeometry 分支未定义 fallback 变量及缺失 measured 参数的 Java 编译错误。
+
+V1.9.205.274：Kyant 文件夹圆角矩形适配。复用原有背景 Outline/mRadius 像素半径，转换 dp 并钳制到短边的 49%，防止圆形化。设置 global liquidglass_kyant_folder_probe_274 1 开启一次性 6 秒实验；查看 KYANT274_SHAPE。原有玻璃在实验结束后自动恢复。
