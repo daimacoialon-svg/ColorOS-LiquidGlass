@@ -9,7 +9,7 @@ import java.lang.reflect.Method;
 
 /** V270: one-shot, 200dp bounded Kyant wallpaper lens experiment in Launcher. */
 public final class KyantLauncherLensProbe270 {
-    private static final String KEY = "liquidglass_kyant_persistent_probe_2883";
+    private static final String KEY = "liquidglass_kyant_persistent_probe_2884";
     private static final java.util.Set<View> attempted =
         java.util.Collections.newSetFromMap(new java.util.WeakHashMap<View, Boolean>());
     private static final java.util.Set<View> activeAnchors =
