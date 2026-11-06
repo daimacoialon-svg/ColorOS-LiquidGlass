@@ -44,3 +44,12 @@ V1.9.205.288.20｜触摸松手前后渲染链路诊断版
 Bitmap指纹取3个采样像素，不等于最终GPU显示纹理；日志回调也不能证明真实上屏时序。
 旧版本 288.15～288.18 的重绘和图层干预在模式2下自动禁用。
 取消诊断：settings put global liquidglass_kyant_release_trace_28820 0，并重启桌面。
+
+V1.9.205.288.21｜松手处理前后及逐次帧预算诊断版
+保持 V288.19 模式2：原生 Canvas 更新共享 Bitmap，Compose 消费；Kyant 光学关闭，无重绘补帧、无图层切换。
+使用 settings global liquidglass_kyant_pipeline_ab_28819=2 与 liquidglass_kyant_release_trace_28821=1。旧的 liquidglass_kyant_release_trace_28820 不再控制此版。
+每次 ACTION_UP 或 ACTION_CANCEL（水平拖动绝对距离至少 12px）记录 KYANT28821_TOUCH_RELEASE、KYANT28821_RELEASE_BEFORE、KYANT28821_RELEASE_HOST phase=BEFORE，以及触摸分发完成后的 KYANT28821_RELEASE_AFTER、KYANT28821_RELEASE_HOST phase=AFTER。多个 Activity/Workspace hook 同一触摸事件去重。
+每次松手重新选最多三个当前屏幕可见 Host，以同一 seq 追踪 260ms：KYANT28821_PREDRAW、POST_PREDRAW、NATIVE_SAMPLE、COMPOSE_NOTIFY、COMPOSE_DRAW、HOST_DRAW。每个 Host 每次事件独立最多160条，支持重复多次松手和翻页。
+每条帧日志包含 seq、ageNs、位置、publishedX、deltaX、version、samples；原生采样/Compose绘制额外输出 bitmapSig。
+注意：UI 回调与 Bitmap 指纹不能直接证明 SurfaceFlinger/GPU 最终显示哪一帧；请依靠视觉闪动与相邻日志共同判读。
+关闭实验：settings put global liquidglass_kyant_release_trace_28821 0，force-stop com.android.launcher。
