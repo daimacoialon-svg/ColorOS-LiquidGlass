@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 
 /** V269.1: isolated Compose composition/host-draw/disposal verification; no Launcher glass replacement. */
 object KyantLauncherLens270 {
-    private const val KEY = "liquidglass_kyant_folder_probe_275"
+    private const val KEY = "liquidglass_kyant_persistent_probe_276"
 
     private class Owner : LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner {
         private val registry = LifecycleRegistry(this)
@@ -84,38 +84,29 @@ object KyantLauncherLens270 {
     }
 
     @JvmStatic fun run(anchor: View) {
-        if (!anchor.isAttachedToWindow) return
+        if (!anchor.isAttachedToWindow || KyantLauncherLensProbe270.isActiveFor273(anchor)) return
         val reference = KyantLauncherFrameBridge266.peekReferenceFrame270()
         if (reference == null) {
-            XposedBridge.log("KYANT275_REFERENCE_NOT_READY one_shot_not_consumed")
+            XposedBridge.log("KYANT276_REFERENCE_NOT_READY one_shot_not_consumed")
             return
         }
         val root = anchor.rootView as? ViewGroup ?: return
         // Place the Compose host as the FIRST child of FolderIcon, before native icon children.
         // This preserves the original draw ordering without a DecorView overlay.
         val folder = anchor as? ViewGroup ?: run {
-            XposedBridge.log("KYANT275_ABORT anchor_not_viewgroup")
+            XposedBridge.log("KYANT276_ABORT anchor_not_viewgroup")
             return
         }
-        // One-shot disarm BEFORE attaching Compose: a Launcher crash must not cause a boot loop.
-        val disarmed = try {
-            Settings.Global.putInt(anchor.context.contentResolver, KEY, 0)
-        } catch (t: Throwable) {
-            XposedBridge.log("KYANT275_GUARD_ERROR " + t.javaClass.simpleName)
-            false
-        }
-        if (!disarmed) {
-            XposedBridge.log("KYANT275_GUARD_ABORT cannot_disarm_test")
-            return
-        }
-        XposedBridge.log("KYANT275_ONE_SHOT_DISARMED key=" + KEY)
-
+        // Persistent experiment is explicitly opt-in; never disarm the switch on attach.
+        if (try { Settings.Global.getInt(anchor.context.contentResolver, KEY, 0) != 1 }
+                catch (_: Throwable) { true }) return
+        XposedBridge.log("KYANT276_PERSISTENT_ARMED key=" + KEY)
         val startedAt = SystemClock.uptimeMillis()
         val displayWidth = root.width.coerceAtLeast(1)
         val displayHeight = root.height.coerceAtLeast(1)
         val initialBounds = FolderGlassGeometry272.resolve(anchor)
         val nativeRadius = HookEntry.kyantFolderGlassRadius273(anchor)
-        XposedBridge.log("KYANT275_NATIVE_GEOMETRY rect=$initialBounds radiusPx=$nativeRadius")
+        XposedBridge.log("KYANT276_NATIVE_GEOMETRY rect=$initialBounds radiusPx=$nativeRadius")
         val previewWidth = initialBounds.width().coerceAtLeast(1)
         val previewHeight = initialBounds.height().coerceAtLeast(1)
         val anchorXY = IntArray(2)
@@ -131,8 +122,10 @@ object KyantLauncherLens270 {
         val sampleHeight = androidx.compose.runtime.mutableIntStateOf(previewHeight)
         val sampleRadiusPx = androidx.compose.runtime.mutableFloatStateOf(
             nativeRadius.coerceIn(0f, minOf(previewWidth, previewHeight) * 0.49f))
-        XposedBridge.log("KYANT275_SHAPE size=${previewWidth}x${previewHeight} radiusPx=${sampleRadiusPx.floatValue} radiusDp=${sampleRadiusPx.floatValue / anchor.resources.displayMetrics.density} source=legacy")
+        XposedBridge.log("KYANT276_SHAPE size=${previewWidth}x${previewHeight} radiusPx=${sampleRadiusPx.floatValue} radiusDp=${sampleRadiusPx.floatValue / anchor.resources.displayMetrics.density} source=legacy")
         var followListener: android.view.ViewTreeObserver.OnPreDrawListener? = null
+        var detachListener: View.OnAttachStateChangeListener? = null
+        var lastVisibleAt = SystemClock.uptimeMillis()
         val owner = Owner()
         // ComposeView is final in the Compose UI version used by this project.
         // Observe the enclosing FrameLayout instead of subclassing ComposeView.
@@ -140,7 +133,7 @@ object KyantLauncherLens270 {
             override fun dispatchDraw(canvas: Canvas) {
                 super.dispatchDraw(canvas)
                 if (drawSeen.compareAndSet(false, true)) {
-                    XposedBridge.log("KYANT275_FIRST_DRAW elapsedMs=" +
+                    XposedBridge.log("KYANT276_FIRST_DRAW elapsedMs=" +
                         (SystemClock.uptimeMillis() - startedAt) +
                         " compositionSeen=" + compositionSeen.get() +
                         " width=" + width + " height=" + height +
@@ -166,24 +159,26 @@ object KyantLauncherLens270 {
             if (disposed) return
             disposed = true
             KyantLauncherLensProbe270.setActiveFor273(anchor, false)
+            KyantLauncherLensProbe270.clearAttempt(anchor)
             try { followListener?.let { if (folder.viewTreeObserver.isAlive) folder.viewTreeObserver.removeOnPreDrawListener(it) } } catch (_: Throwable) {}
+            try { detachListener?.let { anchor.removeOnAttachStateChangeListener(it) } } catch (_: Throwable) {}
             try { compose.disposeComposition() } catch (t: Throwable) {
-                XposedBridge.log("KYANT275_DISPOSE_COMPOSE_ERROR " + t.javaClass.simpleName)
+                XposedBridge.log("KYANT276_DISPOSE_COMPOSE_ERROR " + t.javaClass.simpleName)
             }
             try { if (frame.parent === folder) folder.removeView(frame) } catch (t: Throwable) {
-                XposedBridge.log("KYANT275_DISPOSE_VIEW_ERROR " + t.javaClass.simpleName)
+                XposedBridge.log("KYANT276_DISPOSE_VIEW_ERROR " + t.javaClass.simpleName)
             }
             try { recomposer?.close() } catch (_: Throwable) {}
             try { scope?.cancel() } catch (_: Throwable) {}
             try { owner.stop() } catch (t: Throwable) {
-                XposedBridge.log("KYANT275_DISPOSE_OWNER_ERROR " + t.javaClass.simpleName)
+                XposedBridge.log("KYANT276_DISPOSE_OWNER_ERROR " + t.javaClass.simpleName)
             }
-            XposedBridge.log("KYANT275_DISPOSE_CHECK reason=" + reason +
+            XposedBridge.log("KYANT276_DISPOSE_CHECK reason=" + reason +
                 " composition=" + compositionSeen.get() +
                 " draw=" + drawSeen.get() +
                 " removed=" + (frame.parent == null) +
                 " elapsedMs=" + (SystemClock.uptimeMillis() - startedAt))
-            XposedBridge.log("KYANT275_HOST_DISPOSED reason=" + reason)
+            XposedBridge.log("KYANT276_HOST_DISPOSED reason=" + reason)
         }
         try {
             owner.start()
@@ -191,8 +186,11 @@ object KyantLauncherLens270 {
             // AndroidUiDispatcher.Main supplies Android's UI frame clock.
             val dispatcher = AndroidUiDispatcher.Main
             val exceptionHandler = CoroutineExceptionHandler { _, t ->
-                XposedBridge.log("KYANT275_RECOMPOSER_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
-                frame.post { dispose("recomposer_error") }
+                XposedBridge.log("KYANT276_RECOMPOSER_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
+                frame.post {
+                    try { Settings.Global.putInt(anchor.context.contentResolver, KEY, 0) } catch (_: Throwable) {}
+                    dispose("recomposer_error")
+                }
             }
             val newScope = CoroutineScope(dispatcher + SupervisorJob() + exceptionHandler)
             scope = newScope
@@ -203,7 +201,7 @@ object KyantLauncherLens270 {
             compose.setContent { LensContent270(reference, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, sampleX.intValue, sampleY.intValue, sampleRadiusPx.floatValue) {
                 if (compositionSeen.compareAndSet(false, true)) {
-                    XposedBridge.log("KYANT275_COMPOSITION_CONFIRMED elapsedMs=" +
+                    XposedBridge.log("KYANT276_COMPOSITION_CONFIRMED elapsedMs=" +
                         (SystemClock.uptimeMillis() - startedAt))
                 }
             } }
@@ -211,16 +209,35 @@ object KyantLauncherLens270 {
             // A normal child at index 0 is drawn by FolderIcon.dispatchDraw before icons.
             // Explicitly lay it out because OEM FolderIcon may not manage injected children.
             folder.addView(frame, 0, ViewGroup.LayoutParams(previewWidth, previewHeight))
+            val onDetach = object : View.OnAttachStateChangeListener {
+                override fun onViewAttachedToWindow(v: View) {}
+                override fun onViewDetachedFromWindow(v: View) {
+                    dispose("folder_detached")
+                }
+            }
+            detachListener = onDetach
+            anchor.addOnAttachStateChangeListener(onDetach)
             frame.layout(initialBounds.left, initialBounds.top,
                 initialBounds.left + previewWidth, initialBounds.top + previewHeight)
             // Mark old glass inactive only AFTER the Kyant child is successfully attached.
             KyantLauncherLensProbe270.setActiveFor273(anchor, true)
-            XposedBridge.log("KYANT275_MUTUAL_EXCLUSION active=true layer=below_icons fallback=automatic_on_dispose")
+            XposedBridge.log("KYANT276_MUTUAL_EXCLUSION active=true layer=below_icons fallback=automatic_on_dispose")
             var lastX = anchorXY[0]
             var lastY = anchorXY[1]
             var lastBounds = android.graphics.Rect(initialBounds)
             val listener = android.view.ViewTreeObserver.OnPreDrawListener {
                 if (!disposed && anchor.isAttachedToWindow) {
+                    // The switch is intentionally checked during drawing, not on a fixed timer.
+                    val enabled = try {
+                        Settings.Global.getInt(anchor.context.contentResolver, KEY, 0) == 1
+                    } catch (_: Throwable) { false }
+                    if (!enabled) {
+                        frame.post { dispose("switch_off") }
+                        return@OnPreDrawListener true
+                    }
+                    if (anchor.visibility == View.VISIBLE && anchor.alpha > 0f) {
+                        lastVisibleAt = SystemClock.uptimeMillis()
+                    }
                     val xy = IntArray(2)
                     anchor.getLocationOnScreen(xy)
                     val b = FolderGlassGeometry272.resolve(anchor)
@@ -253,16 +270,12 @@ object KyantLauncherLens270 {
             folder.viewTreeObserver.addOnPreDrawListener(listener)
             frame.translationX = 0f
             frame.translationY = 0f
-            XposedBridge.log("KYANT275_HOST_ATTACHED layer=folder_child_index_0 owners=isolated recomposer=explicit view=${anchor.width}x${anchor.height} glassBounds=$initialBounds lens=${previewWidth}x${previewHeight} reference=${reference.width}x${reference.height}")
-            frame.postDelayed({
-                XposedBridge.log("KYANT275_PRE_DISPOSE composition=" + compositionSeen.get() +
-                    " draw=" + drawSeen.get() +
-                    " attached=" + compose.isAttachedToWindow +
-                    " recomposerState=" + (recomposer?.currentState?.value?.toString() ?: "null"))
-                dispose(if (compositionSeen.get() && drawSeen.get()) "timeout_success" else "timeout_incomplete")
-            }, 6000L)
+            XposedBridge.log("KYANT276_HOST_ATTACHED layer=folder_child_index_0 owners=isolated recomposer=explicit view=${anchor.width}x${anchor.height} glassBounds=$initialBounds lens=${previewWidth}x${previewHeight} reference=${reference.width}x${reference.height}")
+            // Persistent host remains until disabled, detached or an error occurs.
+            XposedBridge.log("KYANT276_PERSISTENT_READY stop=switch_off_or_folder_detached")
         } catch (t: Throwable) {
-            XposedBridge.log("KYANT275_HOST_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
+            XposedBridge.log("KYANT276_HOST_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
+            try { Settings.Global.putInt(anchor.context.contentResolver, KEY, 0) } catch (_: Throwable) {}
             dispose("setup_error")
         }
     }

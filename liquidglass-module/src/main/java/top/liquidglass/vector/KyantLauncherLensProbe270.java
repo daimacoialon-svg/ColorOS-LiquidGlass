@@ -9,13 +9,17 @@ import java.lang.reflect.Method;
 
 /** V270: one-shot, 200dp bounded Kyant wallpaper lens experiment in Launcher. */
 public final class KyantLauncherLensProbe270 {
-    private static final String KEY = "liquidglass_kyant_folder_probe_275";
-    private static boolean attempted;
-    private static volatile View activeAnchor;
-    public static boolean isActiveFor273(View v) { return activeAnchor == v; }
+    private static final String KEY = "liquidglass_kyant_persistent_probe_276";
+    private static final java.util.Set<View> attempted =
+        java.util.Collections.newSetFromMap(new java.util.WeakHashMap<View, Boolean>());
+    private static final java.util.Set<View> activeAnchors =
+        java.util.Collections.newSetFromMap(new java.util.WeakHashMap<View, Boolean>());
+    public static boolean isActiveFor273(View v) { synchronized (activeAnchors) { return activeAnchors.contains(v); } }
     public static void setActiveFor273(View v, boolean active) {
-        if(active)activeAnchor=v;
-        else if(activeAnchor==v)activeAnchor=null;
+        synchronized (activeAnchors) { if(active) activeAnchors.add(v); else activeAnchors.remove(v); }
+    }
+    public static void clearAttempt(View v) {
+        synchronized (KyantLauncherLensProbe270.class) { attempted.remove(v); }
     }
     private KyantLauncherLensProbe270() {}
     public static void install(ClassLoader loader) {
@@ -34,19 +38,18 @@ public final class KyantLauncherLensProbe270 {
                             if (Settings.Global.getInt(view.getContext().getContentResolver(), KEY, 0) != 1) return;
                             if (KyantLauncherFrameBridge266.peekReferenceFrame270() == null) return;
                             synchronized (KyantLauncherLensProbe270.class) {
-                                if (attempted) return;
-                                attempted = true;
+                                if (!attempted.add(view)) return;
                             }
                             view.post(() -> {
                                 try { KyantLauncherLens270.run(view); }
-                                catch (Throwable t) { XposedBridge.log("KYANT275_RUN_ERROR " + t.getClass().getSimpleName()); }
+                                catch (Throwable t) { XposedBridge.log("KYANT276_RUN_ERROR " + t.getClass().getSimpleName()); }
                             });
-                        } catch (Throwable t) { XposedBridge.log("KYANT275_CHECK_ERROR " + t.getClass().getSimpleName()); }
+                        } catch (Throwable t) { XposedBridge.log("KYANT276_CHECK_ERROR " + t.getClass().getSimpleName()); }
                     }
                 });
                 hooks++;
             }
-            XposedBridge.log("KYANT275_INSTALLED hooks=" + hooks + " defaultOff=true layer=folder_child_index_0 legacyGlassMutualExclusion=true");
-        } catch (Throwable t) { XposedBridge.log("KYANT275_INSTALL_ERROR " + t.getClass().getSimpleName()); }
+            XposedBridge.log("KYANT276_INSTALLED hooks=" + hooks + " defaultOff=true layer=folder_child_index_0 legacyGlassMutualExclusion=true");
+        } catch (Throwable t) { XposedBridge.log("KYANT276_INSTALL_ERROR " + t.getClass().getSimpleName()); }
     }
 }
