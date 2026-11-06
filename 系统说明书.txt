@@ -1,3 +1,15 @@
+V1.9.205.266｜Launcher 进程内壁纸参考帧与几何桥接诊断版
+
+V265 独立界面的真实壁纸 Kyant 透镜已由用户真机验证。
+V266 在 Launcher 进程内复用 HookEntry 的 REFRACTION_FRAME Bitmap 引用，
+只进行只读的实例、尺寸、根 View 坐标与可见交集 UV 诊断。
+此版尚未把 Launcher 的 Bitmap 输入 Compose/Kyant GPU 纹理；不修改现有玻璃绘制。
+诊断开关：su -c settings put global liquidglass_kyant_launcher_bridge_266 1
+重启 Launcher 后在 Vector 日志搜索 KYANT266_FRAME_GEOMETRY。
+关闭：su -c settings put global liquidglass_kyant_launcher_bridge_266 0
+注意：visibleRootUV 不是已校准的系统壁纸引擎偏移坐标。
+源码尚未通过 GitHub Actions 或真机编译验证。
+
 V1.9.205.265 编译修正版：移除 KyantReferenceFrame265Activity.kt 中 Android 不兼容的 ProcessBuilder.Redirect.DISCARD；保留标准错误默认管道，不改变 Root 读取、参考帧和 Kyant 渲染逻辑。尚未在 GitHub Actions 编译验证。
 
 V1.9.205.265｜现有壁纸参考帧 → Kyant 原版 Backdrop 独立验证版

@@ -2585,6 +2585,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     REFRACTION_FRAME_MODIFIED=loadedModified;
                     REFRACTION_FRAME_LENGTH=loadedLength;
                     KyantReferenceBridge264.onReferenceReady(app, next, loadedModified, loadedLength);
+                    KyantLauncherFrameBridge266.onReferenceReady(next, loadedModified, loadedLength);
                     // V1.9.137: Prewarm blur as soon as the reference is decoded.
                     // Do not wait for the folder's first draw after unlock.
                     if(customBlurMode==1 && customBlurDp>0){
@@ -8492,6 +8493,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
         } else {
             KyantLauncherProbe263.install(p.classLoader);
             KyantReferenceBridge264.onLauncherStart();
+            KyantLauncherFrameBridge266.install(p.classLoader);
             hookLauncherOptics204(p.classLoader);
             hookIconOptics205(p.classLoader);
             hookWallpaperOffsetRequests();
