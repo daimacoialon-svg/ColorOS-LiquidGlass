@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "top.liquidglass.vector"
-    compileSdk = 37
+    compileSdk = 35
     defaultConfig {
         applicationId = "top.liquidglass.vector"
         minSdk = 28
