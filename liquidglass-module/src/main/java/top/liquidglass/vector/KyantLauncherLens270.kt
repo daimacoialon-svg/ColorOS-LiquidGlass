@@ -318,7 +318,7 @@ object KyantLauncherLens270 {
             Settings.Global.getInt(anchor.context.contentResolver, FRAME_SYNC_AB_28822_KEY, 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 } else 0
         if (pipelineMode28819 == 2) XposedBridge.log("KYANT28822_FRAME_SYNC host=${System.identityHashCode(anchor)} mode=$frameSync28822 pipeline=$pipelineMode28819")
-        val releaseTrace28820 = pipelineMode28819 == 2 && try {
+        val releaseTrace28820 = try {
             Settings.Global.getInt(anchor.context.contentResolver, RELEASE_TRACE_28821_KEY, 0) == 1
         } catch (_: Throwable) { false }
         if (releaseTrace28820) {
@@ -553,6 +553,10 @@ object KyantLauncherLens270 {
         samplePosition.value = glassScreenPosition(initialBounds)
         predrawMatrixSnapshot.set(Pair(samplePosition.value, SystemClock.elapsedRealtimeNanos()))
         var lastSample = Offset(Float.NaN, Float.NaN)
+        // V288.24: the native sampler consumes the same pre-draw coordinate snapshot.
+        // This is a local View/Canvas-only change; no mutable Bitmap bridge is involved.
+        var nativePredrawPosition28824 = samplePosition.value
+        var nativePredrawSerial28824 = 0L
         var firstPositionSettled = false
         var startupSyncAttempts = 0
         var startupLastPosition = Offset(Float.NaN, Float.NaN)
@@ -753,7 +757,13 @@ object KyantLauncherLens270 {
             override fun onDraw(canvas: Canvas) {
                 super.onDraw(canvas)
                 if (width <= 0 || height <= 0 || disposed) return
-                val position = try { glassScreenPosition(lastBounds) } catch (_: Throwable) { return }
+                // Do not read a second Workspace transform after onPreDraw has
+                // already scheduled this frame's native redraw.
+                val position = nativePredrawPosition28824
+                // V288.25: native Canvas diagnostics also work in pipeline=-1.
+                // Record only during the bounded release window; no bitmap readback.
+                if (releaseTrace28820) releaseTrace28820("NATIVE_DRAW", position,
+                    "nativeLayer=$layerType frameLayer=${frame.layerType} hardware=${canvas.isHardwareAccelerated} sourceId=${System.identityHashCode(reference)}")
                 if (rightStartTraceEnabled && onsetFramesRemaining > 0 && onsetNativeDrawCount < 90) {
                     XposedBridge.log("KYANT28813_NATIVE_DRAW onset=$onsetSerial direction=$onsetDirection x=${position.x} y=${position.y} sourceId=$onsetSourceId")
                     onsetNativeDrawCount++
@@ -1038,6 +1048,8 @@ object KyantLauncherLens270 {
                     anchor.getLocationOnScreen(locationScratch)
                     val xy = locationScratch
                     val actualSample = glassScreenPosition(lastBounds)
+                    nativePredrawPosition28824 = actualSample
+                    nativePredrawSerial28824++
                     releaseTrace28820("PREDRAW", actualSample,
                         "committedX=${samplePosition.value.x} committedY=${samplePosition.value.y} frameX=${frame.x} frameTx=${frame.translationX}")
                     // V288.14: compare sample, anchor and host in the same PreDraw.
@@ -1351,6 +1363,8 @@ object KyantLauncherLens270 {
                     val layoutMatches = frame.left == b.left && frame.top == b.top &&
                         frame.width == b.width() && frame.height == b.height()
                     val currentSample = glassScreenPosition(b)
+                    // Geometry may have changed since the initial pre-draw read.
+                    nativePredrawPosition28824 = currentSample
                     predrawMatrixSnapshot.set(Pair(currentSample, SystemClock.elapsedRealtimeNanos()))
                     releaseTrace28820("POST_PREDRAW", currentSample,
                         "committedX=${samplePosition.value.x} committedY=${samplePosition.value.y} changed=$updatePosition")
