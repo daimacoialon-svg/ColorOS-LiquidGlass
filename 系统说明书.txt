@@ -129,3 +129,9 @@ V1.9.205.270｜Launcher Kyant 原版真实壁纸透镜实验
 - 不修改 Kyant 上游 Shader、Dock 或正式文件夹渲染。
 
 V1.9.205.271: 文件夹几何跟随实验。开关 liquidglass_kyant_folder_probe_271，默认关闭、一次性自动关闭、6秒后释放。沿用V270宿主，按文件夹尺寸与屏幕位置更新透镜预览；不替换正式文件夹玻璃。
+
+V1.9.205.272｜文件夹背景几何保守适配与诊断
+开关：su -c settings put global liquidglass_kyant_folder_probe_272 1
+重启 Launcher 后观察 KYANT272_GEOMETRY / KYANT272_HOST_ATTACHED。
+优先读取 FolderIcon 自身背景 Drawable 的有效 bounds；若 OEM 手工绘制背景，则保留 View 范围，不猜测缩放比例，日志标记 measured=false。
+跟随移动时重新计算边界，尺寸变化同步更新 Compose 宿主和壁纸采样。6 秒后自动清理，仍为临时覆盖实验。
