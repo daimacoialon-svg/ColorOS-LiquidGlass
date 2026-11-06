@@ -34,6 +34,15 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlin.math.roundToInt
 import android.os.SystemClock
+import android.app.Activity
+import android.content.ContextWrapper
+import android.view.MotionEvent
+import java.lang.ref.WeakReference
+import java.lang.reflect.Method
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
+import de.robv.android.xposed.XC_MethodHook
 import java.util.concurrent.atomic.AtomicBoolean
 import android.view.View
 import android.view.ViewGroup
@@ -65,6 +74,115 @@ import kotlinx.coroutines.launch
 /** V269.1: isolated Compose composition/host-draw/disposal verification; no Launcher glass replacement. */
 object KyantLauncherLens270 {
     private val reboundLayerGuard28818 = AtomicBoolean(false)
+    // V288.20: passive release markers; avoid replacing Launcher touch listeners.
+    private const val RELEASE_TRACE_28820_KEY = "liquidglass_kyant_release_trace_28820"
+    private val releaseSeq28820 = AtomicLong(0L)
+    private val releaseNs28820 = AtomicLong(0L)
+    @Volatile private var releaseDx28820 = 0f
+    @Volatile private var releaseAction28820 = "NONE"
+    @Volatile private var touchDownX28820 = Float.NaN
+    @Volatile private var touchDownY28820 = Float.NaN
+    @Volatile private var lastTouchEventKey28820 = ""
+    @Volatile private var activeTouchRoot28820: WeakReference<View>? = null
+    @Volatile private var activeTouchWorkspace28820: WeakReference<View>? = null
+    private val hookedMethods28820 = ConcurrentHashMap.newKeySet<Method>()
+    private val claimedHostCount28820 = AtomicInteger(0)
+    private fun observeTouchEvent28820(event: MotionEvent, method: String) {
+        val action = event.actionMasked
+        if (action != MotionEvent.ACTION_DOWN && action != MotionEvent.ACTION_UP &&
+            action != MotionEvent.ACTION_CANCEL) return
+        val eventKey = "${event.downTime}:${event.eventTime}:$action"
+        if (eventKey == lastTouchEventKey28820) return
+        lastTouchEventKey28820 = eventKey
+        if (action == MotionEvent.ACTION_DOWN) {
+            touchDownX28820 = event.rawX
+            touchDownY28820 = event.rawY
+            return
+        }
+        val dx = if (touchDownX28820.isFinite()) event.rawX - touchDownX28820 else Float.NaN
+        val dy = if (touchDownY28820.isFinite()) event.rawY - touchDownY28820 else Float.NaN
+        // Ignore taps. Capture both rightward drag and leftward control gestures.
+        if (!dx.isFinite() || kotlin.math.abs(dx) < 12f) return
+        val serial = releaseSeq28820.incrementAndGet()
+        releaseDx28820 = dx
+        releaseAction28820 = if (action == MotionEvent.ACTION_UP) "UP" else "CANCEL"
+        releaseNs28820.set(SystemClock.elapsedRealtimeNanos())
+        XposedBridge.log("KYANT28820_TOUCH_RELEASE seq=$serial action=$releaseAction28820 " +
+            "dx=$dx dy=$dy rawX=${event.rawX} rawY=${event.rawY} eventMs=${event.eventTime} via=$method")
+    }
+    private fun installTouchHooks28820(anchor: View) {
+        val root = anchor.rootView
+        activeTouchRoot28820 = WeakReference(root)
+        var workspace: View? = anchor
+        var depth = 0
+        while (workspace != null && depth++ < 15 &&
+            !workspace.javaClass.name.contains("Workspace", ignoreCase = true)) {
+            workspace = workspace.parent as? View
+        }
+        if (workspace != null) activeTouchWorkspace28820 = WeakReference(workspace)
+        var installed = 0
+        // Hook the OEM implementation, not android.view.ViewGroup globally.
+        if (workspace != null) {
+            for (name in arrayOf("dispatchTouchEvent", "onTouchEvent", "onInterceptTouchEvent")) {
+                var klass: Class<*>? = workspace.javaClass
+                while (klass != null && !klass.name.startsWith("android.")) {
+                    for (method in klass.declaredMethods) {
+                        if (method.name != name || method.parameterTypes.size != 1 ||
+                            method.parameterTypes[0] != MotionEvent::class.java) continue
+                        if (hookedMethods28820.add(method)) {
+                            try {
+                                XposedBridge.hookMethod(method, object : XC_MethodHook() {
+                                    override fun afterHookedMethod(param: MethodHookParam) {
+                                        if (param.thisObject !== activeTouchWorkspace28820?.get()) return
+                                        val event = param.args.firstOrNull() as? MotionEvent ?: return
+                                        observeTouchEvent28820(event, name)
+                                    }
+                                })
+                                XposedBridge.log("KYANT28820_HOOK_OK method=${klass.name}.$name")
+                            } catch (t: Throwable) {
+                                hookedMethods28820.remove(method)
+                                XposedBridge.log("KYANT28820_HOOK_FAILED method=${klass.name}.$name error=${t.javaClass.simpleName}")
+                            }
+                        }
+                        installed++
+                    }
+                    klass = klass.superclass
+                }
+            }
+        }
+        // Fallback: Activity-level release event, scoped by the same root window.
+        var context = anchor.context
+        var activity: Activity? = null
+        for (i in 0 until 10) {
+            if (context is Activity) { activity = context as Activity; break }
+            val wrapped = context as? ContextWrapper ?: break
+            context = wrapped.baseContext
+        }
+        val act = activity
+        if (act != null) {
+            val method = runCatching {
+                act.javaClass.getMethod("dispatchTouchEvent", MotionEvent::class.java)
+            }.getOrNull()
+            if (method != null && hookedMethods28820.add(method)) {
+                try {
+                    XposedBridge.hookMethod(method, object : XC_MethodHook() {
+                        override fun afterHookedMethod(param: MethodHookParam) {
+                            val current = param.thisObject as? Activity ?: return
+                            if (current.window?.decorView?.rootView !== activeTouchRoot28820?.get()) return
+                            val event = param.args.firstOrNull() as? MotionEvent ?: return
+                            observeTouchEvent28820(event, "activity")
+                        }
+                    })
+                    XposedBridge.log("KYANT28820_HOOK_OK method=${method.declaringClass.name}.dispatchTouchEvent")
+                } catch (t: Throwable) {
+                    hookedMethods28820.remove(method)
+                    XposedBridge.log("KYANT28820_HOOK_FAILED method=activity error=${t.javaClass.simpleName}")
+                }
+            }
+        }
+        XposedBridge.log("KYANT28820_HOOK_STATUS workspace=${workspace?.javaClass?.simpleName ?: "absent"} " +
+            "workspaceMethods=$installed activity=${act?.javaClass?.simpleName ?: "absent"}")
+    }
     // Opt-in diagnostic: 1 allows only one active optical host, 0 retains all hosts.
     private const val SINGLE_HOST_KEY = "liquidglass_kyant_single_host_282"
     private const val SAMPLE_MODE_KEY = "liquidglass_kyant_sampling_mode_283"
@@ -136,6 +254,13 @@ object KyantLauncherLens270 {
         val pipelineMode28819 = try {
             Settings.Global.getInt(anchor.context.contentResolver, PIPELINE_AB_28819_KEY, -1).coerceIn(-1, 3)
         } catch (_: Throwable) { -1 }
+        val releaseTrace28820 = pipelineMode28819 == 2 && try {
+            Settings.Global.getInt(anchor.context.contentResolver, RELEASE_TRACE_28820_KEY, 0) == 1
+        } catch (_: Throwable) { false }
+        if (releaseTrace28820) {
+            installTouchHooks28820(anchor)
+            XposedBridge.log("KYANT28820_TRACE_ARMED host=${System.identityHashCode(anchor)} pipeline=$pipelineMode28819")
+        }
         val samplingMode = if (pipelineMode28819 >= 0) 1 else try {
             Settings.Global.getInt(anchor.context.contentResolver, SAMPLE_MODE_KEY, 1).coerceIn(0, 1)
         } catch (_: Throwable) { 1 }
@@ -377,12 +502,15 @@ object KyantLauncherLens270 {
         // ComposeView is final in the Compose UI version used by this project.
         // Observe the enclosing FrameLayout instead of subclassing ComposeView.
         var disposed = false
+        lateinit var releaseTracePulse28820: (String, Offset?, String) -> Unit
         val frame = object : FrameLayout(anchor.context) {
             override fun dispatchDraw(canvas: Canvas) {
                 // Never mutate Compose state during View.dispatchDraw: the
                 // V288 experiment stalled the source snapshot on real devices.
                 super.dispatchDraw(canvas)
                 val nowNs = SystemClock.elapsedRealtimeNanos()
+                if (releaseTrace28820) releaseTracePulse28820("HOST_DRAW", glassScreenPosition(lastBounds),
+                    "frameVisible=$visibility frameLayer=$layerType childCount=$childCount")
                 if (lastDrawNs != 0L) {
                     val gapMs = (nowNs - lastDrawNs) / 1_000_000L
                     drawIntervals++
@@ -439,6 +567,32 @@ object KyantLauncherLens270 {
         // reusable Bitmap is updated atomically relative to those draw callbacks.
         // A pending notification is coalesced to avoid unbounded post() backlog.
         val bridgeNotifyPending = java.util.concurrent.atomic.AtomicBoolean(false)
+        var traceSelected28820 = false
+        var traceBudget28820 = 0
+        var traceSeenSeq28820 = 0L
+        fun releaseTrace28820(stage: String, pos: Offset?, details: String = "") {
+            if (!releaseTrace28820 || !traceSelected28820 || traceBudget28820 >= 150) return
+            val seq = releaseSeq28820.get()
+            val ageNs = SystemClock.elapsedRealtimeNanos() - releaseNs28820.get()
+            if (seq == 0L || ageNs < 0L || ageNs > 260_000_000L) return
+            val nowVersion = bridgeVersion.intValue
+            val published = bridgePublishedPosition.get()
+            val fingerprint = try {
+                bridgeBitmap?.let { b ->
+                    val a = b.getPixel(b.width / 2, b.height / 2)
+                    val c = b.getPixel(b.width / 4, b.height / 4)
+                    val d = b.getPixel((b.width * 3) / 4, (b.height * 3) / 4)
+                    Integer.toHexString(a xor (c shl 1) xor (d ushr 1))
+                } ?: "null"
+            } catch (_: Throwable) { "error" }
+            if (traceSeenSeq28820 != seq) traceSeenSeq28820 = seq
+            traceBudget28820++
+            XposedBridge.log("KYANT28820_$stage host=$trace28815Host seq=$seq " +
+                "afterReleaseMs=${ageNs / 1_000_000L} dx=$releaseDx28820 action=$releaseAction28820 " +
+                "x=${pos?.x} y=${pos?.y} publishedX=${published?.x} publishedY=${published?.y} " +
+                "version=$nowVersion publishes=${bridgeDrawCount.get()} bitmapSig=$fingerprint $details")
+        }
+        releaseTracePulse28820 = { stage, pos, details -> releaseTrace28820(stage, pos, details) }
         val bridgePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val bridgeDst = RectF()
         val bridgeCanvas = bridgeBitmap?.let { Canvas(it) }
@@ -469,6 +623,7 @@ object KyantLauncherLens270 {
                 if (disposed || width <= 0 || height <= 0) return
                 val pos = try { glassScreenPosition(lastBounds) } catch (_: Throwable) { return }
                 sampleBridgeAt(pos)
+                releaseTrace28820("NATIVE_SAMPLE", pos, "draw=${count + 1L} bridgeW=${bridgeBitmap?.width} bridgeH=${bridgeBitmap?.height}")
                 // Mode 3: sample into exactly the same bridge Bitmap as mode 2,
                 // but render it in the native View's own Canvas (no Compose handoff).
                 if (pipelineMode28819 == 3) {
@@ -480,7 +635,10 @@ object KyantLauncherLens270 {
                 if (pipelineMode28819 != 3 && bridgeNotifyPending.compareAndSet(false, true)) {
                     post {
                         bridgeNotifyPending.set(false)
-                        if (!disposed) bridgeVersion.intValue++
+                        if (!disposed) {
+                            bridgeVersion.intValue++
+                            releaseTrace28820("COMPOSE_NOTIFY", bridgePublishedPosition.get(), "pending=false")
+                        }
                     }
                 }
                 if (count % 60L == 1L && pipelineMode28819 >= 0) XposedBridge.log(
@@ -624,6 +782,10 @@ object KyantLauncherLens270 {
             restoreRebound28818("dispose")
             if (disposed) return
             disposed = true
+            if (traceSelected28820) {
+                claimedHostCount28820.decrementAndGet()
+                traceSelected28820 = false
+            }
             if (activeCountRegistered) {
                 activeHostCount.decrementAndGet()
                 activeCountRegistered = false
@@ -694,7 +856,7 @@ object KyantLauncherLens270 {
                 if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
                 pipelineMode28819,
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
-                { glassScreenPosition(lastBounds) }) {
+                { glassScreenPosition(lastBounds) }, { stage, pos, info -> releaseTrace28820(stage, pos, info) }) {
                 if (compositionSeen.compareAndSet(false, true)) {
                     XposedBridge.log("KYANT2885_COMPOSITION_CONFIRMED elapsedMs=" +
                         (SystemClock.uptimeMillis() - startedAt))
@@ -792,6 +954,17 @@ object KyantLauncherLens270 {
                     anchor.getLocationOnScreen(locationScratch)
                     val xy = locationScratch
                     val actualSample = glassScreenPosition(lastBounds)
+                    if (releaseTrace28820 && anchor.isShown && !traceSelected28820 &&
+                        actualSample.x > -previewWidth && actualSample.x < displayWidth &&
+                        claimedHostCount28820.get() < 3) {
+                        val claimed = claimedHostCount28820.incrementAndGet()
+                        if (claimed <= 3) {
+                            traceSelected28820 = true
+                            XposedBridge.log("KYANT28820_TRACE_HOST host=$trace28815Host claim=$claimed source=${System.identityHashCode(reference)}")
+                        } else claimedHostCount28820.decrementAndGet()
+                    }
+                    releaseTrace28820("PREDRAW", actualSample,
+                        "committedX=${samplePosition.value.x} committedY=${samplePosition.value.y} frameX=${frame.x} frameTx=${frame.translationX}")
                     // V288.14: compare sample, anchor and host in the same PreDraw.
                     // Diagnostic only: no changes to wallpaper sampling or transforms.
                     // Ignore only transform-matrix numerical noise (< 1/64 px).
@@ -801,7 +974,7 @@ object KyantLauncherLens270 {
                     // V288.18: detect a rightward drag followed by leftward spring-back.
                     // The comparison is in screen space, not Workspace scroll coordinates.
                     val reboundNow28818 = SystemClock.elapsedRealtimeNanos()
-                    if (anchor.isShown) {
+                    if (pipelineMode28819 < 0 && anchor.isShown) {
                         val reboundDx28818 = if (rebound28818LastX.isFinite()) actualSample.x - rebound28818LastX else 0f
                         if (reboundDx28818 > 0.5f) {
                             rebound28818RightDrag = true
@@ -1104,6 +1277,8 @@ object KyantLauncherLens270 {
                         frame.width == b.width() && frame.height == b.height()
                     val currentSample = glassScreenPosition(b)
                     predrawMatrixSnapshot.set(Pair(currentSample, SystemClock.elapsedRealtimeNanos()))
+                    releaseTrace28820("POST_PREDRAW", currentSample,
+                        "committedX=${samplePosition.value.x} committedY=${samplePosition.value.y} changed=$updatePosition")
                     if (cadenceStartX.isNaN()) cadenceStartX = currentSample.x
                     if (!cadenceEndX.isNaN() && kotlin.math.abs(currentSample.x - cadenceEndX) > 0.015625f) cadenceMoving++
                     cadenceEndX = currentSample.x
@@ -1183,6 +1358,7 @@ object KyantLauncherLens270 {
         bridgeResample: (Offset) -> Unit,
         predrawMatrixSnapshot: java.util.concurrent.atomic.AtomicReference<Pair<Offset, Long>>,
         currentNativePosition: () -> Offset,
+        trace28820: (String, Offset?, String) -> Unit,
         onComposed: () -> Unit
     ) {
         val density = androidx.compose.ui.platform.LocalDensity.current.density
@@ -1254,6 +1430,8 @@ object KyantLauncherLens270 {
                 if (bridgeBitmap != null) {
                     // State read here registers the draw invalidation dependency.
                     val version = bridgeVersion.value
+                    if (pipelineMode28819 == 2) trace28820("COMPOSE_DRAW", drawPosition,
+                        "consumedVersion=$version prePublished=${bridgePublishedPosition.get()?.x}")
                     if (bridgeSyncMode == 1 || bridgeSyncMode == 2) {
                         // Mode 1: experimental catch-up, as in V288.9.
                         // Mode 2: observe the exact same coordinate mismatch but NEVER

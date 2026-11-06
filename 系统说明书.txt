@@ -32,3 +32,15 @@ V1.9.205.288.19｜原生 Canvas / Compose 壁纸显示链路 2×2 隔离实验
 标记 KYANT28819_PIPELINE、KYANT28819_NATIVE_BRIDGE、KYANT28819_COMPOSE_DRAW。请分别比较连续左右滑动翻页与向右小幅拖动不翻页松手回弹，特别关注两种不同的闪动。
 判读：模式0/1对照隔离原生 vs Compose 直绘；模式2/3对照同一 Bitmap 经 Compose vs 原生显示；模式0/3对照有没有中间 Bitmap。若模式2抖动、模式3不抖动，优先检查桥接重绘通知、共享可变 Bitmap 的纹理缓存与 Compose 绘制依赖，而非继续补偿壁纸采样坐标。回弹阶段两条路径都闪动时不能直接归罪 Compose。
 本版为源码实验包；未在本地完成 Gradle 编译或真机验证。运行前保留稳定版 APK 和源码备份。默认值 -1，不自动启动本实验。
+
+
+V1.9.205.288.20｜触摸松手前后渲染链路诊断版
+原生 Canvas→共享 Bitmap→Compose（模式2）保持原样，Kyant 光学效果仍关闭。
+实验必须先设置：liquidglass_kyant_pipeline_ab_28819=2，liquidglass_kyant_release_trace_28820=1。
+重启 Launcher 后检查 KYANT28820_TRACE_ARMED、KYANT28820_HOOK_OK 与 KYANT28820_TOUCH_RELEASE。
+诊断采集 TOUCH_RELEASE、PREDRAW、POST_PREDRAW、NATIVE_SAMPLE、COMPOSE_NOTIFY、COMPOSE_DRAW、HOST_DRAW。
+仅在松手后的260ms采集；最多3个可见Host，每Host150条记录；不改变触摸处理结果或显示策略。
+重点测试：向右拖动但不翻页，松手瞬间是否闪动；再以向左拖动但不翻页作对照。
+Bitmap指纹取3个采样像素，不等于最终GPU显示纹理；日志回调也不能证明真实上屏时序。
+旧版本 288.15～288.18 的重绘和图层干预在模式2下自动禁用。
+取消诊断：settings put global liquidglass_kyant_release_trace_28820 0，并重启桌面。
