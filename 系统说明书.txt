@@ -1,3 +1,6 @@
+V1.9.205.268｜Launcher 隔离 Compose 生命周期宿主实验
+默认关闭；通过 settings global liquidglass_kyant_host_probe_268=1 开启，重启 Launcher 后对首个文件夹创建一次 1x1 非交互 ComposeView，约 2.5 秒后释放。日志 KYANT268_INSTALLED / HOST_ATTACHED / COMPOSITION_ACTIVE / HOST_DISPOSED。仅用于验证，不替换文件夹和 Dock 渲染。实验可能造成 Launcher 重启，测试前做好恢复准备。
+
 V1.9.205.267 Launcher Compose 宿主可行性只读诊断
 开启：su -c settings put global liquidglass_kyant_host_probe_267 1
 重启 Launcher 后在 Vector 日志搜索 KYANT267_HOST / KYANT267_COMPOSE_AVAIL。
