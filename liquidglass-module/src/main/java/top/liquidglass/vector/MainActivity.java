@@ -88,6 +88,68 @@ public final class MainActivity extends Activity {
             putBooleanIfChanged193(key,checked);
         });current.addView(s);
     }
+    // V288.23: this controls the actual Launcher Kyant probe Global key, not a
+    // SharedPreferences-only cosmetic switch. Root work never blocks the UI thread.
+    private void kyantLauncherSwitch28823(){
+        final String key="liquidglass_kyant_persistent_probe_2884";
+        final Switch control=new Switch(this);
+        control.setText("启用 Kyant 桌面光学透镜（实验）");
+        control.setTextColor(ink);control.setTextSize(14);
+        control.setPadding(0,dp(8),0,dp(8));
+        control.setEnabled(false);
+        current.addView(control);
+        final TextView state=text("正在读取 Launcher 实际开关…",12,false);
+        current.addView(state);
+        new Thread(()->{
+            int value=-1;
+            try{
+                Process p=new ProcessBuilder("su","-c","settings get global "+key)
+                    .redirectErrorStream(true).start();
+                java.io.BufferedReader r=new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
+                String line=r.readLine();
+                if(p.waitFor(6,java.util.concurrent.TimeUnit.SECONDS) && p.exitValue()==0)
+                    value="1".equals(line)?1:0;
+                else if(p.isAlive())p.destroyForcibly();
+                p.destroy();
+            }catch(Throwable ignored){}
+            final int initial=value;
+            runOnUiThread(()->{
+                if(initial<0){state.setText("读取失败：请检查 KernelSU Root 授权");return;}
+                control.setChecked(initial==1);
+                control.setEnabled(true);
+                state.setText(initial==1?"已开启 · Kyant 实验透镜":"已关闭 · 保留现有稳定玻璃效果");
+                control.setOnCheckedChangeListener((button,enabled)->{
+                    control.setEnabled(false);
+                    state.setText("正在写入系统开关…");
+                    new Thread(()->{
+                        boolean ok=false;
+                        Process proc=null;
+                        try{
+                            proc=new ProcessBuilder("su","-c","settings put global "+key+" "+(enabled?1:0))
+                                .redirectErrorStream(true).start();
+                            ok=proc.waitFor(7,java.util.concurrent.TimeUnit.SECONDS) && proc.exitValue()==0;
+                            if(!ok && proc.isAlive())proc.destroyForcibly();
+                        }catch(Throwable ignored){}finally{if(proc!=null)proc.destroy();}
+                        final boolean success=ok;
+                        runOnUiThread(()->{
+                            if(!success){
+                                control.setOnCheckedChangeListener(null);
+                                control.setChecked(!enabled);
+                                control.setOnCheckedChangeListener((v,checked)->kyantSwitchRetry28823());
+                                state.setText("切换失败；请重新进入页面重试");
+                                control.setEnabled(false);
+                            }else{
+                                state.setText(enabled?"已开启 · 返回桌面测试（实验性，可能闪动）":"已关闭 · 返回桌面恢复稳定效果");
+                                control.setEnabled(true);
+                                Toast.makeText(this,"Kyant 实验透镜"+(enabled?"已开启":"已关闭")+"；返回桌面查看效果",Toast.LENGTH_LONG).show();
+                            }
+                        });
+                    },"KyantSwitch28823").start();
+                });
+            });
+        },"KyantSwitchRead28823").start();
+    }
+    private void kyantSwitchRetry28823(){recreate();}
     private void slider(String label,String key,int def,int min,int max){
         TextView caption=text("",13,false);current.addView(caption);
         SeekBar bar=new SeekBar(this);bar.setMax(max-min);bar.setProgress(Math.max(0,Math.min(max-min,prefs.getInt(key,def)-min)));current.addView(bar);
@@ -419,6 +481,8 @@ public final class MainActivity extends Activity {
         TextView serviceHint=text("V221：保留已验证的 UI→Launcher 实时参数和独立二维透镜路由。新 Shader 尝试平滑距离场、局部 5/9 点采样及角部位移修正，若创建失败自动回退 V219。图标取消外圈月晕，改为薄内缘光影。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
+        section("Kyant 桌面光学引擎 · 实验开关","直接控制 Launcher 的 Kyant 实验透镜开关；与 V230 统一玻璃曲面开关不同。当前壁纸采样仍可能闪动，默认关闭。关闭后回退原有玻璃效果。切换后返回桌面观察，必要时重启 Launcher。");
+        kyantLauncherSwitch28823();
         action("V265 真实壁纸参考帧 Kyant 折射测试", () -> startActivity(new android.content.Intent(this, KyantReferenceFrame265Activity.class)));
         action("V256 原生 View 背景快照桥接测试", () -> startActivity(new android.content.Intent(this, KyantNativeBridge256Activity.class)));
         action("V255 Kyant 多背景与拖动透镜测试", () -> startActivity(new android.content.Intent(this, KyantEngine255Activity.class)));

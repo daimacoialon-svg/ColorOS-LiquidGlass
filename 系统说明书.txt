@@ -55,3 +55,5 @@ V1.9.205.288.21｜松手处理前后及逐次帧预算诊断版
 关闭实验：settings put global liquidglass_kyant_release_trace_28821 0，force-stop com.android.launcher。
 
 V1.9.205.288.22｜参考帧同绘制回调 A/B：需 pipeline_ab_28819=2；frame_sync_ab_28822=0 保持原生 Canvas 采样→post→Compose 的 V288.21 路径；=1 禁止原生端独立发布，在 Compose 绘制回调中以本次 drawPosition 直接采样现有参考帧至桥接 Bitmap 并立即绘制。模式1可能增加 Compose 绘制负担，作为诊断不建议长期使用。日志 KYANT28822_FRAME_SYNC、KYANT28822_SAME_DRAW。壁纸 JPG 加载机制和 Kyant 光学算法不变。
+
+V1.9.205.288.23：设置首页新增 Kyant 桌面光学透镜实验开关，Root 读写 Settings.Global liquidglass_kyant_persistent_probe_2884，默认关闭。此开关控制已接入的 Launcher Kyant 透镜实验，并非独立 Shader 参数。壁纸采样闪动尚未修复；保留原有渲染路径。
