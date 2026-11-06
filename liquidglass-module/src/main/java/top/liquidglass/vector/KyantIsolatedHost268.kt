@@ -12,12 +12,12 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.ViewTreeLifecycleOwner
-import androidx.lifecycle.ViewTreeViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
-import androidx.savedstate.ViewTreeSavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import de.robv.android.xposed.XposedBridge
 
 /** V268: single, 1x1 noninteractive host test; no wallpaper, no glass replacement. */
@@ -51,9 +51,9 @@ object KyantIsolatedHost268 {
         val frame = FrameLayout(anchor.context)
         frame.isClickable = false
         frame.isFocusable = false
-        ViewTreeLifecycleOwner.set(frame, owner)
-        ViewTreeSavedStateRegistryOwner.set(frame, owner)
-        ViewTreeViewModelStoreOwner.set(frame, owner)
+        frame.setViewTreeLifecycleOwner(owner)
+        frame.setViewTreeSavedStateRegistryOwner(owner)
+        frame.setViewTreeViewModelStoreOwner(owner)
         val compose = ComposeView(anchor.context)
         compose.isClickable = false
         compose.setContent { HostContent() }

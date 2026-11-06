@@ -10,8 +10,8 @@ android {
         applicationId = "top.liquidglass.vector"
         minSdk = 28
         targetSdk = 28
-        versionCode = 19205268
-        versionName = "1.9.205.268"
+        versionCode = 192052681
+        versionName = "1.9.205.268.1"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -25,6 +25,9 @@ dependencies {
     implementation(project(":backdrop"))
     implementation(libs.kyant.shapes)
     implementation(libs.androidx.activity.compose)
+    implementation("androidx.lifecycle:lifecycle-runtime:2.9.4")
+    implementation("androidx.lifecycle:lifecycle-viewmodel:2.9.4")
+    implementation("androidx.savedstate:savedstate:1.3.3")
     implementation(libs.compose.foundation)
     implementation(libs.compose.ui)
 }
