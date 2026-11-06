@@ -1,21 +1,23 @@
-ColorOS-LiquidGlass V1.9.205.287｜动态采样坐标与 DragView 诊断版
+ColorOS-LiquidGlass V1.9.205.288｜绘制阶段坐标同步 A/B 实验版
 
-基于 V286.2 真机确认稳定的 Host 布局修复，保留 V286.1 首次可见性与 Kyant Shader。
+以 V286.2 真机验证稳定的 Host 布局修复及 V286.1 首次显示修复为基线，继承 V287 DragView 诊断。原始 Kyant Shader、文件夹圆角、玻璃参数均未修改。
 
-本版实装：
-1. 将玻璃坐标同步的 PreDraw 监听挂在 Launcher root ViewTreeObserver 上，减少文件夹本身没有独立重绘时遗漏 Workspace 变化的风险。
-2. 对浮点矩阵噪声使用 1/64 像素阈值，仍跟踪真正的亚像素滑动；不对实际采样位置进行量化。
-3. 限频检查实际视图树中是否出现 DragView，日志 KYANT287_DRAG_VIEW_FOUND，记录其坐标和尺寸，为后续真实拖动 Host 接入提供依据。
-4. 不直接把 ComposeView 强行移植到 DragView：拖动对象可能是截图快照，未验证生命周期与视图结构时会造成崩溃或重复玻璃。
+本版主要变更：
+1. 新增 liquidglass_kyant_frame_sync_288 模式：0 为 V287 原 PreDraw 采样坐标提交；1 为 FrameLayout.dispatchDraw 绘制前重新计算全局矩阵坐标并提交 Compose draw-phase State，默认 1。两种模式不改变 Host 的实际位置，避免 V286 左偏回归。
+2. mode=1 时，PreDraw 仍负责 Host 几何校正和可见性，但不在移动路径提交采样坐标；绘制阶段只在超过 1/64px 时更新采样 State。
+3. 保留 DragView 发现日志 KYANT288_DRAG_VIEW_FOUND；拖动时 DragView 通常显示 Launcher 截图快照，本版尚未将独立光学 Host 注入 DragView，不能宣称拖动实时采样已经修复。
+4. 新增 KYANT288_FRAME_SYNC 和 KYANT288_DRAW_PHASE_COMMIT 日志，便于对比两种模式的滑动抖动。
 
-重要：本版不宣称已经实现拖动中的实时壁纸采样。请长按拖动文件夹并提供 Vector 日志，确认 DragView 结构后再实施真实拖动 Host。左右滑动微抖修复也需真机验证。
-
-启用命令：
-su -c settings put global liquidglass_kyant_persistent_probe_2862 0
-su -c settings put global liquidglass_kyant_persistent_probe_287 1
+启用：
+su -c settings put global liquidglass_kyant_persistent_probe_287 0
+su -c settings put global liquidglass_kyant_persistent_probe_288 1
+su -c settings put global liquidglass_kyant_frame_sync_288 1
 su -c settings put global liquidglass_kyant_sampling_mode_283 1
 su -c '/system/bin/am force-stop com.android.launcher'
 
-Git 提交：git add -A && git commit -m "V1.9.205.287 版本" && git push origin main
+A/B 对比：
+su -c settings put global liquidglass_kyant_frame_sync_288 0
+su -c '/system/bin/am force-stop com.android.launcher'
+恢复 mode=1 同理。
 
-构建和真机尚未验证。若出现问题关闭 287 开关并重新启用 2862，安装旧版 APK 恢复。
+构建与真机效果尚未验证；如模式1出现绘制异常，改为模式0 重启 Launcher，或安装 V286.2 APK 回退。
