@@ -138,9 +138,9 @@ object KyantLauncherLens270 {
             Settings.Global.getInt(anchor.context.contentResolver, MOTION_AB_KEY, 0).coerceIn(0, 2)
         } catch (_: Throwable) { 0 }
         val bridgeSyncMode = try {
-            Settings.Global.getInt(anchor.context.contentResolver, BRIDGE_SYNC_KEY, 1).coerceIn(0, 1)
+            Settings.Global.getInt(anchor.context.contentResolver, BRIDGE_SYNC_KEY, 1).coerceIn(0, 2)
         } catch (_: Throwable) { 1 }
-        XposedBridge.log("KYANT2889_BRIDGE_SYNC mode=$bridgeSyncMode")
+        XposedBridge.log("KYANT28810_BRIDGE_SYNC mode=$bridgeSyncMode")
         val nativeBridgeMode = try {
             Settings.Global.getInt(anchor.context.contentResolver, NATIVE_BRIDGE_KEY, 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 }
@@ -320,6 +320,7 @@ object KyantLauncherLens270 {
         val bridgeVersion = androidx.compose.runtime.mutableIntStateOf(0)
         val bridgePublishedPosition = java.util.concurrent.atomic.AtomicReference<Offset?>(null)
         val bridgeDrawCount = java.util.concurrent.atomic.AtomicLong(0L)
+        val bridgeMismatchObserved = java.util.concurrent.atomic.AtomicLong(0L)
         // Native View and Compose draw run on the Launcher UI thread. This single
         // reusable Bitmap is updated atomically relative to those draw callbacks.
         // A pending notification is coalesced to avoid unbounded post() backlog.
@@ -486,7 +487,7 @@ object KyantLauncherLens270 {
             compose.setContent { LensContent270(reference, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode,
                 renderAbMode, motionAbMode, legacySyncAbMode, bridgeBitmap, bridgeVersion, bridgeSyncMode,
-                bridgePublishedPosition, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
+                bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
                 { glassScreenPosition(lastBounds) }) {
                 if (compositionSeen.compareAndSet(false, true)) {
                     XposedBridge.log("KYANT2885_COMPOSITION_CONFIRMED elapsedMs=" +
@@ -802,6 +803,7 @@ object KyantLauncherLens270 {
         bridgeVersion: androidx.compose.runtime.State<Int>,
         bridgeSyncMode: Int,
         bridgePublishedPosition: java.util.concurrent.atomic.AtomicReference<Offset?>,
+        bridgeMismatchObserved: java.util.concurrent.atomic.AtomicLong,
         bridgeResample: (Offset) -> Unit,
         predrawMatrixSnapshot: java.util.concurrent.atomic.AtomicReference<Pair<Offset, Long>>,
         currentNativePosition: () -> Offset,
@@ -866,21 +868,27 @@ object KyantLauncherLens270 {
                 if (bridgeBitmap != null) {
                     // State read here registers the draw invalidation dependency.
                     val version = bridgeVersion.value
-                    if (bridgeSyncMode == 1) {
-                        // Native onDraw can publish a sample one frame before Compose
-                        // consumes it. Resample only when the *current* native matrix
-                        // differs; preserve the native Canvas sampling algorithm and
-                        // Kyant optical pipeline, but eliminate stale-position frames.
+                    if (bridgeSyncMode == 1 || bridgeSyncMode == 2) {
+                        // Mode 1: experimental catch-up, as in V288.9.
+                        // Mode 2: observe the exact same coordinate mismatch but NEVER
+                        // mutate the bridge bitmap or published position during Compose draw.
+                        // Logging is rate-limited to avoid introducing additional jank.
                         val nowPos = try { currentNativePosition() } catch (_: Throwable) { null }
                         val published = bridgePublishedPosition.get()
                         if (nowPos != null && (published == null ||
                             kotlin.math.abs(nowPos.x - published.x) > 0.015f ||
                             kotlin.math.abs(nowPos.y - published.y) > 0.015f)) {
-                            bridgeResample(nowPos)
                             val dx = if (published == null) 0f else nowPos.x - published.x
                             val dy = if (published == null) 0f else nowPos.y - published.y
-                            if (kotlin.math.abs(dx) > 0.5f || kotlin.math.abs(dy) > 0.5f)
-                                XposedBridge.log("KYANT2889_FRAME_CATCHUP dx=$dx dy=$dy version=$version")
+                            if (bridgeSyncMode == 1) {
+                                bridgeResample(nowPos)
+                                if (kotlin.math.abs(dx) > 0.5f || kotlin.math.abs(dy) > 0.5f)
+                                    XposedBridge.log("KYANT2889_FRAME_CATCHUP dx=$dx dy=$dy version=$version")
+                            } else {
+                                val n = bridgeMismatchObserved.incrementAndGet()
+                                if (n % 60L == 1L) XposedBridge.log(
+                                    "KYANT28810_MISMATCH_OBSERVE count=$n dx=$dx dy=$dy version=$version noResample=true")
+                            }
                         }
                     }
                     drawIntoCanvas { canvas ->

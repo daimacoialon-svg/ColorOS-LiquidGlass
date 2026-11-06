@@ -1,11 +1,13 @@
-ColorOS-LiquidGlass V1.9.205.288.9｜原生采样桥接偶发失步实验修复版
+ColorOS-LiquidGlass V1.9.205.288.10｜桥接补帧隔离对照版
 
-在 V288.8 原生 Canvas + Kyant 融合模式基础上：
-1. 保留原生 View Canvas 对壁纸的实时采样，Kyant Compose Backdrop 光学管线不变。
-2. 原生采样通知采用 coalesced post，避免每次 native onDraw 产生无上限的通知队列。
-3. Compose 实际绘制时校验原生采样坐标与当前 FolderIcon 矩阵；如果出现不一致，在当前绘制阶段通过相同原生 Canvas Bitmap 采样算法补齐，再交给 Kyant。
-4. 开关 liquidglass_kyant_bridge_sync_2889：0=V288.8 原始桥接（对照）；1=同绘制阶段追帧（实验，默认）。需同时开启 liquidglass_kyant_native_bridge_2888=1。
-5. 新增日志 KYANT2889_BRIDGE_SYNC、KYANT2889_NATIVE_PUBLISH、KYANT2889_FRAME_CATCHUP、KYANT2889_COMPOSE_CONSUME。
-6. 保留 V286.2 Host 定位修复、V288.7 左右对照及所有原有 UI 参数；不添加额外 README 文件。
+基于 V288.9，保留 V286.2 Host 定位、V288.7 原生 Canvas 对照、V288.8 Kyant 原生桥接及现有 UI/光学功能。
 
-注意：该方案仅在 Compose 确实执行绘制时补齐最新坐标；如果 Compose 整帧未绘制，则不能保证消除所有视觉失步。尚未完成 Android SDK Gradle 编译或真机测试。
+测试前开启 liquidglass_kyant_native_bridge_2888=1，并将 liquidglass_kyant_native_compare_2887=0。
+通过 liquidglass_kyant_bridge_sync_2889 切换：
+0 = V288.8 原始桥接（不检测、不补帧）
+1 = V288.9 绘制时补帧（检测并重采样）
+2 = V288.10 只检测、不补帧（使用与模式1相同的检测条件，但绝不在 Compose draw 内修改桥接 Bitmap）
+
+模式2每累计60次位置差异输出 KYANT28810_MISMATCH_OBSERVE，减少日志带来的性能干扰。
+KYANT28810_BRIDGE_SYNC 表示本次实例读取的模式。其它 V288.9 日志保留。
+本版为隔离实验，尚未经过 Gradle 编译或真机验证。
