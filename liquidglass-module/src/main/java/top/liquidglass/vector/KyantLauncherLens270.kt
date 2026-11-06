@@ -130,7 +130,6 @@ object KyantLauncherLens270 {
         val sampleWidth = androidx.compose.runtime.mutableIntStateOf(previewWidth)
         val sampleHeight = androidx.compose.runtime.mutableIntStateOf(previewHeight)
         // Initial sample uses the full transform, not the early integer view location.
-        samplePosition.value = glassScreenPosition(initialBounds)
         val sampleRadiusPx = androidx.compose.runtime.mutableFloatStateOf(
             nativeRadius.coerceIn(0f, minOf(previewWidth, previewHeight) * 0.49f))
         XposedBridge.log("KYANT281_SHAPE size=${previewWidth}x${previewHeight} radiusPx=${sampleRadiusPx.floatValue} radiusDp=${sampleRadiusPx.floatValue / anchor.resources.displayMetrics.density} source=legacy")
@@ -162,6 +161,8 @@ object KyantLauncherLens270 {
             return Offset(matrixPoint[0] + rootScreen[0] - rootWindow[0],
                 matrixPoint[1] + rootScreen[1] - rootWindow[1])
         }
+        // Initialize only after the local coordinate helper is declared.
+        samplePosition.value = glassScreenPosition(initialBounds)
         var lastSample = Offset(Float.NaN, Float.NaN)
         var firstPositionSettled = false
         var startupSyncAttempts = 0
