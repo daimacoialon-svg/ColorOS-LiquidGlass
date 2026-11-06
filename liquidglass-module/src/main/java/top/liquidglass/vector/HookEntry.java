@@ -8489,7 +8489,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             hook(find("com.android.systemui.qs.tileimpl.QSTileViewImpl", p.classLoader), "onLayout", layout, "QSTileViewImpl", false);
             hook(find("com.android.systemui.qs.QSPanel", p.classLoader), "onLayout", layout, "QSPanel", false);
         } else {
-            KyantLauncherProbe261.install(p.classLoader);
+            KyantLauncherProbe262.install(p.classLoader);
             hookLauncherOptics204(p.classLoader);
             hookIconOptics205(p.classLoader);
             hookWallpaperOffsetRequests();

@@ -1,3 +1,12 @@
+V1.9.205.262｜壁纸坐标域与屏幕裁剪验证（只读）
+开启：su -c settings put global liquidglass_kyant_probe_262 1
+关闭：su -c settings put global liquidglass_kyant_probe_262 0
+重启 Launcher 后在 Vector 日志中搜索 KYANT262。
+新增 KYANT262_MAPPING：记录完整文件夹 screen/size、根 View 范围、根 View UV、裁剪尺寸、Workspace 滚动。
+新增 KYANT262_WALLPAPER_ACCESS：仅获取系统壁纸 ID 或报告访问限制，不读取像素。
+注意：rootUV 不是 wallpaperUV！WallpaperManager 不提供可直接读取的当前合成壁纸偏移/缩放值；这三项标记 UNKNOWN，不得据此驱动光学渲染。
+不截图、不读取壁纸位图、不改变原版 Kyant Shader、不修改文件夹/Dock 视觉效果。
+
 V1.9.205.261｜Launcher 背景来源可行性诊断
 诊断开关：su -c settings put global liquidglass_kyant_probe_261 1
 Vector 搜索 KYANT261。新增 WALLPAPER（动态/静态元数据及建议尺寸）、LAYER（文件夹、Workspace、DragLayer 的背景/滚动/位移）、SOURCE_LIMIT。只读元数据，不获取壁纸位图、不截屏、不替换光学渲染。动态壁纸信息或权限可能不可用；结果仅供诊断，不能证明真实合成背景可读取。
