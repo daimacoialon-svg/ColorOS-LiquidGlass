@@ -1,3 +1,10 @@
+V1.9.205.267 Launcher Compose 宿主可行性只读诊断
+开启：su -c settings put global liquidglass_kyant_host_probe_267 1
+重启 Launcher 后在 Vector 日志搜索 KYANT267_HOST / KYANT267_COMPOSE_AVAIL。
+关闭：su -c settings put global liquidglass_kyant_host_probe_267 0
+本版只检查真实 FolderIcon 实例、ComposeView 类是否可加载、ViewTree Lifecycle/SavedState Owner 是否可用；不会创建 ComposeView、上传纹理或替换正式渲染。
+检测到类不代表 Compose 渲染宿主已经可用。
+
 V1.9.205.266｜Launcher 进程内壁纸参考帧与几何桥接诊断版
 
 V265 独立界面的真实壁纸 Kyant 透镜已由用户真机验证。
