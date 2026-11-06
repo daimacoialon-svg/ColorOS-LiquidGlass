@@ -1,12 +1,13 @@
-ColorOS-LiquidGlass V1.9.205.288.13｜右滑起始十帧坐标诊断版
+ColorOS-LiquidGlass V1.9.205.288.13.1｜右滑首帧诊断实际接入修正版
 
-针对 V288.12 三种模式右滑起始必闪一次、左滑不闪的真机现象。
-仅被动记录实际文件夹水平移动的起始点及之后 10 次 PreDraw 的采样、Host、Workspace、壁纸源身份和原生绘制坐标，不拦截 ACTION_DOWN、不改变光学或渲染算法。
-注意：日志标记的 MOTION_START 是文件夹开始移动的第一帧，并非直接监听手指 ACTION_DOWN。
-启用：su -c settings put global liquidglass_kyant_right_start_trace_28813 1
-关闭：su -c settings put global liquidglass_kyant_right_start_trace_28813 0
-重启：su -c "/system/bin/am force-stop com.android.launcher"
-日志：KYANT28813_MOTION_START、KYANT28813_ONSET_FRAME、KYANT28813_NATIVE_DRAW。
-每个文件夹实例最多输出120条诊断，避免无限日志；在同一页面右滑3次、左滑3次后导出Vector日志。
-保留 V288.12 三模式开关 liquidglass_kyant_native_layer_28812，推荐先使用模式1排除 Compose 光学。
-仅完成静态源码检查和ZIP完整性检查；未进行Gradle编译或真机验证。
+修复 V288.13 压缩包中缺少诊断代码的问题。
+在 KyantLauncherLens270.run 中读取 liquidglass_kyant_right_start_trace_28813，并输出 KYANT28813_TRACE_ENABLED。
+通过原有 PreDraw 观察文件夹实际水平位移，记录 KYANT28813_MOTION_START 和随后 10 帧 KYANT28813_ONSET_FRAME。原生 Canvas onDraw 记录 KYANT28813_NATIVE_DRAW。
+注意：方向以文件夹屏幕坐标 X 增大为右，不直接监听手指 ACTION_DOWN；这是位置移动起始诊断。
+每个 Host 限制诊断日志数量，避免持续输出。
+测试：su -c settings put global liquidglass_kyant_persistent_probe_2884 1
+su -c settings put global liquidglass_kyant_native_layer_28812 1
+su -c settings put global liquidglass_kyant_right_start_trace_28813 1
+su -c "/system/bin/am force-stop com.android.launcher"
+先确认 KYANT28813_TRACE_ENABLED，再左右滑动各三次并导出 Vector 日志。
+已检查源码标记和压缩包完整性；尚未完成 Gradle 编译及真机验证。

@@ -72,6 +72,7 @@ object KyantLauncherLens270 {
     private const val LEGACY_SYNC_AB_KEY = "liquidglass_kyant_legacy_sync_ab_2886"
     private const val NATIVE_COMPARISON_KEY = "liquidglass_kyant_native_compare_2887"
     private const val NATIVE_BRIDGE_KEY = "liquidglass_kyant_native_bridge_2888"
+    private const val RIGHT_START_TRACE_KEY = "liquidglass_kyant_right_start_trace_28813"
     private const val NATIVE_LAYER_KEY = "liquidglass_kyant_native_layer_28812"
     private const val DISPLAY_ISOLATION_KEY = "liquidglass_kyant_display_isolation_28811"
     private const val BRIDGE_SYNC_KEY = "liquidglass_kyant_bridge_sync_2889"
@@ -155,6 +156,22 @@ object KyantLauncherLens270 {
             Settings.Global.getInt(anchor.context.contentResolver, NATIVE_LAYER_KEY, 0).coerceIn(0, 3)
         } catch (_: Throwable) { 0 }
         XposedBridge.log("KYANT28812_NATIVE_LAYER mode=$nativeLayerMode isolation=$displayIsolationMode")
+        val rightStartTraceEnabled = try {
+            Settings.Global.getInt(anchor.context.contentResolver, RIGHT_START_TRACE_KEY, 1) == 1
+        } catch (_: Throwable) { true }
+        XposedBridge.log("KYANT28813_TRACE_ENABLED enabled=$rightStartTraceEnabled host=${System.identityHashCode(anchor)} nativeLayer=$nativeLayerMode")
+        var onsetPrevX = Float.NaN
+        var onsetPrevY = Float.NaN
+        var onsetPrevHostX = Float.NaN
+        var onsetPrevScrollX = Int.MIN_VALUE
+        var onsetPrevNs = 0L
+        var onsetQuietFrames = 0
+        var onsetDirection = 0
+        var onsetFramesRemaining = 0
+        var onsetSerial = 0
+        var onsetLogCount = 0
+        var onsetNativeDrawCount = 0
+        val onsetSourceId = System.identityHashCode(reference)
         val nativeBridgeMode = if (nativeLayerMode in 1..3) 0 else if (displayIsolationMode in 1..3) {
             if (displayIsolationMode == 1) 0 else 1
         } else try {
@@ -401,6 +418,10 @@ object KyantLauncherLens270 {
                 super.onDraw(canvas)
                 if (width <= 0 || height <= 0 || disposed) return
                 val position = try { glassScreenPosition(lastBounds) } catch (_: Throwable) { return }
+                if (rightStartTraceEnabled && onsetFramesRemaining > 0 && onsetNativeDrawCount < 90) {
+                    XposedBridge.log("KYANT28813_NATIVE_DRAW onset=$onsetSerial direction=$onsetDirection x=${position.x} y=${position.y} sourceId=$onsetSourceId")
+                    onsetNativeDrawCount++
+                }
                 val screenW = android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
                 val screenH = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
                 val scaleX = reference.width.toFloat() / screenW
@@ -658,6 +679,36 @@ object KyantLauncherLens270 {
                     // Track the real host/anchor relationship (including parent transforms),
                     // separately from the reference Bitmap's sampling coordinate.
                     // Throttle diagnostics to avoid log I/O every animation frame.
+                    if (rightStartTraceEnabled && visible && onsetLogCount < 180) {
+                        val dx = if (onsetPrevX.isFinite()) actualSample.x - onsetPrevX else 0f
+                        val dy = if (onsetPrevY.isFinite()) actualSample.y - onsetPrevY else 0f
+                        val moving = kotlin.math.abs(dx) > 0.35f
+                        if (moving) onsetQuietFrames = 0 else onsetQuietFrames++
+                        if (onsetDirection == 0 && moving && onsetPrevX.isFinite()) {
+                            onsetDirection = if (dx > 0f) 1 else -1
+                            onsetFramesRemaining = 10
+                            onsetSerial++
+                            XposedBridge.log("KYANT28813_MOTION_START host=${System.identityHashCode(anchor)} onset=$onsetSerial direction=$onsetDirection dx=$dx x=${actualSample.x} workspaceScrollX=$workspaceScrollX sourceId=$onsetSourceId")
+                            onsetLogCount++
+                        }
+                        val hostMatrix28813 = Matrix()
+                        frame.transformMatrixToGlobal(hostMatrix28813)
+                        val hostPoint28813 = floatArrayOf(0f, 0f)
+                        hostMatrix28813.mapPoints(hostPoint28813)
+                        val nowNs28813 = SystemClock.elapsedRealtimeNanos()
+                        if (onsetFramesRemaining > 0 && onsetLogCount < 180) {
+                            val scrollDelta28813 = if (onsetPrevScrollX == Int.MIN_VALUE) 0 else workspaceScrollX - onsetPrevScrollX
+                            XposedBridge.log("KYANT28813_ONSET_FRAME host=${System.identityHashCode(anchor)} onset=$onsetSerial direction=$onsetDirection remain=$onsetFramesRemaining x=${actualSample.x} dx=$dx y=${actualSample.y} dy=$dy anchorX=${xy[0]} hostX=${hostPoint28813[0]} hostDx=${hostPoint28813[0]-onsetPrevHostX} scrollX=$workspaceScrollX scrollDx=$scrollDelta28813 workspaceTx=$workspaceTranslationX boundsLeft=${lastBounds.left} sourceId=$onsetSourceId dtMs=${if (onsetPrevNs > 0L) (nowNs28813-onsetPrevNs)/1000000L else -1L}")
+                            onsetLogCount++
+                            onsetFramesRemaining--
+                        }
+                        if (onsetFramesRemaining == 0 && onsetQuietFrames >= 3) onsetDirection = 0
+                        onsetPrevX = actualSample.x
+                        onsetPrevY = actualSample.y
+                        onsetPrevHostX = hostPoint28813[0]
+                        onsetPrevScrollX = workspaceScrollX
+                        onsetPrevNs = nowNs28813
+                    }
                     val traceNowMs = SystemClock.uptimeMillis()
                     if (visible && (hostMisplaced ||
                         (workspaceMoved && traceNowMs - lastPositionTraceMs >= 180L))) {
