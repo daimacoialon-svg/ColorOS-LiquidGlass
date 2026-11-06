@@ -1,14 +1,17 @@
-ColorOS-LiquidGlass V1.9.205.288.6｜旧版原生矩阵采样与 Kyant Compose 融合 A/B 版
+ColorOS-LiquidGlass V1.9.205.288.7｜原生 Canvas 与 Kyant Compose 同容器采样对照实验
 
-目标：保持 Kyant Compose Backdrop、lens 折射、圆角及高光算法不变，只对比背景采样坐标的读取时机。
-参考旧版 V239 原生 View Canvas/BitmapShader 绘制时动态获取全局矩阵的机制；本版没有替换 Kyant Shader 或将 BitmapShader 直接叠加到 Compose。
+目标：验证原生 Canvas 在同一 FolderIcon Host 中的实时壁纸采样是否比 Compose/Kyant 跟随更稳定。
 
-新增实验开关：liquidglass_kyant_legacy_sync_ab_2886
-0：原版 V288.5 PreDraw -> Compose State -> Compose draw 坐标链路（默认）
-1：Compose draw 时直接读取原生 FolderIcon transformMatrixToGlobal 矩阵，使用当前绘制时坐标对齐壁纸 Bitmap；PreDraw 状态仍作为绘制失效触发器。
-日志：KYANT2886_LEGACY_SYNC_AB、KYANT2886_DRAW_MATRIX_COMPARE。
+实验键：liquidglass_kyant_native_compare_2887
+0：完整 Kyant 原始渲染（默认）
+1：文件夹玻璃左半边覆盖原生 Canvas 壁纸采样（无折射），右半边保留完整 Kyant 光学渲染。白色细线是左右分界。实验时左半边光学效果消失属于预期，不代表模块失效。
 
-保留：V286.2 Host 位置修复、V288.5 帧率诊断、V288.4 模式开关、Kyant 原始折射和高光。
-注意：此版仅改变采样坐标读取时机，并未证明能解决低帧率；也未实现拖拽时 OplusDragView 的独立采样。
-开关：liquidglass_kyant_persistent_probe_2884=1；liquidglass_kyant_motion_ab_2884=0；liquidglass_kyant_render_ab_2883=0；liquidglass_kyant_sampling_mode_283=1。
-实验需重启 Launcher 才会读取新开关。未完成 Gradle 编译及真机验证。
+左半边每次原生 onDraw 使用 FolderIcon 的 transformMatrixToGlobal 读取实际屏幕位置，并在同一次 Canvas drawBitmap 中完成坐标映射。右半边仍为原始 Compose/Kyant。两者共享同一个 FrameLayout/FolderIcon 变换。
+日志：KYANT2887_NATIVE_COMPARE、KYANT2887_NATIVE_DRAW；原有 KYANT2885_* 与 KYANT2886_* 日志保留。
+
+注意：此版不是将原生采样直接输入 Kyant Shader，也没有宣称修复抖动；该对照用于识别渲染路径差异。只测试桌面滑动，不包含 OplusDragView 拖动同步。
+保留 V286.2 Host 位置修复、V288.5 帧率诊断、V288.6 原生矩阵读取 A/B、Kyant 原有参数及光学效果。
+建议开关：liquidglass_kyant_persistent_probe_2884=1；liquidglass_kyant_motion_ab_2884=0；liquidglass_kyant_render_ab_2883=0；liquidglass_kyant_sampling_mode_283=1；liquidglass_kyant_legacy_sync_ab_2886=0。
+设置实验键后 force-stop com.android.launcher 使其重新加载。
+
+已检查源码与 ZIP 完整性；未完成 Gradle 编译和真机验证。

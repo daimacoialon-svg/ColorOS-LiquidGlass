@@ -70,6 +70,7 @@ object KyantLauncherLens270 {
     private const val RENDER_AB_KEY = "liquidglass_kyant_render_ab_2883"
     private const val MOTION_AB_KEY = "liquidglass_kyant_motion_ab_2884"
     private const val LEGACY_SYNC_AB_KEY = "liquidglass_kyant_legacy_sync_ab_2886"
+    private const val NATIVE_COMPARISON_KEY = "liquidglass_kyant_native_compare_2887"
     private val activeHostCount = java.util.concurrent.atomic.AtomicInteger(0)
     private val lastSamplingCommitNs = java.util.concurrent.atomic.AtomicLong(0L)
 
@@ -134,6 +135,10 @@ object KyantLauncherLens270 {
         val motionAbMode = try {
             Settings.Global.getInt(anchor.context.contentResolver, MOTION_AB_KEY, 0).coerceIn(0, 2)
         } catch (_: Throwable) { 0 }
+        val nativeCompareMode = try {
+            Settings.Global.getInt(anchor.context.contentResolver, NATIVE_COMPARISON_KEY, 0).coerceIn(0, 1)
+        } catch (_: Throwable) { 0 }
+        XposedBridge.log("KYANT2887_NATIVE_COMPARE mode=$nativeCompareMode (0=full_kyant 1=left_native_right_kyant)")
         val legacySyncAbMode = try {
             Settings.Global.getInt(anchor.context.contentResolver, LEGACY_SYNC_AB_KEY, 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 }
@@ -297,6 +302,59 @@ object KyantLauncherLens270 {
             isClickable = false
             isFocusable = false
         }
+        // V288.7: native Canvas reference, intentionally ABOVE Kyant on the LEFT half
+        // only. Right half stays the unmodified Compose/Kyant optical renderer.
+        // This is an A/B diagnostic, NOT the final hybrid optical implementation.
+        val nativeSampleView = if (nativeCompareMode == 1) object : View(anchor.context) {
+            private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            private val destination = RectF()
+            private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.WHITE
+                strokeWidth = resources.displayMetrics.density.coerceAtLeast(1f)
+            }
+            private var drawCount = 0L
+            private var lastDrawTimeNs = 0L
+            private var maxGapMs = 0L
+            private var lastX = Float.NaN
+            private var lastY = Float.NaN
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                if (width <= 0 || height <= 0 || disposed) return
+                val position = try { glassScreenPosition(lastBounds) } catch (_: Throwable) { return }
+                val screenW = android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
+                val screenH = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
+                val scaleX = reference.width.toFloat() / screenW
+                val scaleY = reference.height.toFloat() / screenH
+                val x = position.x * scaleX
+                val y = position.y * scaleY
+                val sw = width.toFloat() * scaleX
+                val sh = height.toFloat() * scaleY
+                if (sw <= 0f || sh <= 0f) return
+                destination.set(-x * width / sw, -y * height / sh,
+                    (reference.width - x) * width / sw,
+                    (reference.height - y) * height / sh)
+                val checkpoint = canvas.save()
+                canvas.clipRect(0f, 0f, width * 0.5f, height.toFloat())
+                canvas.drawBitmap(reference, null, destination, bitmapPaint)
+                canvas.restoreToCount(checkpoint)
+                canvas.drawLine(width * 0.5f, 0f, width * 0.5f, height.toFloat(), dividerPaint)
+                val now = SystemClock.elapsedRealtimeNanos()
+                if (lastDrawTimeNs > 0L) {
+                    val gap = (now - lastDrawTimeNs) / 1_000_000L
+                    if (gap > maxGapMs) maxGapMs = gap
+                }
+                lastDrawTimeNs = now
+                drawCount++
+                if (drawCount % 120L == 0L) {
+                    XposedBridge.log("KYANT2887_NATIVE_DRAW host=" + System.identityHashCode(anchor) +
+                        " draws=" + drawCount + " x=" + position.x + " y=" + position.y +
+                        " deltaX=" + (position.x - lastX) + " deltaY=" + (position.y - lastY) +
+                        " maxGapMs=" + maxGapMs + " hardware=" + canvas.isHardwareAccelerated)
+                    maxGapMs = 0L
+                }
+                lastX = position.x; lastY = position.y
+            }
+        }.apply { isClickable = false; isFocusable = false; setWillNotDraw(false) } else null
         var recomposer: Recomposer? = null
         var scope: CoroutineScope? = null
         fun dispose(reason: String) {
@@ -357,6 +415,9 @@ object KyantLauncherLens270 {
             recomposer = newRecomposer
             compose.setParentCompositionContext(newRecomposer)
             frame.addView(compose, FrameLayout.LayoutParams(previewWidth, previewHeight))
+            // Added AFTER Compose: only left half is native, right half remains Kyant.
+            nativeSampleView?.let { frame.addView(it, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)) }
+
             compose.setContent { LensContent270(reference, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode,
                 renderAbMode, motionAbMode, legacySyncAbMode, predrawMatrixSnapshot,
@@ -464,7 +525,11 @@ object KyantLauncherLens270 {
                         kotlin.math.abs(actualSample.y - lastSample.y)
                     val moved = xy[0] != lastX || xy[1] != lastY ||
                         sampleDelta > (1f / 64f)
-                    if (moved) positionChanges++
+                    if (moved) {
+                        positionChanges++
+                        // Native invalidation only. No Compose snapshot writes in draw.
+                        nativeSampleView?.postInvalidateOnAnimation()
+                    }
                     // Background geometry is local to FolderIcon; skip expensive reflection
                     // while only the Workspace scrolls, but recheck periodically for OEM resize.
                     // A reparented/moved folder can change its local geometry as well as its global transform.
