@@ -14,3 +14,5 @@ su -c "/system/bin/am force-stop com.android.launcher"
 
 
 V1.9.205.288.14：右滑首帧采样矩阵与 Host 坐标一致性诊断。新增开关 liquidglass_kyant_matrix_trace_28814（1 开启，0 关闭）；日志 KYANT28814_MATRIX_TRACE、KYANT28814_PREDRAW_START、KYANT28814_PREDRAW_FRAME、KYANT28814_DRAW_MATRIX。仅观察，不修改渲染算法；每个 Host 最多 180 条事件日志。
+
+V1.9.205.288.15：右滑起始 PreDraw / 原生 onDraw 时序诊断。开关 liquidglass_kyant_frame_trace_28815=1，日志 KYANT28815_TRACE_ENABLED / MOTION_ONSET / PREDRAW / NATIVE_DRAW。记录仅反映 UI 线程回调，不能证明 GPU 实际呈现或纹理帧身份。每 Host 限流 160 条。

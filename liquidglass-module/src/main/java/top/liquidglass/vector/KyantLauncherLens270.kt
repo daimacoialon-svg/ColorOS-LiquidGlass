@@ -74,6 +74,7 @@ object KyantLauncherLens270 {
     private const val NATIVE_BRIDGE_KEY = "liquidglass_kyant_native_bridge_2888"
     private const val RIGHT_START_TRACE_KEY = "liquidglass_kyant_right_start_trace_28813"
     private const val MATRIX_TRACE_28814_KEY = "liquidglass_kyant_matrix_trace_28814"
+    private const val FRAME_TRACE_28815_KEY = "liquidglass_kyant_frame_trace_28815"
     private const val NATIVE_LAYER_KEY = "liquidglass_kyant_native_layer_28812"
     private const val DISPLAY_ISOLATION_KEY = "liquidglass_kyant_display_isolation_28811"
     private const val BRIDGE_SYNC_KEY = "liquidglass_kyant_bridge_sync_2889"
@@ -190,6 +191,24 @@ object KyantLauncherLens270 {
         val trace28814HostPoint = FloatArray(2)
         val trace28814RootScreen = IntArray(2)
         val trace28814RootWindow = IntArray(2)
+        // V288.15: diagnostics only. A UI-thread draw callback does not prove GPU presentation.
+        val frameTrace28815 = try {
+            Settings.Global.getInt(anchor.context.contentResolver, FRAME_TRACE_28815_KEY, 0) == 1
+        } catch (_: Throwable) { false }
+        val trace28815Host = System.identityHashCode(anchor)
+        var trace28815PreSerial = 0L
+        var trace28815DrawSerial = 0L
+        var trace28815LastPreNs = 0L
+        var trace28815LastDrawNs = 0L
+        var trace28815LastPreX = Float.NaN
+        var trace28815LastDrawX = Float.NaN
+        var trace28815LastPreSerialAtDraw = 0L
+        var trace28815Quiet = 0
+        var trace28815Remaining = 0
+        var trace28815Direction = 0
+        var trace28815Events = 0
+        if (frameTrace28815) XposedBridge.log(
+            "KYANT28815_TRACE_ENABLED host=$trace28815Host native=${nativeLayerMode in 1..3} sourceId=${System.identityHashCode(reference)}")
         val onsetSourceId = System.identityHashCode(reference)
         val nativeBridgeMode = if (nativeLayerMode in 1..3) 0 else if (displayIsolationMode in 1..3) {
             if (displayIsolationMode == 1) 0 else 1
@@ -466,6 +485,23 @@ object KyantLauncherLens270 {
                     }
                     trace28814DrawRemaining--
                 }
+                if (frameTrace28815 && trace28815Remaining > 0 && trace28815Events < 160) {
+                    val now28815 = SystemClock.elapsedRealtimeNanos()
+                    trace28815DrawSerial++
+                    val gapMs = if (trace28815LastDrawNs > 0L)
+                        (now28815 - trace28815LastDrawNs) / 1000000L else -1L
+                    val drawDx = if (trace28815LastDrawX.isFinite())
+                        position.x - trace28815LastDrawX else 0f
+                    val preAgeMs = if (trace28815LastPreNs > 0L)
+                        (now28815 - trace28815LastPreNs) / 1000000L else -1L
+                    XposedBridge.log(
+                        "KYANT28815_NATIVE_DRAW host=$trace28815Host dir=$trace28815Direction draw=$trace28815DrawSerial pre=$trace28815PreSerial preAdvance=${trace28815PreSerial-trace28815LastPreSerialAtDraw} x=${position.x} dx=$drawDx preX=$trace28815LastPreX preDiff=${position.x-trace28815LastPreX} preAgeMs=$preAgeMs drawGapMs=$gapMs hardware=${canvas.isHardwareAccelerated} layerType=$layerType sourceId=${System.identityHashCode(reference)}")
+                    trace28815LastPreSerialAtDraw = trace28815PreSerial
+                    trace28815LastDrawNs = now28815
+                    trace28815LastDrawX = position.x
+                    trace28815Remaining--
+                    trace28815Events++
+                }
                 val screenW = android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
                 val screenH = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
                 val scaleX = reference.width.toFloat() / screenW
@@ -722,6 +758,32 @@ object KyantLauncherLens270 {
                     val visible = xy[0] + b.right > 0 && xy[0] + b.left < displayWidth &&
                         xy[1] + b.bottom > 0 && xy[1] + b.top < displayHeight
                     if (!visible) offscreenChecks++
+                    if (frameTrace28815 && visible && trace28815Events < 160) {
+                        val now28815 = SystemClock.elapsedRealtimeNanos()
+                        trace28815PreSerial++
+                        val dx28815 = if (trace28815LastPreX.isFinite())
+                            actualSample.x - trace28815LastPreX else 0f
+                        val gap28815 = if (trace28815LastPreNs > 0L)
+                            (now28815 - trace28815LastPreNs) / 1000000L else -1L
+                        if (kotlin.math.abs(dx28815) < 0.15f) trace28815Quiet++
+                        else {
+                            if (trace28815Quiet >= 3) {
+                                trace28815Direction = if (dx28815 > 0f) 1 else -1
+                                trace28815Remaining = 12
+                                XposedBridge.log(
+                                    "KYANT28815_MOTION_ONSET host=$trace28815Host dir=$trace28815Direction dx=$dx28815 x=${actualSample.x} predraw=$trace28815PreSerial preGapMs=$gap28815 scrollX=$workspaceScrollX frameLayer=${frame.layerType} nativeLayer=${nativeSampleView?.layerType} sourceId=${System.identityHashCode(reference)}")
+                                trace28815Events++
+                            }
+                            trace28815Quiet = 0
+                        }
+                        if (trace28815Remaining > 0 && trace28815Events < 160) {
+                            XposedBridge.log(
+                                "KYANT28815_PREDRAW host=$trace28815Host dir=$trace28815Direction serial=$trace28815PreSerial x=${actualSample.x} dx=$dx28815 gapMs=$gap28815 draw=$trace28815DrawSerial sourceId=${System.identityHashCode(reference)}")
+                            trace28815Events++
+                        }
+                        trace28815LastPreX = actualSample.x
+                        trace28815LastPreNs = now28815
+                    }
                     if (matrixTrace28814 && visible && trace28814Events < 180) {
                         try {
                             trace28814PredrawSerial++
