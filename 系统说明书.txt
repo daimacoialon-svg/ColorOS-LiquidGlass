@@ -201,3 +201,14 @@ V1.9.205.282｜Kyant 渲染节奏诊断与单宿主对照实验
 日志：KYANT282_DRAW_CADENCE、KYANT282_RENDER_DIAG、KYANT282_PERF、KYANT282_SINGLE_HOST_SKIP。
 注意：draw cadence 是宿主绘制间隔，不等于 GPU 完成时间；commit-to-draw 为近似延迟，并非精确逐帧配对。
 尚未验证编译和真机性能，实验模式默认关闭。
+
+
+V1.9.205.283｜Kyant 参考帧采样 A/B 诊断
+本版保留 V281.1 的首次坐标同步、不同尺寸文件夹、圆角裁剪、离屏处理。
+开关：su -c settings put global liquidglass_kyant_persistent_probe_283 1
+对照模式：su -c settings put global liquidglass_kyant_sampling_mode_283 0（V282 原有裁剪源矩形采样）
+实验模式：su -c settings put global liquidglass_kyant_sampling_mode_283 1（默认，整张参考帧复用，仅变更目标映射）
+修改模式后重启 Launcher；对比相同滑动场景的玻璃纹理卡顿。
+日志：KYANT283_SAMPLE_MODE、KYANT283_SOURCE_DRAW、KYANT283_DRAW_CADENCE、KYANT283_RENDER_DIAG。
+注意：本版是采样链路 A/B 诊断，未承诺修复 Compose/RenderThread 帧调度问题。
+关闭：su -c settings put global liquidglass_kyant_persistent_probe_283 0
