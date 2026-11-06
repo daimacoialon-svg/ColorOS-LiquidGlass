@@ -178,3 +178,10 @@ V1.9.205.279｜首次布局稳定门控与多宿主采样节流实验
 关闭：su -c settings put global liquidglass_kyant_persistent_probe_279 0
 首次等待两次布局稳定检查后显示玻璃；离屏不提交新的采样位置；部分可见仍更新；位置更新间隔最低22ms（约45Hz），保留V278圆角裁剪和采样交集。
 诊断：KYANT279_FIRST_LAYOUT_STABLE、KYANT279_PERF。仍为实验版，未验证真机流畅度，Dock暂未接入。
+
+V1.9.205.280｜Kyant 可见采样逐帧同步实验版
+本版取消V279对可见文件夹的22ms固定采样节流，保留离屏暂停、首次布局稳定门控、圆角裁剪与边缘交集采样。
+X/Y位置合并为单个Compose状态更新；位置变化不再无条件执行frame.layout。
+默认关闭：su -c settings put global liquidglass_kyant_persistent_probe_280 1
+关闭：su -c settings put global liquidglass_kyant_persistent_probe_280 0
+此版未经过GitHub Actions编译和真机验证；请检查KYANT280_PERF与桌面滑动连续性。
