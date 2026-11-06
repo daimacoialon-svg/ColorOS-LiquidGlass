@@ -72,6 +72,7 @@ object KyantLauncherLens270 {
     private const val LEGACY_SYNC_AB_KEY = "liquidglass_kyant_legacy_sync_ab_2886"
     private const val NATIVE_COMPARISON_KEY = "liquidglass_kyant_native_compare_2887"
     private const val NATIVE_BRIDGE_KEY = "liquidglass_kyant_native_bridge_2888"
+    private const val NATIVE_LAYER_KEY = "liquidglass_kyant_native_layer_28812"
     private const val DISPLAY_ISOLATION_KEY = "liquidglass_kyant_display_isolation_28811"
     private const val BRIDGE_SYNC_KEY = "liquidglass_kyant_bridge_sync_2889"
     private val activeHostCount = java.util.concurrent.atomic.AtomicInteger(0)
@@ -148,7 +149,13 @@ object KyantLauncherLens270 {
             Settings.Global.getInt(anchor.context.contentResolver, DISPLAY_ISOLATION_KEY, 3).coerceIn(0, 3)
         } catch (_: Throwable) { 3 }
         XposedBridge.log("KYANT28811_DISPLAY_ISOLATION mode=$displayIsolationMode")
-        val nativeBridgeMode = if (displayIsolationMode in 1..3) {
+        // 0=legacy isolation, 1=native above Compose, 2=native behind Compose
+        // with 0-alpha source experiment, 3=native behind Compose with 2% source.
+        val nativeLayerMode = try {
+            Settings.Global.getInt(anchor.context.contentResolver, NATIVE_LAYER_KEY, 0).coerceIn(0, 3)
+        } catch (_: Throwable) { 0 }
+        XposedBridge.log("KYANT28812_NATIVE_LAYER mode=$nativeLayerMode isolation=$displayIsolationMode")
+        val nativeBridgeMode = if (nativeLayerMode in 1..3) 0 else if (displayIsolationMode in 1..3) {
             if (displayIsolationMode == 1) 0 else 1
         } else try {
             Settings.Global.getInt(anchor.context.contentResolver, NATIVE_BRIDGE_KEY, 0).coerceIn(0, 1)
@@ -378,7 +385,7 @@ object KyantLauncherLens270 {
         // V288.7: native Canvas reference, intentionally ABOVE Kyant on the LEFT half
         // only. Right half stays the unmodified Compose/Kyant optical renderer.
         // This is an A/B diagnostic, NOT the final hybrid optical implementation.
-        val nativeSampleView = if ((nativeCompareMode == 1 && nativeBridgeMode == 0 && displayIsolationMode == 0) || displayIsolationMode == 1) object : View(anchor.context) {
+        val nativeSampleView = if ((nativeCompareMode == 1 && nativeBridgeMode == 0 && displayIsolationMode == 0) || displayIsolationMode == 1 || nativeLayerMode in 1..3) object : View(anchor.context) {
             private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
             private val destination = RectF()
             private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -407,14 +414,14 @@ object KyantLauncherLens270 {
                     (reference.width - x) * width / sw,
                     (reference.height - y) * height / sh)
                 val checkpoint = canvas.save()
-                if (displayIsolationMode == 1) {
+                if (displayIsolationMode == 1 || nativeLayerMode in 1..3) {
                     canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat())
                 } else {
                     canvas.clipRect(0f, 0f, width * 0.5f, height.toFloat())
                 }
                 canvas.drawBitmap(reference, null, destination, bitmapPaint)
                 canvas.restoreToCount(checkpoint)
-                if (displayIsolationMode != 1)
+                if (displayIsolationMode != 1 && nativeLayerMode == 0)
                     canvas.drawLine(width * 0.5f, 0f, width * 0.5f, height.toFloat(), dividerPaint)
                 val now = SystemClock.elapsedRealtimeNanos()
                 if (lastDrawTimeNs > 0L) {
@@ -494,13 +501,17 @@ object KyantLauncherLens270 {
             compose.setParentCompositionContext(newRecomposer)
             bridgeView?.let { frame.addView(it, FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)) }
+            // V288.12: modes 2/3 put stable native Canvas BELOW Compose.
+            if (nativeLayerMode in 2..3) nativeSampleView?.let { frame.addView(it,
+                FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)) }
             frame.addView(compose, FrameLayout.LayoutParams(previewWidth, previewHeight))
-            // Added AFTER Compose: only left half is native, right half remains Kyant.
-            nativeSampleView?.let { frame.addView(it, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)) }
+            // Mode 1 is a control: native fully covers Compose, same as V288.11 A.
+            if (nativeLayerMode !in 2..3) nativeSampleView?.let { frame.addView(it,
+                FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)) }
 
             compose.setContent { LensContent270(reference, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode,
-                renderAbMode, motionAbMode, legacySyncAbMode, displayIsolationMode, bridgeBitmap, bridgeVersion,
+                renderAbMode, motionAbMode, legacySyncAbMode, if (nativeLayerMode in 2..3) 3 else displayIsolationMode, nativeLayerMode, bridgeBitmap, bridgeVersion,
                 if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
                 { glassScreenPosition(lastBounds) }) {
@@ -814,7 +825,7 @@ object KyantLauncherLens270 {
         reference: Bitmap, previewWidth: Int, previewHeight: Int,
         rootWidth: Int, rootHeight: Int, screenPosition: androidx.compose.runtime.State<Offset>,
         cornerRadiusPx: Float, samplingMode: Int, renderAbMode: Int, motionAbMode: Int,
-        legacySyncAbMode: Int, displayIsolationMode: Int, bridgeBitmap: Bitmap?,
+        legacySyncAbMode: Int, displayIsolationMode: Int, nativeLayerMode: Int, bridgeBitmap: Bitmap?,
         bridgeVersion: androidx.compose.runtime.State<Int>,
         bridgeSyncMode: Int,
         bridgePublishedPosition: java.util.concurrent.atomic.AtomicReference<Offset?>,
@@ -854,7 +865,10 @@ object KyantLauncherLens270 {
             compositingStrategy = CompositingStrategy.Offscreen
         } else Modifier).clip(RoundedCornerShape(cornerDp))
         Box(opticalContainer) {
-            ComposeCanvas(Modifier.fillMaxSize().layerBackdrop(backdrop)) {
+            // Diagnostic only: transparent source may also remove the backdrop input.
+            // Never interpret visible highlights alone as genuine refraction.
+            val sourceAlpha = when (nativeLayerMode) { 2 -> 0f; 3 -> .02f; else -> 1f }
+            ComposeCanvas(Modifier.fillMaxSize().layerBackdrop(backdrop).graphicsLayer { alpha = sourceAlpha }) {
                 // Reference is screen-aligned; root offset is accounted for explicitly.
                 val screenW = android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
                 val screenH = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
@@ -1003,7 +1017,7 @@ object KyantLauncherLens270 {
             }
             // Mode B: source Bitmap is displayed by Compose, but no Kyant backdrop
             // is captured or rendered. Mode C keeps the original optical pipeline.
-            if (displayIsolationMode != 2) Box(Modifier.fillMaxSize().drawBackdrop(
+            if (displayIsolationMode != 2 || nativeLayerMode in 2..3) Box(Modifier.fillMaxSize().drawBackdrop(
                 backdrop = backdrop,
                 // The OEM radius is in physical pixels. Convert to dp and clamp to avoid a circle.
                 shape = { RoundedRectangle(cornerDp) },
