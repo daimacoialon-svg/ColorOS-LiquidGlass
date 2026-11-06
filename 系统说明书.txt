@@ -1,20 +1,18 @@
-ColorOS-LiquidGlass V1.9.205.288.1｜采样时序诊断与模式1回退版
+ColorOS-LiquidGlass V1.9.205.288.2｜Host/Workspace 位移关系诊断版
 
-基于 V288 模式0，保留 V286.2 真机验证稳定的 Host 局部布局校正和 V286.1 首次显示修复。
+以 V288.1 正常采样路径及 V286.2 已验证稳定的 Host 布局修复为基线。
 
-修复：
-- 彻底移除 V288 模式1在 FrameLayout.dispatchDraw 内写入 Compose State 的代码。该模式已被真机验证会冻结壁纸采样。
-- 统一恢复 PreDraw 提交采样位置；不再使用 liquidglass_kyant_frame_sync_288 选择模式。
-- 增加轻量诊断：PreDraw 记录最新全局矩阵位置与时间戳，Compose 壁纸源每120次实际绘制记录一次 KYANT2881_SOURCE_MATRIX_DELTA（matrix/source/delta/matrixAgeMs），不在 Compose draw 内操作 Android View 或写 Compose State。
-- 保留 V287 的 OplusDragView 识别日志；尚未修复拖动期间的实时采样，也尚未证明已消除左右滑动微抖。
-- 不改动 Kyant Shader、光学参数和圆角。
+新增 KYANT2882_HOST_WORKSPACE_TRACE，记录：Workspace scrollX/translationX、玻璃 Host 的局部位置、玻璃 Host 与原生文件夹预期位置的全局矩阵差值，以及连续观察的位移变化。
+用于区分：Host 纠偏过程中的跳动、Workspace 父层变换不一致、Kyant 参考 Bitmap 采样相位问题。
+保留 KYANT2882_SOURCE_MATRIX_DELTA 和 KYANT2882_HOST_RELAYOUT_FIX。
+不在 dispatchDraw 内写入 Compose State，不改变 Kyant Shader/圆角/光学参数，不引入新的自动坐标补偿；本版主要用于根因诊断，不能保证消除微抖。
 
 启用：
-su -c settings put global liquidglass_kyant_persistent_probe_288 0
-su -c settings put global liquidglass_kyant_persistent_probe_2881 1
+su -c settings put global liquidglass_kyant_persistent_probe_2881 0
+su -c settings put global liquidglass_kyant_persistent_probe_2882 1
 su -c settings put global liquidglass_kyant_sampling_mode_283 1
 su -c '/system/bin/am force-stop com.android.launcher'
 
-测试：左右缓慢滑动桌面，观察豆包大文件夹中央纹理，导出 Vector 日志并搜索 KYANT2881_SOURCE_MATRIX_DELTA、KYANT2881_COORD、KYANT2881_SOURCE_DRAW。
+在豆包大文件夹所在页面缓慢左右滑动约10秒，导出 Vector 日志，检查 KYANT2882_HOST_WORKSPACE_TRACE、KYANT2882_SOURCE_MATRIX_DELTA、KYANT2882_HOST_RELAYOUT_FIX。
 
-验证：ZIP 静态检查通过；Gradle 编译及真机未验证。遇异常可关闭 2881 开关并恢复已验证版本。
+状态：ZIP 静态完整性检查；未完成 Gradle 编译及真机验证。
