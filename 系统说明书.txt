@@ -107,3 +107,12 @@ V1.9.205.268.2｜Compose 独立 Recomposer 与防重启修正版
 - Recomposer 使用 AndroidUiDispatcher.Main 的 UI 帧时钟与独立 SupervisorJob，2.5 秒后释放 Composition、View、Recomposer、CoroutineScope 与 Owner。
 - 在创建宿主前将 liquidglass_kyant_host_probe_268 自动写回 0；若无法写回则拒绝实验，避免 Launcher 异常时重复触发。每次测试须手动重新开启。
 - 本版本仅用于 Compose 宿主可行性验证；没有接入 Kyant 透镜或修改正式文件夹/Dock。尚未完成 CI 和真机验证。
+
+
+V1.9.205.269｜Launcher Compose 首帧与资源释放诊断版
+基于 V268.2 保留独立 Recomposer、独立生命周期与一次性实验熔断。
+新增 KYANT269_COMPOSITION_CONFIRMED（Compose SideEffect）、KYANT269_FIRST_DRAW（ComposeView.dispatchDraw）、KYANT269_PRE_DISPOSE 与 KYANT269_DISPOSE_CHECK。
+首帧日志证明 View 的 draw 回调被调用，并不代表实际屏幕像素可见或 Kyant GPU 光学渲染已完成。
+如未出现 Composition/Draw，将 timeout 标记为 timeout_incomplete；原有玻璃与 Dock 不修改。
+开启：su -c settings put global liquidglass_kyant_host_probe_268 1（一次性自动关闭）。
+日志过滤：KYANT269 或 KYANT268。
