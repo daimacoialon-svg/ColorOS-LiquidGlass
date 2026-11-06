@@ -73,6 +73,7 @@ object KyantLauncherLens270 {
     private const val NATIVE_COMPARISON_KEY = "liquidglass_kyant_native_compare_2887"
     private const val NATIVE_BRIDGE_KEY = "liquidglass_kyant_native_bridge_2888"
     private const val RIGHT_START_TRACE_KEY = "liquidglass_kyant_right_start_trace_28813"
+    private const val MATRIX_TRACE_28814_KEY = "liquidglass_kyant_matrix_trace_28814"
     private const val NATIVE_LAYER_KEY = "liquidglass_kyant_native_layer_28812"
     private const val DISPLAY_ISOLATION_KEY = "liquidglass_kyant_display_isolation_28811"
     private const val BRIDGE_SYNC_KEY = "liquidglass_kyant_bridge_sync_2889"
@@ -171,6 +172,24 @@ object KyantLauncherLens270 {
         var onsetSerial = 0
         var onsetLogCount = 0
         var onsetNativeDrawCount = 0
+        val matrixTrace28814 = try {
+            Settings.Global.getInt(anchor.context.contentResolver, MATRIX_TRACE_28814_KEY, 1) == 1
+        } catch (_: Throwable) { true }
+        XposedBridge.log("KYANT28814_MATRIX_TRACE enabled=$matrixTrace28814 host=${System.identityHashCode(anchor)}")
+        var trace28814PrevSample = Float.NaN
+        var trace28814PrevHost = Float.NaN
+        var trace28814PrevAnchor = Float.NaN
+        var trace28814PredrawSerial = 0L
+        var trace28814DrawSerial = 0L
+        var trace28814DrawRemaining = 0
+        var trace28814LastDirection = 0
+        var trace28814Events = 0
+        val trace28814AnchorMatrix = Matrix()
+        val trace28814HostMatrix = Matrix()
+        val trace28814AnchorPoint = FloatArray(2)
+        val trace28814HostPoint = FloatArray(2)
+        val trace28814RootScreen = IntArray(2)
+        val trace28814RootWindow = IntArray(2)
         val onsetSourceId = System.identityHashCode(reference)
         val nativeBridgeMode = if (nativeLayerMode in 1..3) 0 else if (displayIsolationMode in 1..3) {
             if (displayIsolationMode == 1) 0 else 1
@@ -422,6 +441,31 @@ object KyantLauncherLens270 {
                     XposedBridge.log("KYANT28813_NATIVE_DRAW onset=$onsetSerial direction=$onsetDirection x=${position.x} y=${position.y} sourceId=$onsetSourceId")
                     onsetNativeDrawCount++
                 }
+                if (matrixTrace28814 && trace28814DrawRemaining > 0 && trace28814Events < 180) {
+                    try {
+                        trace28814DrawSerial++
+                        trace28814AnchorMatrix.reset()
+                        anchor.transformMatrixToGlobal(trace28814AnchorMatrix)
+                        trace28814AnchorPoint[0] = lastBounds.left.toFloat()
+                        trace28814AnchorPoint[1] = lastBounds.top.toFloat()
+                        trace28814AnchorMatrix.mapPoints(trace28814AnchorPoint)
+                        trace28814HostMatrix.reset()
+                        frame.transformMatrixToGlobal(trace28814HostMatrix)
+                        trace28814HostPoint[0] = 0f
+                        trace28814HostPoint[1] = 0f
+                        trace28814HostMatrix.mapPoints(trace28814HostPoint)
+                        root.getLocationOnScreen(trace28814RootScreen)
+                        root.getLocationInWindow(trace28814RootWindow)
+                        val windowOffset = trace28814RootScreen[0] - trace28814RootWindow[0]
+                        val anchorScreen = trace28814AnchorPoint[0] + windowOffset
+                        val hostScreen = trace28814HostPoint[0] + windowOffset
+                        XposedBridge.log("KYANT28814_DRAW_MATRIX host=${System.identityHashCode(anchor)} onset=$onsetSerial dir=$trace28814LastDirection predraw=$trace28814PredrawSerial draw=$trace28814DrawSerial sampleX=${position.x} anchorX=$anchorScreen hostX=$hostScreen sampleAnchorDelta=${position.x-anchorScreen} sampleHostDelta=${position.x-hostScreen} rootOffset=$windowOffset frameLeft=${frame.left} frameTx=${frame.translationX} sourceId=$onsetSourceId")
+                        trace28814Events++
+                    } catch (t: Throwable) {
+                        XposedBridge.log("KYANT28814_DRAW_ERROR ${t.javaClass.simpleName}")
+                    }
+                    trace28814DrawRemaining--
+                }
                 val screenW = android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
                 val screenH = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
                 val scaleX = reference.width.toFloat() / screenW
@@ -633,6 +677,8 @@ object KyantLauncherLens270 {
                     anchor.getLocationOnScreen(locationScratch)
                     val xy = locationScratch
                     val actualSample = glassScreenPosition(lastBounds)
+                    // V288.14: compare sample, anchor and host in the same PreDraw.
+                    // Diagnostic only: no changes to wallpaper sampling or transforms.
                     // Ignore only transform-matrix numerical noise (< 1/64 px).
                     // Keep real fractional Workspace movement live.
                     val sampleDelta = kotlin.math.abs(actualSample.x - lastSample.x) +
@@ -676,6 +722,47 @@ object KyantLauncherLens270 {
                     val visible = xy[0] + b.right > 0 && xy[0] + b.left < displayWidth &&
                         xy[1] + b.bottom > 0 && xy[1] + b.top < displayHeight
                     if (!visible) offscreenChecks++
+                    if (matrixTrace28814 && visible && trace28814Events < 180) {
+                        try {
+                            trace28814PredrawSerial++
+                            trace28814AnchorMatrix.reset()
+                            anchor.transformMatrixToGlobal(trace28814AnchorMatrix)
+                            trace28814AnchorPoint[0] = lastBounds.left.toFloat()
+                            trace28814AnchorPoint[1] = lastBounds.top.toFloat()
+                            trace28814AnchorMatrix.mapPoints(trace28814AnchorPoint)
+                            trace28814HostMatrix.reset()
+                            frame.transformMatrixToGlobal(trace28814HostMatrix)
+                            trace28814HostPoint[0] = 0f
+                            trace28814HostPoint[1] = 0f
+                            trace28814HostMatrix.mapPoints(trace28814HostPoint)
+                            root.getLocationOnScreen(trace28814RootScreen)
+                            root.getLocationInWindow(trace28814RootWindow)
+                            val offset = trace28814RootScreen[0] - trace28814RootWindow[0]
+                            val anchorX = trace28814AnchorPoint[0] + offset
+                            val hostX = trace28814HostPoint[0] + offset
+                            val sampleDx = if (trace28814PrevSample.isFinite()) actualSample.x - trace28814PrevSample else 0f
+                            val hostDx = if (trace28814PrevHost.isFinite()) hostX - trace28814PrevHost else 0f
+                            val anchorDx = if (trace28814PrevAnchor.isFinite()) anchorX - trace28814PrevAnchor else 0f
+                            // Observe first motion after >=3 quiet frames, then capture next draws.
+                            val start = kotlin.math.abs(sampleDx) > 0.35f &&
+                                (trace28814PrevSample.isFinite()) && onsetQuietFrames >= 3
+                            if (start) {
+                                trace28814LastDirection = if (sampleDx > 0f) 1 else -1
+                                trace28814DrawRemaining = 12
+                                XposedBridge.log("KYANT28814_PREDRAW_START host=${System.identityHashCode(anchor)} dir=$trace28814LastDirection sampleDx=$sampleDx hostDx=$hostDx anchorDx=$anchorDx sampleX=${actualSample.x} anchorX=$anchorX hostX=$hostX sampleHostDelta=${actualSample.x-hostX} boundsLeft=${lastBounds.left} frameLeft=${frame.left} frameTx=${frame.translationX} workspaceScrollX=$workspaceScrollX workspaceTx=$workspaceTranslationX sourceId=$onsetSourceId")
+                                trace28814Events++
+                            }
+                            if (trace28814DrawRemaining > 0 && trace28814Events < 180) {
+                                XposedBridge.log("KYANT28814_PREDRAW_FRAME host=${System.identityHashCode(anchor)} dir=$trace28814LastDirection serial=$trace28814PredrawSerial sampleX=${actualSample.x} anchorX=$anchorX hostX=$hostX sampleDx=$sampleDx hostDx=$hostDx anchorDx=$anchorDx sampleHostDelta=${actualSample.x-hostX} sourceId=$onsetSourceId")
+                                trace28814Events++
+                            }
+                            trace28814PrevSample = actualSample.x
+                            trace28814PrevHost = hostX
+                            trace28814PrevAnchor = anchorX
+                        } catch (t: Throwable) {
+                            XposedBridge.log("KYANT28814_PREDRAW_ERROR ${t.javaClass.simpleName}")
+                        }
+                    }
                     // Track the real host/anchor relationship (including parent transforms),
                     // separately from the reference Bitmap's sampling coordinate.
                     // Throttle diagnostics to avoid log I/O every animation frame.

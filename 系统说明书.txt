@@ -11,3 +11,6 @@ su -c settings put global liquidglass_kyant_right_start_trace_28813 1
 su -c "/system/bin/am force-stop com.android.launcher"
 先确认 KYANT28813_TRACE_ENABLED，再左右滑动各三次并导出 Vector 日志。
 已检查源码标记和压缩包完整性；尚未完成 Gradle 编译及真机验证。
+
+
+V1.9.205.288.14：右滑首帧采样矩阵与 Host 坐标一致性诊断。新增开关 liquidglass_kyant_matrix_trace_28814（1 开启，0 关闭）；日志 KYANT28814_MATRIX_TRACE、KYANT28814_PREDRAW_START、KYANT28814_PREDRAW_FRAME、KYANT28814_DRAW_MATRIX。仅观察，不修改渲染算法；每个 Host 最多 180 条事件日志。
