@@ -1,3 +1,9 @@
+V1.9.205.264 | 壁纸参考帧生命周期与 Java 侧桥接诊断
+
+复用 HookEntry 现有 REFRACTION_FRAME 的后台解码结果，记录尺寸、像素配置、内存占用、文件时间戳和 generation。不开启时不输出逐帧日志。
+开启：su -c settings put global liquidglass_kyant_bridge_264 1；重启 Launcher 后观察 KYANT264。关闭：su -c settings put global liquidglass_kyant_bridge_264 0。
+本版不包含 GPU 纹理上传或 Compose Kyant Backdrop 的实际接入，亦不保证正式折射切换；原有文件夹/Dock 光学效果保持不变。
+
 V1.9.205.263｜Launcher 坐标边界与连续性诊断版
 
 新增：完全离屏交集标记 EMPTY；rootUV 与 localVisibleUV 分开；KYANT263_MOTION 输出限流采样位移与时间间隔。

@@ -2584,6 +2584,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if(REFRACTION_LOGS++<24)log("BOOT_REFRACTION_READY source=launcher_private_wallpaper_reference");
                     REFRACTION_FRAME_MODIFIED=loadedModified;
                     REFRACTION_FRAME_LENGTH=loadedLength;
+                    KyantReferenceBridge264.onReferenceReady(app, next, loadedModified, loadedLength);
                     // V1.9.137: Prewarm blur as soon as the reference is decoded.
                     // Do not wait for the folder's first draw after unlock.
                     if(customBlurMode==1 && customBlurDp>0){
@@ -8490,6 +8491,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
             hook(find("com.android.systemui.qs.QSPanel", p.classLoader), "onLayout", layout, "QSPanel", false);
         } else {
             KyantLauncherProbe263.install(p.classLoader);
+            KyantReferenceBridge264.onLauncherStart();
             hookLauncherOptics204(p.classLoader);
             hookIconOptics205(p.classLoader);
             hookWallpaperOffsetRequests();
