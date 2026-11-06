@@ -24,3 +24,11 @@ V1.9.205.288.17｜左右滑动首帧图层/变换诊断。设置 liquidglass_kya
 V1.9.205.288.17.1 修复：上一版仅更新了说明书，未真正写入 KYANT28817 诊断。此版增加实际日志与开关读取，设置 layer_trace_28817=1 后需安装新 APK 并重启 Launcher。
 
 V1.9.205.288.18｜右滑未翻页回弹的方向反转/CellLayout 图层 A/B。global liquidglass_kyant_rebound_layer_ab_28818：0=仅记录，1=检测右移后800ms内左向反转时，仅一个 CellLayout 且仅原硬件图层短暂切换软件图层220ms后恢复；仅诊断，不是最终修复。每 Host 最多6次事件，进程全局同一时间最多一个图层实验。可能出现短时卡顿；出现异常立即设0并重启 Launcher。日志 KYANT28818_AB/REVERSAL/LAYER_TEST/RESTORE/SKIP。该实验仅以屏幕位置方向反转近似回弹，不能严格识别 ACTION_UP 或翻页结果。
+
+
+V1.9.205.288.19｜原生 Canvas / Compose 壁纸显示链路 2×2 隔离实验
+设置项：su -c settings put global liquidglass_kyant_pipeline_ab_28819 MODE；MODE=-1 禁用本实验（恢复旧配置），0 原生 Canvas 直接绘制 reference，1 Compose Canvas 直接绘制同一 reference（绘制时读取原生坐标），2 原生 Canvas 采样至共享 Bitmap 后 post 通知 Compose 显示（无光学），3 原生 Canvas 采样至同一共享 Bitmap 并由原生 View 自行显示（无 Compose 桥接）。
+四模式均关闭 Kyant 光学效果，不修改既有原生壁纸源、坐标计算或视觉调节参数。实验模式在 Host 创建时自动屏蔽旧的 native_layer/display_isolation、rebound_layer、right_redraw、matrix/frame/layer tracing 等开关，避免旧参数交叉干扰。切换模式后请 force-stop com.android.launcher。
+标记 KYANT28819_PIPELINE、KYANT28819_NATIVE_BRIDGE、KYANT28819_COMPOSE_DRAW。请分别比较连续左右滑动翻页与向右小幅拖动不翻页松手回弹，特别关注两种不同的闪动。
+判读：模式0/1对照隔离原生 vs Compose 直绘；模式2/3对照同一 Bitmap 经 Compose vs 原生显示；模式0/3对照有没有中间 Bitmap。若模式2抖动、模式3不抖动，优先检查桥接重绘通知、共享可变 Bitmap 的纹理缓存与 Compose 绘制依赖，而非继续补偿壁纸采样坐标。回弹阶段两条路径都闪动时不能直接归罪 Compose。
+本版为源码实验包；未在本地完成 Gradle 编译或真机验证。运行前保留稳定版 APK 和源码备份。默认值 -1，不自动启动本实验。
