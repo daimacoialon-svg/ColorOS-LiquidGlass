@@ -1,14 +1,14 @@
-ColorOS-LiquidGlass V1.9.205.288.5｜壁纸采样帧率与绘制调度诊断版
+ColorOS-LiquidGlass V1.9.205.288.6｜旧版原生矩阵采样与 Kyant Compose 融合 A/B 版
 
-基于 V288.4.1，保留 V286.2 Host 定位修复及 Kyant 光学效果。
-不改变正常模式的采样算法或折射 Shader。
+目标：保持 Kyant Compose Backdrop、lens 折射、圆角及高光算法不变，只对比背景采样坐标的读取时机。
+参考旧版 V239 原生 View Canvas/BitmapShader 绘制时动态获取全局矩阵的机制；本版没有替换 Kyant Shader 或将 BitmapShader 直接叠加到 Compose。
 
-新增日志：
-KYANT2885_PREDRAW_CADENCE：每秒 PreDraw 调用次数、移动次数、Compose 坐标提交次数、最长帧间隔。
-KYANT2885_DRAW_CADENCE：每秒实际 Compose 壁纸源图绘制次数、超过 16.67/33.33ms 的间隔次数、最长间隔。
-请在滑动期间抓取日志，结合两个计数分析采样提交与绘制节奏；计数并非系统屏幕实际刷新率。
+新增实验开关：liquidglass_kyant_legacy_sync_ab_2886
+0：原版 V288.5 PreDraw -> Compose State -> Compose draw 坐标链路（默认）
+1：Compose draw 时直接读取原生 FolderIcon transformMatrixToGlobal 矩阵，使用当前绘制时坐标对齐壁纸 Bitmap；PreDraw 状态仍作为绘制失效触发器。
+日志：KYANT2886_LEGACY_SYNC_AB、KYANT2886_DRAW_MATRIX_COMPARE。
 
-开关：liquidglass_kyant_persistent_probe_2884=1；liquidglass_kyant_motion_ab_2884=0。
-本版保留既有开关键以保证 Java/Kotlin 一致，不引入新版本实验开关键。
-
-未完成真机测试；诊断版不保证已解决抖动。
+保留：V286.2 Host 位置修复、V288.5 帧率诊断、V288.4 模式开关、Kyant 原始折射和高光。
+注意：此版仅改变采样坐标读取时机，并未证明能解决低帧率；也未实现拖拽时 OplusDragView 的独立采样。
+开关：liquidglass_kyant_persistent_probe_2884=1；liquidglass_kyant_motion_ab_2884=0；liquidglass_kyant_render_ab_2883=0；liquidglass_kyant_sampling_mode_283=1。
+实验需重启 Launcher 才会读取新开关。未完成 Gradle 编译及真机验证。

@@ -69,6 +69,7 @@ object KyantLauncherLens270 {
     private const val SAMPLE_MODE_KEY = "liquidglass_kyant_sampling_mode_283"
     private const val RENDER_AB_KEY = "liquidglass_kyant_render_ab_2883"
     private const val MOTION_AB_KEY = "liquidglass_kyant_motion_ab_2884"
+    private const val LEGACY_SYNC_AB_KEY = "liquidglass_kyant_legacy_sync_ab_2886"
     private val activeHostCount = java.util.concurrent.atomic.AtomicInteger(0)
     private val lastSamplingCommitNs = java.util.concurrent.atomic.AtomicLong(0L)
 
@@ -133,6 +134,10 @@ object KyantLauncherLens270 {
         val motionAbMode = try {
             Settings.Global.getInt(anchor.context.contentResolver, MOTION_AB_KEY, 0).coerceIn(0, 2)
         } catch (_: Throwable) { 0 }
+        val legacySyncAbMode = try {
+            Settings.Global.getInt(anchor.context.contentResolver, LEGACY_SYNC_AB_KEY, 0).coerceIn(0, 1)
+        } catch (_: Throwable) { 0 }
+        XposedBridge.log("KYANT2886_LEGACY_SYNC_AB mode=$legacySyncAbMode (0=predraw_state 1=draw_time_matrix)")
         XposedBridge.log("KYANT2885_MOTION_AB mode=$motionAbMode (0=baseline 1=freeze_source 2=no_refraction)")
         XposedBridge.log("KYANT2885_RENDER_AB mode=" + renderAbMode +
             " (0=baseline 1=cropped_bitmap 2=offscreen_compositing)")
@@ -154,6 +159,7 @@ object KyantLauncherLens270 {
         val displayWidth = root.width.coerceAtLeast(1)
         val displayHeight = root.height.coerceAtLeast(1)
         val initialBounds = FolderGlassGeometry272.resolve(anchor)
+        var lastBounds = android.graphics.Rect(initialBounds)
         val nativeRadius = HookEntry.kyantFolderGlassRadius273(anchor)
         XposedBridge.log("KYANT2885_NATIVE_GEOMETRY rect=$initialBounds radiusPx=$nativeRadius")
         val previewWidth = initialBounds.width().coerceAtLeast(1)
@@ -353,7 +359,8 @@ object KyantLauncherLens270 {
             frame.addView(compose, FrameLayout.LayoutParams(previewWidth, previewHeight))
             compose.setContent { LensContent270(reference, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode,
-                renderAbMode, motionAbMode, predrawMatrixSnapshot) {
+                renderAbMode, motionAbMode, legacySyncAbMode, predrawMatrixSnapshot,
+                { glassScreenPosition(lastBounds) }) {
                 if (compositionSeen.compareAndSet(false, true)) {
                     XposedBridge.log("KYANT2885_COMPOSITION_CONFIRMED elapsedMs=" +
                         (SystemClock.uptimeMillis() - startedAt))
@@ -391,7 +398,6 @@ object KyantLauncherLens270 {
             XposedBridge.log("KYANT2885_MUTUAL_EXCLUSION active=true layer=below_icons fallback=automatic_on_dispose")
             var lastX = anchorXY[0]
             var lastY = anchorXY[1]
-            var lastBounds = android.graphics.Rect(initialBounds)
             // V288.5: frame cadence counters; no changes to sampling or optical drawing.
         var cadenceWindowNs = SystemClock.elapsedRealtimeNanos()
         var cadencePredraw = 0L
@@ -660,7 +666,9 @@ object KyantLauncherLens270 {
         reference: Bitmap, previewWidth: Int, previewHeight: Int,
         rootWidth: Int, rootHeight: Int, screenPosition: androidx.compose.runtime.State<Offset>,
         cornerRadiusPx: Float, samplingMode: Int, renderAbMode: Int, motionAbMode: Int,
+        legacySyncAbMode: Int,
         predrawMatrixSnapshot: java.util.concurrent.atomic.AtomicReference<Pair<Offset, Long>>,
+        currentNativePosition: () -> Offset,
         onComposed: () -> Unit
     ) {
         val density = androidx.compose.ui.platform.LocalDensity.current.density
@@ -701,7 +709,13 @@ object KyantLauncherLens270 {
                 val scaleY = reference.height.toFloat() / screenH
                 // Read snapshot state INSIDE the draw phase. Position changes now
                 // invalidate the source drawing, not the whole Compose composition.
-                val livePosition = screenPosition.value
+                val committedPosition = screenPosition.value
+                // V288.6 A/B: reuse the legacy native View matrix sampling at the
+                // moment Compose actually draws. The state remains the invalidation
+                // trigger; it is NOT written from this draw callback.
+                val livePosition = if (legacySyncAbMode == 1) {
+                    try { currentNativePosition() } catch (_: Throwable) { committedPosition }
+                } else committedPosition
                 if (motionAbMode == 1) frozenSource.compareAndSet(null, livePosition)
                 val drawPosition = if (motionAbMode == 1) (frozenSource.get() ?: livePosition) else livePosition
                 val rootScreenX = drawPosition.x
@@ -777,6 +791,13 @@ object KyantLauncherLens270 {
                 // the latest PreDraw matrix observation; no writes or invalidations.
                 if (draws % 120L == 0L) {
                     val observed = predrawMatrixSnapshot.get()
+                    if (legacySyncAbMode == 1) {
+                        XposedBridge.log("KYANT2886_DRAW_MATRIX_COMPARE nativeX=" + livePosition.x +
+                            " nativeY=" + livePosition.y + " committedX=" + committedPosition.x +
+                            " committedY=" + committedPosition.y +
+                            " deltaX=" + (livePosition.x - committedPosition.x) +
+                            " deltaY=" + (livePosition.y - committedPosition.y))
+                    }
                     val ageMs = if (observed.second > 0L)
                         (now - observed.second) / 1_000_000L else -1L
                     XposedBridge.log("KYANT2885_SOURCE_MATRIX_DELTA draws=" + draws +
