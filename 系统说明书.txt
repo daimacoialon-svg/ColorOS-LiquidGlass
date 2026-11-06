@@ -1,3 +1,18 @@
+ColorOS-LiquidGlass V1.9.205.285｜参考帧绘制相位优化与坐标诊断版
+
+基于 V284.4 完整工程。保留 Kyant Backdrop、Shapes、Compose、Xposed Hook 和原有渲染参数。
+
+关键修改：参考帧的屏幕位置从 Compose 参数改为在 ComposeCanvas 绘制阶段读取 State<Offset>，避免每次 Workspace 位移导致整个光学组件树重组。该修改属于实际渲染调度优化，不是仅添加日志。
+
+新增 KYANT285_COORD：对比全局变换矩阵坐标与整数 getLocationOnScreen 坐标，并记录最新采样坐标；以排查冷启动偏移。修复 SOURCE_DRAW 日志字段粘连，并将超过 100ms 的静止间隔排除在活跃掉帧计数之外（最大间隔仍保留）。
+
+本版尚未经过真机验证，不保证完全解决冷启动偏移和采样延迟。原 V284 开关保持可回退。
+
+开启：su -c settings put global liquidglass_kyant_persistent_probe_285 1
+关闭：su -c settings put global liquidglass_kyant_persistent_probe_285 0
+切换版本前关闭 284：su -c settings put global liquidglass_kyant_persistent_probe_284 0
+采样模式：su -c settings put global liquidglass_kyant_sampling_mode_283 1
+
 V1.9.205.284.4｜恢复 V283 构建配置实验版
 
 恢复 V283 原始构建配置、Kyant Shapes / Compose 版本及 compileSdk 37，保留 V284 启动门控与参考帧诊断。V283 原包不含 GitHub Actions 工作流，因此使用修订后的工作流：尝试 SDK Manager channel 3 安装 API 37 或 37.1；若不可用将明确失败，而不会伪装构建成功。尚未完成完整 Gradle / GitHub Actions 编译。
