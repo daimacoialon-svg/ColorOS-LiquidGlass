@@ -1,3 +1,12 @@
+V1.9.205.263｜Launcher 坐标边界与连续性诊断版
+
+新增：完全离屏交集标记 EMPTY；rootUV 与 localVisibleUV 分开；KYANT263_MOTION 输出限流采样位移与时间间隔。
+注意：这些坐标不是壁纸纹理 UV；未读取壁纸像素，未修改 Kyant Shader 或原有渲染。
+启用：su -c settings put global liquidglass_kyant_probe_263 1
+关闭：su -c settings put global liquidglass_kyant_probe_263 0
+日志：KYANT263_MAPPING、KYANT263_MOTION、KYANT263_WALLPAPER_ACCESS。
+GitHub Actions 编译与真机验证仍需执行。
+
 V1.9.205.262｜壁纸坐标域与屏幕裁剪验证（只读）
 开启：su -c settings put global liquidglass_kyant_probe_262 1
 关闭：su -c settings put global liquidglass_kyant_probe_262 0
