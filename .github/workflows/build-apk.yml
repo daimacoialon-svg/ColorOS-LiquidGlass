@@ -15,16 +15,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Install Android SDK 35
-        run: ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Install Android SDK 37
+        run: ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install 'platforms;android-37' 'build-tools;37.0.0'
       - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.9'
       - name: Build debug APK
-        run: gradle --no-daemon --stacktrace :app:assembleDebug
+        run: bash ./gradlew --no-daemon --stacktrace :app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: ColorOS-LiquidGlass-V1.9.205.225-APK
+          name: ColorOS-LiquidGlass-V1.9.205.284.1-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
