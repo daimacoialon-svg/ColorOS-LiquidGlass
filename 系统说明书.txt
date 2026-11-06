@@ -1,13 +1,17 @@
-ColorOS-LiquidGlass V1.9.205.288.10｜桥接补帧隔离对照版
+ColorOS-LiquidGlass V1.9.205.288.11｜原生采样与 Compose 显示链路隔离版
 
-基于 V288.9，保留 V286.2 Host 定位、V288.7 原生 Canvas 对照、V288.8 Kyant 原生桥接及现有 UI/光学功能。
+以 V288.10 为基础，保留 V286.2 Host 定位修复与原有光学参数。新增全屏 A/B/C 渲染路径隔离测试，不将结果预先当作修复。
 
-测试前开启 liquidglass_kyant_native_bridge_2888=1，并将 liquidglass_kyant_native_compare_2887=0。
-通过 liquidglass_kyant_bridge_sync_2889 切换：
-0 = V288.8 原始桥接（不检测、不补帧）
-1 = V288.9 绘制时补帧（检测并重采样）
-2 = V288.10 只检测、不补帧（使用与模式1相同的检测条件，但绝不在 Compose draw 内修改桥接 Bitmap）
+设置：su -c settings put global liquidglass_kyant_display_isolation_28811 N
+设置后：su -c "/system/bin/am force-stop com.android.launcher"
 
-模式2每累计60次位置差异输出 KYANT28810_MISMATCH_OBSERVE，减少日志带来的性能干扰。
-KYANT28810_BRIDGE_SYNC 表示本次实例读取的模式。其它 V288.9 日志保留。
-本版为隔离实验，尚未经过 Gradle 编译或真机验证。
+N=1（A）：原生 Canvas View 全区域直接绘制原生壁纸采样，覆盖 Compose；不使用 Kyant 光学，仅检验原生 View 的稳定性。
+N=2（B）：原生 Canvas 采样到桥接 Bitmap，Compose Canvas 绘制 Bitmap；不绘制 Kyant Backdrop 光学层，检验桥接及 Compose 显示时序。
+N=3（C）：原生 Canvas 采样到桥接 Bitmap，Compose Canvas 绘制 Bitmap，并开启完整 Kyant Backdrop 光学层。
+N=0：兼容此前设置的原有对照开关。
+
+三个隔离模式均禁用 V288.9 绘制时补帧，避免其成为干扰变量。日志 KYANT28811_DISPLAY_ISOLATION 表示当前实例读取的模式。A/B 模式没有 Kyant 折射属于预期现象。
+
+测试时固定同一文件夹、同一页面、相近的滑动速度；比较是否出现背景某帧落后、下一帧追上的闪动。若 A 稳定而 B/C 闪动，问题优先指向桥接或 Compose 显示；若 B 稳定而 C 闪动，优先指向 Backdrop 捕获或光学层。
+
+源码包未在当前环境完成 Gradle 编译和真机验证；请先编译并保留 Vector 日志。
