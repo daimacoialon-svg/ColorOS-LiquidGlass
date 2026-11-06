@@ -1,11 +1,14 @@
-ColorOS-LiquidGlass V1.9.205.288.4｜玻璃运动与壁纸采样解耦诊断版
+ColorOS-LiquidGlass V1.9.205.288.5｜壁纸采样帧率与绘制调度诊断版
 
-基础：V288.3.1，保留 V286.2 Host 冷启动布局修复、PreDraw 正常采样和 Kyant 原有光学 Shader。
-本版新增独立诊断开关 liquidglass_kyant_motion_ab_2884：
-0 = 原始 Kyant 光学效果；1 = 仅固定玻璃内部壁纸源采样位置，玻璃容器仍随文件夹运动（实验预期出现壁纸错位）；2 = 保留实时采样但关闭 lens 折射位移，其他绘制保持。
-先将旧开关 liquidglass_kyant_persistent_probe_2883 设为0，再将 liquidglass_kyant_persistent_probe_2884 设为1；将 liquidglass_kyant_render_ab_2883 设为0，避免两组实验互相干扰。
-每次修改模式后强制停止 com.android.launcher 并重新进入桌面。测试模式1时不应以壁纸与外界贴合程度衡量抖动；模式2没有 lens 折射属于正常诊断表现。
-日志：KYANT2884_MOTION_AB / KYANT2884_SOURCE_MATRIX_DELTA / KYANT2884_SOURCE_DRAW。
-本版为实验源码，未通过真机验证；如模式异常请切回0或回退 V288.3.1。
+基于 V288.4.1，保留 V286.2 Host 定位修复及 Kyant 光学效果。
+不改变正常模式的采样算法或折射 Shader。
 
-V1.9.205.288.4.1：修复 Java Hook 入口仍读取旧版 persistent_probe_2883 的严重回归，统一为 persistent_probe_2884；保留原有三个运动采样实验模式。
+新增日志：
+KYANT2885_PREDRAW_CADENCE：每秒 PreDraw 调用次数、移动次数、Compose 坐标提交次数、最长帧间隔。
+KYANT2885_DRAW_CADENCE：每秒实际 Compose 壁纸源图绘制次数、超过 16.67/33.33ms 的间隔次数、最长间隔。
+请在滑动期间抓取日志，结合两个计数分析采样提交与绘制节奏；计数并非系统屏幕实际刷新率。
+
+开关：liquidglass_kyant_persistent_probe_2884=1；liquidglass_kyant_motion_ab_2884=0。
+本版保留既有开关键以保证 Java/Kotlin 一致，不引入新版本实验开关键。
+
+未完成真机测试；诊断版不保证已解决抖动。
