@@ -16,7 +16,7 @@ public final class FolderGlassGeometry272 {
         if(precise!=null && !precise.isEmpty()) {
             Rect b=new Rect(Math.round(precise.left),Math.round(precise.top),
                 Math.round(precise.right),Math.round(precise.bottom));
-            logOnce("legacyGlassGeometry",fallback,b,"mBackground.previewDrawable");
+            logOnce("legacyGlassGeometry", full, b, "mBackground.previewDrawable", true);
             return b;
         }
         Drawable bg = folder.getBackground();
