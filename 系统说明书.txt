@@ -20,3 +20,5 @@ V1.9.205.288.15：右滑起始 PreDraw / 原生 onDraw 时序诊断。开关 liq
 V1.9.205.288.16｜右滑起始单次重绘 A/B 实验。liquidglass_kyant_right_redraw_28816：0=原调度，1=右向位移起始时仅请求一次原生 Canvas 下一帧重绘。需同时启用 liquidglass_kyant_frame_trace_28815=1 和 native_layer_28812=1。日志 KYANT28816_REDRAW_AB/REQUEST/DRAW。仅验证回调调度，不证明 GPU 实际显示帧。每 Host 最多24次请求。
 
 V1.9.205.288.17｜左右滑动首帧图层/变换诊断。设置 liquidglass_kyant_layer_trace_28817=1，原生直绘 native_layer_28812=1，关闭 right_redraw_28816=0。输出 KYANT28817_TRACE_ENABLED/ONSET_LAYER/ANCESTOR/DRAW_STATE。仅采集 UI 层状态，不修改折射、坐标或重绘策略；无法直接证明 GPU 最终提交帧。每 Host 最多100条事件记录。
+
+V1.9.205.288.17.1 修复：上一版仅更新了说明书，未真正写入 KYANT28817 诊断。此版增加实际日志与开关读取，设置 layer_trace_28817=1 后需安装新 APK 并重启 Launcher。

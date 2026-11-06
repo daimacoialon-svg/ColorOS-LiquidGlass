@@ -76,6 +76,7 @@ object KyantLauncherLens270 {
     private const val MATRIX_TRACE_28814_KEY = "liquidglass_kyant_matrix_trace_28814"
     private const val FRAME_TRACE_28815_KEY = "liquidglass_kyant_frame_trace_28815"
     private const val REDRAW_AB_28816_KEY = "liquidglass_kyant_right_redraw_28816"
+    private const val LAYER_TRACE_28817_KEY = "liquidglass_kyant_layer_trace_28817"
     private const val NATIVE_LAYER_KEY = "liquidglass_kyant_native_layer_28812"
     private const val DISPLAY_ISOLATION_KEY = "liquidglass_kyant_display_isolation_28811"
     private const val BRIDGE_SYNC_KEY = "liquidglass_kyant_bridge_sync_2889"
@@ -204,7 +205,12 @@ object KyantLauncherLens270 {
         var redraw28816Pending = false
         var redraw28816PendingNs = 0L
         var redraw28816PendingX = Float.NaN
+        val layerTrace28817 = try { Settings.Global.getInt(anchor.context.contentResolver, LAYER_TRACE_28817_KEY, 0) == 1 } catch (_: Throwable) { false }
+        var layerTrace28817Count = 0
+        var layerTrace28817Remaining = 0
+        var layerTrace28817Direction = 0
         val trace28815Host = System.identityHashCode(anchor)
+        if (layerTrace28817) XposedBridge.log("KYANT28817_TRACE_ENABLED host=$trace28815Host nativeLayer=$nativeLayerMode")
         XposedBridge.log("KYANT28816_REDRAW_AB host=$trace28815Host mode=$redrawMode28816 nativeLayer=$nativeLayerMode")
 
         var trace28815PreSerial = 0L
@@ -519,6 +525,12 @@ object KyantLauncherLens270 {
                     XposedBridge.log("KYANT28816_REDRAW_DRAW host=$trace28815Host request=$redraw28816Requests draw=$redraw28816Draws latencyMs=$latencyMs requestX=$redraw28816PendingX drawX=${position.x} delta=${position.x-redraw28816PendingX}")
                     redraw28816Pending = false
                 }
+                if (layerTrace28817 && layerTrace28817Remaining > 0 && layerTrace28817Count < 120) {
+                    val hostLoc = IntArray(2); val nativeLoc = IntArray(2)
+                    frame.getLocationOnScreen(hostLoc); getLocationOnScreen(nativeLoc)
+                    XposedBridge.log("KYANT28817_DRAW_STATE host=$trace28815Host dir=$layerTrace28817Direction x=${position.x} frameX=${hostLoc[0]} nativeX=${nativeLoc[0]} frameTx=${frame.translationX} nativeTx=$translationX frameLayer=${frame.layerType} nativeLayer=$layerType frameVis=${frame.visibility} nativeVis=$visibility frameAlpha=${frame.alpha} nativeAlpha=$alpha attached=$isAttachedToWindow hardware=${canvas.isHardwareAccelerated}")
+                    layerTrace28817Remaining--; layerTrace28817Count++
+                }
                 val screenW = android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
                 val screenH = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
                 val scaleX = reference.width.toFloat() / screenW
@@ -775,7 +787,7 @@ object KyantLauncherLens270 {
                     val visible = xy[0] + b.right > 0 && xy[0] + b.left < displayWidth &&
                         xy[1] + b.bottom > 0 && xy[1] + b.top < displayHeight
                     if (!visible) offscreenChecks++
-                    if (frameTrace28815 && visible && trace28815Events < 160) {
+                    if ((frameTrace28815 || layerTrace28817) && visible && trace28815Events < 160) {
                         val now28815 = SystemClock.elapsedRealtimeNanos()
                         trace28815PreSerial++
                         val dx28815 = if (trace28815LastPreX.isFinite())
@@ -787,6 +799,24 @@ object KyantLauncherLens270 {
                             if (trace28815Quiet >= 3) {
                                 trace28815Direction = if (dx28815 > 0f) 1 else -1
                                 trace28815Remaining = 12
+                                if (layerTrace28817 && layerTrace28817Count < 120) {
+                                    layerTrace28817Direction = trace28815Direction
+                                    layerTrace28817Remaining = 8
+                                    val hostLoc = IntArray(2); val nativeLoc = IntArray(2)
+                                    frame.getLocationOnScreen(hostLoc)
+                                    nativeSampleView?.getLocationOnScreen(nativeLoc)
+                                    XposedBridge.log("KYANT28817_ONSET_LAYER host=$trace28815Host dir=$layerTrace28817Direction dx=$dx28815 sampleX=${actualSample.x} hostX=${hostLoc[0]} nativeX=${nativeLoc[0]} frameLayer=${frame.layerType} nativeLayer=${nativeSampleView?.layerType} frameTx=${frame.translationX} nativeTx=${nativeSampleView?.translationX} frameAlpha=${frame.alpha} nativeAlpha=${nativeSampleView?.alpha} frameVisible=${frame.visibility} nativeVisible=${nativeSampleView?.visibility} frameAttached=${frame.isAttachedToWindow} nativeAttached=${nativeSampleView?.isAttachedToWindow}")
+                                    var ancestor28817: View? = anchor
+                                    var depth28817 = 0
+                                    while (ancestor28817 != null && depth28817 < 7) {
+                                        val loc28817 = IntArray(2)
+                                        ancestor28817.getLocationOnScreen(loc28817)
+                                        XposedBridge.log("KYANT28817_ANCESTOR host=$trace28815Host dir=$layerTrace28817Direction depth=$depth28817 class=${ancestor28817.javaClass.simpleName} x=${loc28817[0]} tx=${ancestor28817.translationX} scrollX=${ancestor28817.scrollX} layer=${ancestor28817.layerType} alpha=${ancestor28817.alpha} clip=${(ancestor28817 as? ViewGroup)?.clipChildren} attached=${ancestor28817.isAttachedToWindow}")
+                                        ancestor28817 = ancestor28817.parent as? View
+                                        depth28817++
+                                    }
+                                    layerTrace28817Count += depth28817 + 1
+                                }
                                 if (trace28815Direction > 0 && redrawMode28816 == 1 &&
                                     redraw28816Requests < 24 && nativeSampleView != null) {
                                     redraw28816Requests++
