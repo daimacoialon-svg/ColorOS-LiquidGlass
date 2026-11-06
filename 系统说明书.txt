@@ -1,3 +1,5 @@
+V1.9.205.265 编译修正版：移除 KyantReferenceFrame265Activity.kt 中 Android 不兼容的 ProcessBuilder.Redirect.DISCARD；保留标准错误默认管道，不改变 Root 读取、参考帧和 Kyant 渲染逻辑。尚未在 GitHub Actions 编译验证。
+
 V1.9.205.265｜现有壁纸参考帧 → Kyant 原版 Backdrop 独立验证版
 
 模块首页新增「V265 真实壁纸参考帧 Kyant 折射测试」。点击进入后，后台通过 su 读取 Launcher 已经同步的纯壁纸参考文件，解码到模块测试进程；用 Compose Image.layerBackdrop 和 Kyant 原版 drawBackdrop/lens 折射真实壁纸。可拖动透镜、切换文件夹/Dock 形状、重新读取。

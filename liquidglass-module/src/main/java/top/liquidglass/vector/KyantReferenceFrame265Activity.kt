@@ -142,7 +142,7 @@ private fun loadLauncherReference265(context: android.content.Context): Pair<Bit
     for (source in sources) {
         try {
             // Do not interpolate user input; source paths are fixed and shell-quoted.
-            val process = ProcessBuilder("su", "-c", "cat '$source'").redirectError(ProcessBuilder.Redirect.DISCARD).start()
+            val process = ProcessBuilder("su", "-c", "cat '$source'").start()
             FileOutputStream(dest).use { output ->
                 process.inputStream.use { input -> input.copyTo(output, 64 * 1024) }
             }
