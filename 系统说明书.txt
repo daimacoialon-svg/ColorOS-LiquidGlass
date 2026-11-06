@@ -116,3 +116,6 @@ V1.9.205.269｜Launcher Compose 首帧与资源释放诊断版
 如未出现 Composition/Draw，将 timeout 标记为 timeout_incomplete；原有玻璃与 Dock 不修改。
 开启：su -c settings put global liquidglass_kyant_host_probe_268 1（一次性自动关闭）。
 日志过滤：KYANT269 或 KYANT268。
+
+
+V1.9.205.269.1：修复 ComposeView 为 final 导致的 Kotlin 编译失败。改由外层 FrameLayout.dispatchDraw 记录宿主绘制；该回调只能证明宿主绘制流程执行，不单独证明 Compose 像素输出。

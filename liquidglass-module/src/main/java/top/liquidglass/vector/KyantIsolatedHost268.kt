@@ -32,7 +32,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-/** V269: isolated Compose composition/draw/disposal verification; no Launcher glass replacement. */
+/** V269.1: isolated Compose composition/host-draw/disposal verification; no Launcher glass replacement. */
 object KyantIsolatedHost268 {
     private const val KEY = "liquidglass_kyant_host_probe_268"
 
@@ -83,14 +83,9 @@ object KyantIsolatedHost268 {
         val compositionSeen = AtomicBoolean(false)
         val drawSeen = AtomicBoolean(false)
         val owner = Owner()
-        val frame = FrameLayout(anchor.context).apply {
-            isClickable = false
-            isFocusable = false
-            setViewTreeLifecycleOwner(owner)
-            setViewTreeSavedStateRegistryOwner(owner)
-            setViewTreeViewModelStoreOwner(owner)
-        }
-        val compose = object : ComposeView(anchor.context) {
+        // ComposeView is final in the Compose UI version used by this project.
+        // Observe the enclosing FrameLayout instead of subclassing ComposeView.
+        val frame = object : FrameLayout(anchor.context) {
             override fun dispatchDraw(canvas: Canvas) {
                 super.dispatchDraw(canvas)
                 if (drawSeen.compareAndSet(false, true)) {
@@ -98,13 +93,20 @@ object KyantIsolatedHost268 {
                         (SystemClock.uptimeMillis() - startedAt) +
                         " compositionSeen=" + compositionSeen.get() +
                         " width=" + width + " height=" + height +
-                        " hardware=" + canvas.isHardwareAccelerated)
+                        " hardware=" + canvas.isHardwareAccelerated +
+                        " source=host_frame_dispatchDraw")
                 }
             }
         }.apply {
             isClickable = false
             isFocusable = false
-            setWillNotDraw(false)
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeSavedStateRegistryOwner(owner)
+            setViewTreeViewModelStoreOwner(owner)
+        }
+        val compose = ComposeView(anchor.context).apply {
+            isClickable = false
+            isFocusable = false
         }
         var recomposer: Recomposer? = null
         var scope: CoroutineScope? = null
