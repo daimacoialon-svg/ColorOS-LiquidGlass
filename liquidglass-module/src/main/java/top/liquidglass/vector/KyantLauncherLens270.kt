@@ -75,6 +75,7 @@ object KyantLauncherLens270 {
     private const val RIGHT_START_TRACE_KEY = "liquidglass_kyant_right_start_trace_28813"
     private const val MATRIX_TRACE_28814_KEY = "liquidglass_kyant_matrix_trace_28814"
     private const val FRAME_TRACE_28815_KEY = "liquidglass_kyant_frame_trace_28815"
+    private const val REDRAW_AB_28816_KEY = "liquidglass_kyant_right_redraw_28816"
     private const val NATIVE_LAYER_KEY = "liquidglass_kyant_native_layer_28812"
     private const val DISPLAY_ISOLATION_KEY = "liquidglass_kyant_display_isolation_28811"
     private const val BRIDGE_SYNC_KEY = "liquidglass_kyant_bridge_sync_2889"
@@ -195,7 +196,17 @@ object KyantLauncherLens270 {
         val frameTrace28815 = try {
             Settings.Global.getInt(anchor.context.contentResolver, FRAME_TRACE_28815_KEY, 0) == 1
         } catch (_: Throwable) { false }
+        val redrawMode28816 = try {
+            Settings.Global.getInt(anchor.context.contentResolver, REDRAW_AB_28816_KEY, 0).coerceIn(0, 1)
+        } catch (_: Throwable) { 0 }
+        var redraw28816Requests = 0
+        var redraw28816Draws = 0
+        var redraw28816Pending = false
+        var redraw28816PendingNs = 0L
+        var redraw28816PendingX = Float.NaN
         val trace28815Host = System.identityHashCode(anchor)
+        XposedBridge.log("KYANT28816_REDRAW_AB host=$trace28815Host mode=$redrawMode28816 nativeLayer=$nativeLayerMode")
+
         var trace28815PreSerial = 0L
         var trace28815DrawSerial = 0L
         var trace28815LastPreNs = 0L
@@ -502,6 +513,12 @@ object KyantLauncherLens270 {
                     trace28815Remaining--
                     trace28815Events++
                 }
+                if (redraw28816Pending) {
+                    redraw28816Draws++
+                    val latencyMs = (SystemClock.elapsedRealtimeNanos() - redraw28816PendingNs) / 1000000L
+                    XposedBridge.log("KYANT28816_REDRAW_DRAW host=$trace28815Host request=$redraw28816Requests draw=$redraw28816Draws latencyMs=$latencyMs requestX=$redraw28816PendingX drawX=${position.x} delta=${position.x-redraw28816PendingX}")
+                    redraw28816Pending = false
+                }
                 val screenW = android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
                 val screenH = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
                 val scaleX = reference.width.toFloat() / screenW
@@ -770,6 +787,17 @@ object KyantLauncherLens270 {
                             if (trace28815Quiet >= 3) {
                                 trace28815Direction = if (dx28815 > 0f) 1 else -1
                                 trace28815Remaining = 12
+                                if (trace28815Direction > 0 && redrawMode28816 == 1 &&
+                                    redraw28816Requests < 24 && nativeSampleView != null) {
+                                    redraw28816Requests++
+                                    redraw28816Pending = true
+                                    redraw28816PendingNs = now28815
+                                    redraw28816PendingX = actualSample.x
+                                    // One-shot request on rightward motion onset only.
+                                    // Do not request invalidate from onDraw or every PreDraw.
+                                    nativeSampleView.postInvalidateOnAnimation()
+                                    XposedBridge.log("KYANT28816_REDRAW_REQUEST host=$trace28815Host request=$redraw28816Requests pre=$trace28815PreSerial x=${actualSample.x} dx=$dx28815")
+                                }
                                 XposedBridge.log(
                                     "KYANT28815_MOTION_ONSET host=$trace28815Host dir=$trace28815Direction dx=$dx28815 x=${actualSample.x} predraw=$trace28815PreSerial preGapMs=$gap28815 scrollX=$workspaceScrollX frameLayer=${frame.layerType} nativeLayer=${nativeSampleView?.layerType} sourceId=${System.identityHashCode(reference)}")
                                 trace28815Events++
