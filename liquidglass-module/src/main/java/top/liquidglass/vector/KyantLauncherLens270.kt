@@ -68,7 +68,7 @@ object KyantLauncherLens270 {
     private val activeHostCount = java.util.concurrent.atomic.AtomicInteger(0)
     private val lastSamplingCommitNs = java.util.concurrent.atomic.AtomicLong(0L)
 
-    private const val KEY = "liquidglass_kyant_persistent_probe_2862"
+    private const val KEY = "liquidglass_kyant_persistent_probe_287"
 
     private class Owner : LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner {
         private val registry = LifecycleRegistry(this)
@@ -101,14 +101,14 @@ object KyantLauncherLens270 {
         if (!anchor.isAttachedToWindow || KyantLauncherLensProbe270.isActiveFor273(anchor)) return
         val reference = KyantLauncherFrameBridge266.peekReferenceFrame270()
         if (reference == null) {
-            XposedBridge.log("KYANT2862_REFERENCE_NOT_READY one_shot_not_consumed")
+            XposedBridge.log("KYANT287_REFERENCE_NOT_READY one_shot_not_consumed")
             return
         }
         val root = anchor.rootView as? ViewGroup ?: return
         // Place the Compose host as the FIRST child of FolderIcon, before native icon children.
         // This preserves the original draw ordering without a DecorView overlay.
         val folder = anchor as? ViewGroup ?: run {
-            XposedBridge.log("KYANT2862_ABORT anchor_not_viewgroup")
+            XposedBridge.log("KYANT287_ABORT anchor_not_viewgroup")
             return
         }
         // Persistent experiment is explicitly opt-in; never disarm the switch on attach.
@@ -116,22 +116,22 @@ object KyantLauncherLens270 {
                 catch (_: Throwable) { true }) return
         val samplingMode = try { Settings.Global.getInt(anchor.context.contentResolver, SAMPLE_MODE_KEY, 1).coerceIn(0, 1) }
             catch (_: Throwable) { 1 }
-        XposedBridge.log("KYANT2862_SAMPLE_MODE mode=$samplingMode (0=cropped_source 1=whole_bitmap_transform) referenceIdentity=${System.identityHashCode(reference)}")
+        XposedBridge.log("KYANT287_SAMPLE_MODE mode=$samplingMode (0=cropped_source 1=whole_bitmap_transform) referenceIdentity=${System.identityHashCode(reference)}")
         val singleHostMode = try {
             Settings.Global.getInt(anchor.context.contentResolver, SINGLE_HOST_KEY, 0) == 1
         } catch (_: Throwable) { false }
         // Controlled A/B test; do not silently change normal multi-folder behavior.
         if (singleHostMode && activeHostCount.get() > 0) {
-            XposedBridge.log("KYANT2862_SINGLE_HOST_SKIP active=" + activeHostCount.get())
+            XposedBridge.log("KYANT287_SINGLE_HOST_SKIP active=" + activeHostCount.get())
             return
         }
-        XposedBridge.log("KYANT2862_PERSISTENT_ARMED key=" + KEY)
+        XposedBridge.log("KYANT287_PERSISTENT_ARMED key=" + KEY)
         val startedAt = SystemClock.uptimeMillis()
         val displayWidth = root.width.coerceAtLeast(1)
         val displayHeight = root.height.coerceAtLeast(1)
         val initialBounds = FolderGlassGeometry272.resolve(anchor)
         val nativeRadius = HookEntry.kyantFolderGlassRadius273(anchor)
-        XposedBridge.log("KYANT2862_NATIVE_GEOMETRY rect=$initialBounds radiusPx=$nativeRadius")
+        XposedBridge.log("KYANT287_NATIVE_GEOMETRY rect=$initialBounds radiusPx=$nativeRadius")
         val previewWidth = initialBounds.width().coerceAtLeast(1)
         val previewHeight = initialBounds.height().coerceAtLeast(1)
         val anchorXY = IntArray(2)
@@ -149,7 +149,7 @@ object KyantLauncherLens270 {
         // Initial sample uses the full transform, not the early integer view location.
         val sampleRadiusPx = androidx.compose.runtime.mutableFloatStateOf(
             nativeRadius.coerceIn(0f, minOf(previewWidth, previewHeight) * 0.49f))
-        XposedBridge.log("KYANT2862_SHAPE size=${previewWidth}x${previewHeight} radiusPx=${sampleRadiusPx.floatValue} radiusDp=${sampleRadiusPx.floatValue / anchor.resources.displayMetrics.density} source=legacy")
+        XposedBridge.log("KYANT287_SHAPE size=${previewWidth}x${previewHeight} radiusPx=${sampleRadiusPx.floatValue} radiusDp=${sampleRadiusPx.floatValue / anchor.resources.displayMetrics.density} source=legacy")
         var followListener: android.view.ViewTreeObserver.OnPreDrawListener? = null
         var detachListener: View.OnAttachStateChangeListener? = null
         var layoutListener: View.OnLayoutChangeListener? = null
@@ -157,6 +157,7 @@ object KyantLauncherLens270 {
         var frameChecks = 0L
         var geometryChanges = 0L
         var hostLayoutCorrections = 0L
+        var dragDiagnosticCount = 0L
         var lastHostCorrectionMs = 0L
         var positionChanges = 0L
         var maxPredrawUs = 0L
@@ -217,7 +218,7 @@ object KyantLauncherLens270 {
                     if (gapMs > 33L) drawGapOver33ms++
                     if (gapMs > maxDrawGapMs) maxDrawGapMs = gapMs
                     if (drawIntervals % 180L == 0L) {
-                        XposedBridge.log("KYANT2862_DRAW_CADENCE host=" + System.identityHashCode(anchor) +
+                        XposedBridge.log("KYANT287_DRAW_CADENCE host=" + System.identityHashCode(anchor) +
                             " intervals=" + drawIntervals + " over16ms=" + drawGapOver16ms +
                             " over33ms=" + drawGapOver33ms + " maxGapMs=" + maxDrawGapMs +
                             " sampleCommits=" + sampleCommitCount + " activeHosts=" + activeHostCount.get())
@@ -230,7 +231,7 @@ object KyantLauncherLens270 {
                     lastCommitNs = 0L
                 }
                 if (drawSeen.compareAndSet(false, true)) {
-                    XposedBridge.log("KYANT2862_FIRST_DRAW elapsedMs=" +
+                    XposedBridge.log("KYANT287_FIRST_DRAW elapsedMs=" +
                         (SystemClock.uptimeMillis() - startedAt) +
                         " compositionSeen=" + compositionSeen.get() +
                         " width=" + width + " height=" + height +
@@ -263,36 +264,36 @@ object KyantLauncherLens270 {
             }
             KyantLauncherLensProbe270.setActiveFor273(anchor, false)
             KyantLauncherLensProbe270.clearAttempt(anchor)
-            try { followListener?.let { if (folder.viewTreeObserver.isAlive) folder.viewTreeObserver.removeOnPreDrawListener(it) } } catch (_: Throwable) {}
+            try { followListener?.let { if (root.viewTreeObserver.isAlive) root.viewTreeObserver.removeOnPreDrawListener(it) } } catch (_: Throwable) {}
             try { detachListener?.let { anchor.removeOnAttachStateChangeListener(it) } } catch (_: Throwable) {}
             try { layoutListener?.let { anchor.removeOnLayoutChangeListener(it) } } catch (_: Throwable) {}
             try { compose.disposeComposition() } catch (t: Throwable) {
-                XposedBridge.log("KYANT2862_DISPOSE_COMPOSE_ERROR " + t.javaClass.simpleName)
+                XposedBridge.log("KYANT287_DISPOSE_COMPOSE_ERROR " + t.javaClass.simpleName)
             }
             try { if (frame.parent === folder) folder.removeView(frame) } catch (t: Throwable) {
-                XposedBridge.log("KYANT2862_DISPOSE_VIEW_ERROR " + t.javaClass.simpleName)
+                XposedBridge.log("KYANT287_DISPOSE_VIEW_ERROR " + t.javaClass.simpleName)
             }
             try { recomposer?.close() } catch (_: Throwable) {}
             try { scope?.cancel() } catch (_: Throwable) {}
             try { owner.stop() } catch (t: Throwable) {
-                XposedBridge.log("KYANT2862_DISPOSE_OWNER_ERROR " + t.javaClass.simpleName)
+                XposedBridge.log("KYANT287_DISPOSE_OWNER_ERROR " + t.javaClass.simpleName)
             }
-            XposedBridge.log("KYANT2862_RENDER_DIAG host=" + System.identityHashCode(anchor) +
+            XposedBridge.log("KYANT287_RENDER_DIAG host=" + System.identityHashCode(anchor) +
                 " drawIntervals=" + drawIntervals + " over16ms=" + drawGapOver16ms +
                 " over33ms=" + drawGapOver33ms + " maxDrawGapMs=" + maxDrawGapMs +
                 " sampleCommits=" + sampleCommitCount +
                 " avgCommitToDrawMs=" + (if (commitToDrawSamples > 0L) commitToDrawTotalMs / commitToDrawSamples else -1L) +
                 " activeHosts=" + activeHostCount.get())
-            XposedBridge.log("KYANT2862_PERF frames=" + frameChecks + " geometryChanges=" + geometryChanges +
+            XposedBridge.log("KYANT287_PERF frames=" + frameChecks + " geometryChanges=" + geometryChanges +
                 " positionChanges=" + positionChanges + " offscreenChecks=" + offscreenChecks +
                 " offscreenSkippedUpdates=" + skippedPositionUpdates + " maxPredrawUs=" + maxPredrawUs +
                 " avgPredrawUs=" + (if (frameChecks > 0) totalPredrawUs / frameChecks else 0L))
-            XposedBridge.log("KYANT2862_DISPOSE_CHECK reason=" + reason +
+            XposedBridge.log("KYANT287_DISPOSE_CHECK reason=" + reason +
                 " composition=" + compositionSeen.get() +
                 " draw=" + drawSeen.get() +
                 " removed=" + (frame.parent == null) +
                 " elapsedMs=" + (SystemClock.uptimeMillis() - startedAt))
-            XposedBridge.log("KYANT2862_HOST_DISPOSED reason=" + reason)
+            XposedBridge.log("KYANT287_HOST_DISPOSED reason=" + reason)
         }
         try {
             owner.start()
@@ -300,7 +301,7 @@ object KyantLauncherLens270 {
             // AndroidUiDispatcher.Main supplies Android's UI frame clock.
             val dispatcher = AndroidUiDispatcher.Main
             val exceptionHandler = CoroutineExceptionHandler { _, t ->
-                XposedBridge.log("KYANT2862_RECOMPOSER_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
+                XposedBridge.log("KYANT287_RECOMPOSER_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
                 frame.post {
                     try { Settings.Global.putInt(anchor.context.contentResolver, KEY, 0) } catch (_: Throwable) {}
                     dispose("recomposer_error")
@@ -315,7 +316,7 @@ object KyantLauncherLens270 {
             compose.setContent { LensContent270(reference, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode) {
                 if (compositionSeen.compareAndSet(false, true)) {
-                    XposedBridge.log("KYANT2862_COMPOSITION_CONFIRMED elapsedMs=" +
+                    XposedBridge.log("KYANT287_COMPOSITION_CONFIRMED elapsedMs=" +
                         (SystemClock.uptimeMillis() - startedAt))
                 }
             } }
@@ -348,7 +349,7 @@ object KyantLauncherLens270 {
             KyantLauncherLensProbe270.setActiveFor273(anchor, true)
             activeHostCount.incrementAndGet()
             activeCountRegistered = true
-            XposedBridge.log("KYANT2862_MUTUAL_EXCLUSION active=true layer=below_icons fallback=automatic_on_dispose")
+            XposedBridge.log("KYANT287_MUTUAL_EXCLUSION active=true layer=below_icons fallback=automatic_on_dispose")
             var lastX = anchorXY[0]
             var lastY = anchorXY[1]
             var lastBounds = android.graphics.Rect(initialBounds)
@@ -361,6 +362,36 @@ object KyantLauncherLens270 {
                         return@OnPreDrawListener true
                     }
                     frameChecks++
+                    // Observe ColorOS drag overlay class without modifying its view hierarchy.
+                    // DragView is commonly a separate bitmap snapshot; original FolderIcon
+                    // cannot provide real-time sampling while that snapshot is being dragged.
+                    if (frameChecks % 30L == 0L && dragDiagnosticCount < 12L) {
+                        try {
+                            val group = root as? ViewGroup
+                            if (group != null) {
+                                val queue = java.util.ArrayDeque<View>()
+                                queue.add(group)
+                                var examined = 0
+                                while (!queue.isEmpty() && examined++ < 200) {
+                                    val candidate = queue.removeFirst()
+                                    val className = candidate.javaClass.name
+                                    if (className.contains("DragView", ignoreCase = true) &&
+                                        candidate.visibility == View.VISIBLE) {
+                                        dragDiagnosticCount++
+                                        XposedBridge.log("KYANT287_DRAG_VIEW_FOUND class=" + className +
+                                            " x=" + candidate.x + " y=" + candidate.y +
+                                            " width=" + candidate.width + " height=" + candidate.height)
+                                        break
+                                    }
+                                    if (candidate is ViewGroup) {
+                                        for (i in 0 until candidate.childCount) queue.add(candidate.getChildAt(i))
+                                    }
+                                }
+                            }
+                        } catch (t: Throwable) {
+                            XposedBridge.log("KYANT287_DRAG_DIAG_ERROR " + t.javaClass.simpleName)
+                        }
+                    }
                     val predrawStartedNs = SystemClock.elapsedRealtimeNanos()
                     // Native FolderIcon child already inherits Workspace translation.
                     // V286.2 also corrects OEM child relayout with no anchor movement.
@@ -369,8 +400,12 @@ object KyantLauncherLens270 {
                     anchor.getLocationOnScreen(locationScratch)
                     val xy = locationScratch
                     val actualSample = glassScreenPosition(lastBounds)
+                    // Ignore only transform-matrix numerical noise (< 1/64 px).
+                    // Keep real fractional Workspace movement live.
+                    val sampleDelta = kotlin.math.abs(actualSample.x - lastSample.x) +
+                        kotlin.math.abs(actualSample.y - lastSample.y)
                     val moved = xy[0] != lastX || xy[1] != lastY ||
-                        actualSample != lastSample
+                        sampleDelta > (1f / 64f)
                     if (moved) positionChanges++
                     // Background geometry is local to FolderIcon; skip expensive reflection
                     // while only the Workspace scrolls, but recheck periodically for OEM resize.
@@ -400,7 +435,7 @@ object KyantLauncherLens270 {
                             hostLayoutCorrections++
                             val nowMs = SystemClock.uptimeMillis()
                             if (hostLayoutCorrections <= 8 || nowMs - lastHostCorrectionMs >= 1500L) {
-                                XposedBridge.log("KYANT2862_HOST_RELAYOUT_FIX host=" + System.identityHashCode(anchor) +
+                                XposedBridge.log("KYANT287_HOST_RELAYOUT_FIX host=" + System.identityHashCode(anchor) +
                                     " actual=" + frame.left + "," + frame.top + "," + frame.width + "x" + frame.height +
                                     " expected=" + b.left + "," + b.top + "," + expectedW + "x" + expectedH +
                                     " elapsedMs=" + (nowMs - startedAt))
@@ -456,7 +491,7 @@ object KyantLauncherLens270 {
                     if (frameChecks % 180L == 0L) {
                         val integerX = xy[0].toFloat() + b.left
                         val integerY = xy[1].toFloat() + b.top
-                        XposedBridge.log("KYANT2862_COORD host=" + System.identityHashCode(anchor) +
+                        XposedBridge.log("KYANT287_COORD host=" + System.identityHashCode(anchor) +
                             " matrixX=" + currentSample.x + " matrixY=" + currentSample.y +
                             " integerX=" + integerX + " integerY=" + integerY +
                             " dx=" + (currentSample.x - integerX) + " dy=" + (currentSample.y - integerY) +
@@ -471,11 +506,11 @@ object KyantLauncherLens270 {
                             frame.visibility = View.VISIBLE
                             frame.postInvalidateOnAnimation()
                             compose.postInvalidateOnAnimation()
-                            XposedBridge.log("KYANT2862_FIRST_VISIBLE frames=" + frameChecks +
+                            XposedBridge.log("KYANT287_FIRST_VISIBLE frames=" + frameChecks +
                                 " bounds=" + b + " delayMs=" + (SystemClock.uptimeMillis() - startedAt))
                         }
                     } else if (frameChecks % 120L == 0L) {
-                        XposedBridge.log("KYANT2862_VISIBILITY_WAIT layout=" + layoutMatches +
+                        XposedBridge.log("KYANT287_VISIBILITY_WAIT layout=" + layoutMatches +
                             " composed=" + compositionSeen.get() + " bounds=" + b +
                             " frame=" + frame.width + "x" + frame.height)
                     }
@@ -486,18 +521,18 @@ object KyantLauncherLens270 {
                 true
             }
             followListener = listener
-            folder.viewTreeObserver.addOnPreDrawListener(listener)
+            root.viewTreeObserver.addOnPreDrawListener(listener)
             frame.translationX = 0f
             frame.translationY = 0f
-            XposedBridge.log("KYANT2862_HOST_ATTACHED layer=folder_child_index_0 owners=isolated recomposer=explicit view=${anchor.width}x${anchor.height} glassBounds=$initialBounds lens=${previewWidth}x${previewHeight} reference=${reference.width}x${reference.height}")
+            XposedBridge.log("KYANT287_HOST_ATTACHED layer=folder_child_index_0 owners=isolated recomposer=explicit view=${anchor.width}x${anchor.height} glassBounds=$initialBounds lens=${previewWidth}x${previewHeight} reference=${reference.width}x${reference.height}")
             // V286: keep the first position live through layout, scroll and pre-draw.
             // The previous 32-ms delayed gate made glass appear seconds late on page switches.
             // OnPreDraw above is the single source of truth for reference-frame coordinates.
-            XposedBridge.log("KYANT2862_STARTUP_GATE_REMOVED continuous_predraw_tracking=true")
+            XposedBridge.log("KYANT287_STARTUP_GATE_REMOVED continuous_predraw_tracking=true")
             // Persistent host remains until disabled, detached or an error occurs.
-            XposedBridge.log("KYANT2862_PERSISTENT_READY stop=switch_off_or_folder_detached")
+            XposedBridge.log("KYANT287_PERSISTENT_READY stop=switch_off_or_folder_detached")
         } catch (t: Throwable) {
-            XposedBridge.log("KYANT2862_HOST_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
+            XposedBridge.log("KYANT287_HOST_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
             try { Settings.Global.putInt(anchor.context.contentResolver, KEY, 0) } catch (_: Throwable) {}
             dispose("setup_error")
         }
@@ -586,7 +621,7 @@ object KyantLauncherLens270 {
                     sourceMaxGapNs.accumulateAndGet(delta) { a, b -> maxOf(a, b) }
                 }
                 if (draws % 240L == 0L) {
-                    XposedBridge.log("KYANT2862_SOURCE_DRAW mode=$samplingMode draws=$draws " +
+                    XposedBridge.log("KYANT287_SOURCE_DRAW mode=$samplingMode draws=$draws " +
                         "gapMs=" + (if (previous > 0L) (now - previous) / 1_000_000L else -1L) + " " +
                         "over16=${sourceOver16.get()} over33=${sourceOver33.get()} maxGapMs=${sourceMaxGapNs.get()/1_000_000L} " +
                         "sampleX=$rootScreenX sampleY=$rootScreenY bitmapIdentity=" +

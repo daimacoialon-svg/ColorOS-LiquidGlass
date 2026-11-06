@@ -1,17 +1,21 @@
-ColorOS-LiquidGlass V1.9.205.286.2｜Launcher 二次布局 Host 位置修正版
+ColorOS-LiquidGlass V1.9.205.287｜动态采样坐标与 DragView 诊断版
 
-基于 V286.1，保留 Kyant 光学渲染、首次可见性修复、圆角和原有构建配置。
+基于 V286.2 真机确认稳定的 Host 布局修复，保留 V286.1 首次可见性与 Kyant Shader。
 
-针对 Launcher 强制重启后第一秒玻璃轮廓正确、随后整片左偏、触摸后复位的问题：
-1. 每次 PreDraw 独立检查注入的 FrameLayout 是否仍位于 FolderIcon 的局部玻璃边界，不再仅依赖 anchor 移动或采样更新。
-2. 若 OEM 在第二阶段布局时移动注入子视图，即时执行局部坐标重新布局并请求重绘。
-3. 增加 KYANT2862_HOST_RELAYOUT_FIX 诊断，记录实际位置、预期位置和启动经过时间；限制诊断频率。
-4. 不修改 Kyant Shader 或壁纸采样算法。此版本优先验证玻璃容器轮廓稳定性，跨桌面拖动与微抖暂未解决。
+本版实装：
+1. 将玻璃坐标同步的 PreDraw 监听挂在 Launcher root ViewTreeObserver 上，减少文件夹本身没有独立重绘时遗漏 Workspace 变化的风险。
+2. 对浮点矩阵噪声使用 1/64 像素阈值，仍跟踪真正的亚像素滑动；不对实际采样位置进行量化。
+3. 限频检查实际视图树中是否出现 DragView，日志 KYANT287_DRAG_VIEW_FOUND，记录其坐标和尺寸，为后续真实拖动 Host 接入提供依据。
+4. 不直接把 ComposeView 强行移植到 DragView：拖动对象可能是截图快照，未验证生命周期与视图结构时会造成崩溃或重复玻璃。
 
-测试开关：
-su -c settings put global liquidglass_kyant_persistent_probe_2861 0
-su -c settings put global liquidglass_kyant_persistent_probe_2862 1
+重要：本版不宣称已经实现拖动中的实时壁纸采样。请长按拖动文件夹并提供 Vector 日志，确认 DragView 结构后再实施真实拖动 Host。左右滑动微抖修复也需真机验证。
+
+启用命令：
+su -c settings put global liquidglass_kyant_persistent_probe_2862 0
+su -c settings put global liquidglass_kyant_persistent_probe_287 1
 su -c settings put global liquidglass_kyant_sampling_mode_283 1
 su -c '/system/bin/am force-stop com.android.launcher'
 
-本源码 ZIP 已检查压缩包完整性；未验证 Gradle 编译或真机效果。
+Git 提交：git add -A && git commit -m "V1.9.205.287 版本" && git push origin main
+
+构建和真机尚未验证。若出现问题关闭 287 开关并重新启用 2862，安装旧版 APK 恢复。
