@@ -117,15 +117,17 @@ object KyantLauncherLens270 {
         // Persistent experiment is explicitly opt-in; never disarm the switch on attach.
         if (try { Settings.Global.getInt(anchor.context.contentResolver, KEY, 0) != 1 }
                 catch (_: Throwable) { true }) return
-        val samplingMode = try { Settings.Global.getInt(anchor.context.contentResolver, SAMPLE_MODE_KEY, 1).coerceIn(0, 1) }
+        val samplingMode = try {
+            Settings.Global.getInt(anchor.context.contentResolver, SAMPLE_MODE_KEY, 1).coerceIn(0, 1)
+        } catch (_: Throwable) { 1 }
         // 0: original optics + original bitmap sampling; 1: cropped bitmap source,
         // 2: original bitmap sampling with isolated offscreen compositing layer.
         // Read once on Host creation; switching modes requires Launcher restart.
-        val renderAbMode = try { Settings.Global.getInt(anchor.context.contentResolver, RENDER_AB_KEY, 0).coerceIn(0, 2) }
-            catch (_: Throwable) { 0 }
+        val renderAbMode = try {
+            Settings.Global.getInt(anchor.context.contentResolver, RENDER_AB_KEY, 0).coerceIn(0, 2)
+        } catch (_: Throwable) { 0 }
         XposedBridge.log("KYANT2883_RENDER_AB mode=" + renderAbMode +
             " (0=baseline 1=cropped_bitmap 2=offscreen_compositing)")
-            catch (_: Throwable) { 1 }
         XposedBridge.log("KYANT2883_SAMPLE_MODE mode=$samplingMode (0=cropped_source 1=whole_bitmap_transform) referenceIdentity=${System.identityHashCode(reference)}")
         // V288.1: mode 1 was confirmed to freeze wallpaper sampling on device.
         // Always use the verified PreDraw commit path; no Compose state mutation

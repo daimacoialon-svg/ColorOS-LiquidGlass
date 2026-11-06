@@ -1,26 +1,6 @@
-ColorOS-LiquidGlass V1.9.205.288.3｜光学渲染链路 A/B 对照实验版
+ColorOS-LiquidGlass V1.9.205.288.3.1｜Kotlin 编译语法修复版
 
-基线：V288.2，保留 V286.2 已经真机确认的 Host 位置纠偏，以及 V288 模式0的 PreDraw 采样提交。
-
-新增开关 liquidglass_kyant_render_ab_2883：
-0 原始渲染（默认），保持现有 Kyant Backdrop + 当前 bitmap source 路径。
-1 裁剪源图渲染：仍使用 Kyant Backdrop 和原有折射，只将 wallpaper source 从全图变换切到浮点裁剪矩形，用于检查 Bitmap 绘制路径是否影响微抖。
-2 离屏合成层：仍使用 Kyant Backdrop 和原有 wallpaper source，在光学容器增加 Compose Offscreen 合成策略，用于比较图层合成是否影响微抖。
-
-注意：模式1不是完全绕过 Kyant Backdrop 的直接壁纸绘制，而是对照两种 Bitmap source 绘制路径；模式2仅对比 Compose 合成策略，不能直接证明系统 SurfaceFlinger 的合成时序。所有模式保留 Kyant 折射和圆角，不在 dispatchDraw 写 Compose State。
-
-安装后：
-su -c settings put global liquidglass_kyant_persistent_probe_2882 0
-su -c settings put global liquidglass_kyant_persistent_probe_2883 1
-su -c settings put global liquidglass_kyant_sampling_mode_283 1
-su -c settings put global liquidglass_kyant_render_ab_2883 0
-su -c '/system/bin/am force-stop com.android.launcher'
-
-模式切换（每次切换均重启 Launcher）：
-su -c settings put global liquidglass_kyant_render_ab_2883 1
-su -c '/system/bin/am force-stop com.android.launcher'
-
-请对照豆包大文件夹中央区域滑动时的微抖，记录0/1/2的主观变化及是否出现冻结、左偏、卡顿，附 Vector 日志。
-新增日志 KYANT2883_RENDER_AB；保留 KYANT2883_HOST_WORKSPACE_TRACE 和 KYANT2883_SOURCE_MATRIX_DELTA。
-
+修复 KyantLauncherLens270.kt 中 samplingMode 的 try/catch 被新增 renderAbMode 代码打断的编译错误。
+保留 V288.3 的实验开关、Host 定位、PreDraw 采样和 Kyant 光学渲染。
+实验开关继续使用 liquidglass_kyant_persistent_probe_2883 和 liquidglass_kyant_render_ab_2883。
 未完成 Gradle 编译与真机验证。
