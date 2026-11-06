@@ -1,11 +1,11 @@
-ColorOS-LiquidGlass V1.9.205.288.8｜原生 Canvas 背景输入与 Kyant 光学桥接实验版
+ColorOS-LiquidGlass V1.9.205.288.9｜原生采样桥接偶发失步实验修复版
 
-目标：保留 Compose Kyant 的折射光学效果，实验性将原生 Canvas 采样结果作为 Kyant Backdrop 的输入。
+在 V288.8 原生 Canvas + Kyant 融合模式基础上：
+1. 保留原生 View Canvas 对壁纸的实时采样，Kyant Compose Backdrop 光学管线不变。
+2. 原生采样通知采用 coalesced post，避免每次 native onDraw 产生无上限的通知队列。
+3. Compose 实际绘制时校验原生采样坐标与当前 FolderIcon 矩阵；如果出现不一致，在当前绘制阶段通过相同原生 Canvas Bitmap 采样算法补齐，再交给 Kyant。
+4. 开关 liquidglass_kyant_bridge_sync_2889：0=V288.8 原始桥接（对照）；1=同绘制阶段追帧（实验，默认）。需同时开启 liquidglass_kyant_native_bridge_2888=1。
+5. 新增日志 KYANT2889_BRIDGE_SYNC、KYANT2889_NATIVE_PUBLISH、KYANT2889_FRAME_CATCHUP、KYANT2889_COMPOSE_CONSUME。
+6. 保留 V286.2 Host 定位修复、V288.7 左右对照及所有原有 UI 参数；不添加额外 README 文件。
 
-liquidglass_kyant_native_bridge_2888：0 原始 Kyant；1 原生 Bitmap 桥接实验。
-模式1：原生 View 的 onDraw 使用当前 FolderIcon 全局矩阵绘制到共享 ARGB_8888 Bitmap；通过 Compose State 通知绘制，Compose Canvas 将该 Bitmap 绘入 layerBackdrop，原有 drawBackdrop/lens/highlight 不变。
-重要：原生 Canvas 绘制完成到 Compose 绘制仍有跨阶段通知，不保证零延迟，不能把实验模式当成已解决抖动；该实验仅验证桥接能否保持完整折射和正确壁纸映射。
-
-测试前设置 liquidglass_kyant_native_compare_2887=0，liquidglass_kyant_motion_ab_2884=0，liquidglass_kyant_legacy_sync_ab_2886=0，liquidglass_kyant_persistent_probe_2884=1。设置后 force-stop com.android.launcher。
-日志：KYANT2888_NATIVE_BRIDGE、KYANT2888_NATIVE_BRIDGE_DRAW、KYANT2888_COMPOSE_BRIDGE_SOURCE。
-保留 V286.2 Host 定位修复、V288.5 诊断、V288.7 对照代码及原 Kyant 效果。此版未经 Gradle 编译和真机验证。
+注意：该方案仅在 Compose 确实执行绘制时补齐最新坐标；如果 Compose 整帧未绘制，则不能保证消除所有视觉失步。尚未完成 Android SDK Gradle 编译或真机测试。
