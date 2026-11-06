@@ -1,3 +1,17 @@
+ColorOS-LiquidGlass V1.9.205.284｜Kyant 冷启动坐标门控与参考帧绘制间隔诊断版
+
+本版基于 V283。保留现有 Kyant Shader、玻璃几何、圆角裁剪、屏幕边缘采样、图标层级与原有玻璃自动回退。
+
+1. 冷启动：不再使用固定 12 次、约 0.4 秒的采样坐标同步窗口。使用最长 6 秒的检查窗口，要求初始至少 500ms 且连续 4 次位置稳定才开放 Kyant 显示。超时安全回退原有玻璃，避免显示错位的 Kyant 图层。
+2. 参考帧：保留 V283 模式 0/1 A/B。加入实际参考帧绘制调用间隔 over16、over33 和 maxGapMs 统计。此指标不是 GPU 完成时间。
+3. 日志：KYANT284_STARTUP_GATE_OPEN / WAIT / TIMEOUT；KYANT284_SOURCE_DRAW。
+4. 本版为诊断和冷启动门控改进，不宣称已解决壁纸采样掉帧。需真机 A/B 与录屏验证。
+
+开启：su -c settings put global liquidglass_kyant_persistent_probe_284 1
+关闭：su -c settings put global liquidglass_kyant_persistent_probe_284 0
+采样模式：su -c settings put global liquidglass_kyant_sampling_mode_283 0 或 1
+切换实验版本后需重启 Launcher；先关闭 V283。
+
 V1.9.205.268｜Launcher 隔离 Compose 生命周期宿主实验
 默认关闭；通过 settings global liquidglass_kyant_host_probe_268=1 开启，重启 Launcher 后对首个文件夹创建一次 1x1 非交互 ComposeView，约 2.5 秒后释放。日志 KYANT268_INSTALLED / HOST_ATTACHED / COMPOSITION_ACTIVE / HOST_DISPOSED。仅用于验证，不替换文件夹和 Dock 渲染。实验可能造成 Launcher 重启，测试前做好恢复准备。
 
