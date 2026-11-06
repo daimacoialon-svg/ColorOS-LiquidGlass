@@ -3,6 +3,7 @@ package top.liquidglass.vector
 import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.RectF
 import android.os.Looper
 import android.provider.Settings
@@ -63,6 +64,36 @@ import kotlin.math.min
  *  Unsupported parents fail closed; HookEntry retains the original Dock drawable.
  */
 object KyantDockLens28827 {
+    /** The OEM Hotseat may be wider than the visible display.  The previous
+     *  code only inset the Hotseat width, which allowed the right corner to be
+     *  clipped by the screen.  Work entirely in screen coordinates here and
+     *  convert the resulting rectangle back into the Compose host's local X.
+     *  No scaling, recentering of icons, or change to the Kyant optics shader.
+     */
+    private data class HorizontalGlassBounds(val localLeft: Float, val width: Float)
+
+    private fun horizontalGlassBounds(
+        hotseatScreenX: Float,
+        hotseatWidth: Int,
+        viewportLeft: Float,
+        viewportRight: Float,
+        density: Float
+    ): HorizontalGlassBounds? {
+        if (hotseatWidth <= 0 || density <= 0f) return null
+        val nativeInset = max(10f * density, hotseatWidth * .035f)
+        val preferredLeft = hotseatScreenX + nativeInset
+        val preferredRight = hotseatScreenX + hotseatWidth - nativeInset
+        val viewportW = viewportRight - viewportLeft
+        if (viewportW <= 0f) return null
+        val safeMargin = max(10f * density, viewportW * .035f)
+        val clampedLeft = max(preferredLeft, viewportLeft + safeMargin)
+        val clampedRight = min(preferredRight, viewportRight - safeMargin)
+        // A transient or invalid Hotseat geometry must not draw an oversized
+        // glass rectangle outside the available window.
+        if (clampedRight <= clampedLeft) return null
+        return HorizontalGlassBounds(clampedLeft - hotseatScreenX, clampedRight - clampedLeft)
+    }
+
     private val hosts = WeakHashMap<View, Host>()
     private class Owner : LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner {
         private val lifecycleRegistry = LifecycleRegistry(this)
@@ -98,6 +129,10 @@ object KyantDockLens28827 {
             isClickable = false; isFocusable = false
         }
         val position = mutableStateOf(Offset.Zero)
+        // Window-visible horizontal range, in the same screen coordinate
+        // space as hotseat.transformMatrixToGlobal().
+        val viewport = mutableStateOf(Offset(0f, hotseat.resources.displayMetrics.widthPixels.toFloat()))
+        private var geometryLogged = false
         val widthState = mutableIntStateOf(max(1, hotseat.width))
         val heightState = mutableIntStateOf(max(1, hotseat.height))
         val wallpaper = mutableStateOf(reference)
@@ -131,7 +166,8 @@ object KyantDockLens28827 {
             compose.setParentCompositionContext(recomposer)
             compose.setContent {
                 val source = wallpaper.value
-                DockOptics(source, position.value, widthState.intValue, heightState.intValue)
+                DockOptics(source, position.value, viewport.value,
+                    widthState.intValue, heightState.intValue)
             }
             scope.launch { recomposer.runRecomposeAndApplyChanges() }
             hotseat.addOnAttachStateChangeListener(detachListener)
@@ -161,6 +197,33 @@ object KyantDockLens28827 {
             if (frame.y != targetY) frame.y = targetY
             val next = Offset(xy[0], xy[1])
             if (position.value != next) position.value = next
+            // Intersect the actual window's visible frame with the root
+            // content view.  This also handles launcher window insets and
+            // narrower windows; using Resources.getSystem() alone does not.
+            val root = hotseat.rootView
+            val rootXY = IntArray(2)
+            root.getLocationOnScreen(rootXY)
+            val visible = Rect()
+            hotseat.getWindowVisibleDisplayFrame(visible)
+            var visibleLeft = rootXY[0].toFloat()
+            var visibleRight = visibleLeft + root.width
+            if (visible.width() > 0) {
+                visibleLeft = max(visibleLeft, visible.left.toFloat())
+                visibleRight = min(visibleRight, visible.right.toFloat())
+            }
+            if (visibleRight > visibleLeft) {
+                val newViewport = Offset(visibleLeft, visibleRight)
+                if (viewport.value != newViewport) viewport.value = newViewport
+                if (!geometryLogged) {
+                    geometryLogged = true
+                    val bounds = horizontalGlassBounds(xy[0], w,
+                        visibleLeft, visibleRight, hotseat.resources.displayMetrics.density)
+                    XposedBridge.log("KYANT28828_DOCK_GEOMETRY " +
+                        "hotseatX=${xy[0]} hotseatW=$w " +
+                        "viewport=[$visibleLeft,$visibleRight] " +
+                        "glassLocalX=${bounds?.localLeft} glassW=${bounds?.width}")
+                }
+            }
             val latest = KyantLauncherFrameBridge266.peekReferenceFrame270()
             if (latest != null && latest !== wallpaper.value) wallpaper.value = latest
         }
@@ -218,11 +281,14 @@ object KyantDockLens28827 {
         synchronized(hosts) { hosts.remove(hotseat)?.stop() }
     }
 
-    @Composable private fun DockOptics(reference: Bitmap, screen: Offset, viewW: Int, viewH: Int) {
+    @Composable private fun DockOptics(reference: Bitmap, screen: Offset,
+                                      viewport: Offset, viewW: Int, viewH: Int) {
         val density = LocalDensity.current.density
         val mat = KyantOptics28827.material
-        val insetPx = max(10f*density, viewW*.035f)
-        val opticalW = max(1f, viewW-2f*insetPx)
+        val geometry = horizontalGlassBounds(screen.x, viewW,
+            viewport.x, viewport.y, density) ?: return
+        val localLeft = geometry.localLeft
+        val opticalW = geometry.width
         val opticalH = max(1f, viewH.toFloat())
         val radiusPx = min(opticalH, opticalW)*.30f
         val radiusDp = (radiusPx/density).dp
@@ -233,10 +299,12 @@ object KyantDockLens28827 {
         val fullHeight = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
         val scaleX = reference.width.toFloat()/fullWidth
         val scaleY = reference.height.toFloat()/fullHeight
-        Box(Modifier.offset(x=(insetPx/density).dp).size((opticalW/density).dp,(opticalH/density).dp)
+        Box(Modifier.offset(x=(localLeft/density).dp).size((opticalW/density).dp,(opticalH/density).dp)
             .clip(RoundedCornerShape(radiusDp))) {
             Canvas(Modifier.fillMaxSize().layerBackdrop(backdrop).graphicsLayer { alpha = 1f }) {
-                val sampleX = (screen.x+insetPx)*scaleX
+                // Sampling follows the VISUAL glass edge after clipping;
+                // retaining the old inset here would offset the wallpaper.
+                val sampleX = (screen.x+localLeft)*scaleX
                 val sampleY = screen.y*scaleY
                 val sourceW = opticalW*scaleX
                 val sourceH = opticalH*scaleY
