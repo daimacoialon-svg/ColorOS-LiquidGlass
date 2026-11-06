@@ -22,3 +22,5 @@ V1.9.205.288.16｜右滑起始单次重绘 A/B 实验。liquidglass_kyant_right_
 V1.9.205.288.17｜左右滑动首帧图层/变换诊断。设置 liquidglass_kyant_layer_trace_28817=1，原生直绘 native_layer_28812=1，关闭 right_redraw_28816=0。输出 KYANT28817_TRACE_ENABLED/ONSET_LAYER/ANCESTOR/DRAW_STATE。仅采集 UI 层状态，不修改折射、坐标或重绘策略；无法直接证明 GPU 最终提交帧。每 Host 最多100条事件记录。
 
 V1.9.205.288.17.1 修复：上一版仅更新了说明书，未真正写入 KYANT28817 诊断。此版增加实际日志与开关读取，设置 layer_trace_28817=1 后需安装新 APK 并重启 Launcher。
+
+V1.9.205.288.18｜右滑未翻页回弹的方向反转/CellLayout 图层 A/B。global liquidglass_kyant_rebound_layer_ab_28818：0=仅记录，1=检测右移后800ms内左向反转时，仅一个 CellLayout 且仅原硬件图层短暂切换软件图层220ms后恢复；仅诊断，不是最终修复。每 Host 最多6次事件，进程全局同一时间最多一个图层实验。可能出现短时卡顿；出现异常立即设0并重启 Launcher。日志 KYANT28818_AB/REVERSAL/LAYER_TEST/RESTORE/SKIP。该实验仅以屏幕位置方向反转近似回弹，不能严格识别 ACTION_UP 或翻页结果。

@@ -64,6 +64,7 @@ import kotlinx.coroutines.launch
 
 /** V269.1: isolated Compose composition/host-draw/disposal verification; no Launcher glass replacement. */
 object KyantLauncherLens270 {
+    private val reboundLayerGuard28818 = AtomicBoolean(false)
     // Opt-in diagnostic: 1 allows only one active optical host, 0 retains all hosts.
     private const val SINGLE_HOST_KEY = "liquidglass_kyant_single_host_282"
     private const val SAMPLE_MODE_KEY = "liquidglass_kyant_sampling_mode_283"
@@ -77,6 +78,7 @@ object KyantLauncherLens270 {
     private const val FRAME_TRACE_28815_KEY = "liquidglass_kyant_frame_trace_28815"
     private const val REDRAW_AB_28816_KEY = "liquidglass_kyant_right_redraw_28816"
     private const val LAYER_TRACE_28817_KEY = "liquidglass_kyant_layer_trace_28817"
+    private const val REBOUND_AB_28818_KEY = "liquidglass_kyant_rebound_layer_ab_28818"
     private const val NATIVE_LAYER_KEY = "liquidglass_kyant_native_layer_28812"
     private const val DISPLAY_ISOLATION_KEY = "liquidglass_kyant_display_isolation_28811"
     private const val BRIDGE_SYNC_KEY = "liquidglass_kyant_bridge_sync_2889"
@@ -209,7 +211,16 @@ object KyantLauncherLens270 {
         var layerTrace28817Count = 0
         var layerTrace28817Remaining = 0
         var layerTrace28817Direction = 0
+        val reboundMode28818 = try { Settings.Global.getInt(anchor.context.contentResolver, REBOUND_AB_28818_KEY, 0).coerceIn(0, 1) } catch (_: Throwable) { 0 }
+        var rebound28818LastX = Float.NaN
+        var rebound28818RightDrag = false
+        var rebound28818LastPositiveNs = 0L
+        var rebound28818Count = 0
+        var rebound28818Target: View? = null
+        var rebound28818OldLayer = View.LAYER_TYPE_NONE
+        var rebound28818Restore: Runnable? = null
         val trace28815Host = System.identityHashCode(anchor)
+        XposedBridge.log("KYANT28818_AB host=$trace28815Host mode=$reboundMode28818")
         if (layerTrace28817) XposedBridge.log("KYANT28817_TRACE_ENABLED host=$trace28815Host nativeLayer=$nativeLayerMode")
         XposedBridge.log("KYANT28816_REDRAW_AB host=$trace28815Host mode=$redrawMode28816 nativeLayer=$nativeLayerMode")
 
@@ -572,7 +583,20 @@ object KyantLauncherLens270 {
         }.apply { isClickable = false; isFocusable = false; setWillNotDraw(false) } else null
         var recomposer: Recomposer? = null
         var scope: CoroutineScope? = null
+        fun restoreRebound28818(reason: String) {
+            val target = rebound28818Target ?: return
+            rebound28818Restore?.let { target.removeCallbacks(it) }
+            try {
+                // Restore only if this experiment still owns the software layer.
+                if (target.layerType == View.LAYER_TYPE_SOFTWARE) target.setLayerType(rebound28818OldLayer, null)
+                XposedBridge.log("KYANT28818_RESTORE host=$trace28815Host reason=$reason old=$rebound28818OldLayer")
+            } catch (t: Throwable) { XposedBridge.log("KYANT28818_RESTORE_ERROR ${t.javaClass.simpleName}") }
+            rebound28818Target = null
+            rebound28818Restore = null
+            reboundLayerGuard28818.set(false)
+        }
         fun dispose(reason: String) {
+            restoreRebound28818("dispose")
             if (disposed) return
             disposed = true
             if (activeCountRegistered) {
@@ -748,6 +772,47 @@ object KyantLauncherLens270 {
                     // Keep real fractional Workspace movement live.
                     val sampleDelta = kotlin.math.abs(actualSample.x - lastSample.x) +
                         kotlin.math.abs(actualSample.y - lastSample.y)
+                    // V288.18: detect a rightward drag followed by leftward spring-back.
+                    // The comparison is in screen space, not Workspace scroll coordinates.
+                    val reboundNow28818 = SystemClock.elapsedRealtimeNanos()
+                    if (anchor.isShown) {
+                        val reboundDx28818 = if (rebound28818LastX.isFinite()) actualSample.x - rebound28818LastX else 0f
+                        if (reboundDx28818 > 0.5f) {
+                            rebound28818RightDrag = true
+                            rebound28818LastPositiveNs = reboundNow28818
+                        } else if (reboundDx28818 < -0.5f && rebound28818RightDrag) {
+                            val ageMs = (reboundNow28818 - rebound28818LastPositiveNs) / 1000000L
+                            if (ageMs in 0..800 && rebound28818Count < 6) {
+                                rebound28818Count++
+                                XposedBridge.log("KYANT28818_REVERSAL host=$trace28815Host mode=$reboundMode28818 dx=$reboundDx28818 x=${actualSample.x} ageMs=$ageMs")
+                                if (reboundMode28818 == 1 && reboundLayerGuard28818.compareAndSet(false, true)) {
+                                    var cell28818: View? = anchor.parent as? View
+                                    var hops28818 = 0
+                                    while (cell28818 != null && hops28818++ < 6 && !cell28818.javaClass.name.contains("CellLayout", ignoreCase = true)) cell28818 = cell28818.parent as? View
+                                    if (cell28818 != null && cell28818.layerType == View.LAYER_TYPE_HARDWARE) {
+                                        try {
+                                            rebound28818Target = cell28818
+                                            rebound28818OldLayer = cell28818.layerType
+                                            cell28818.setLayerType(View.LAYER_TYPE_SOFTWARE, null)
+                                            XposedBridge.log("KYANT28818_LAYER_TEST host=$trace28815Host old=$rebound28818OldLayer new=${cell28818.layerType} class=${cell28818.javaClass.simpleName}")
+                                            val restore28818 = Runnable { restoreRebound28818("timeout") }
+                                            rebound28818Restore = restore28818
+                                            cell28818.postDelayed(restore28818, 220L)
+                                        } catch (t: Throwable) {
+                                            XposedBridge.log("KYANT28818_LAYER_ERROR ${t.javaClass.simpleName}")
+                                            restoreRebound28818("error")
+                                        }
+                                    } else {
+                                        XposedBridge.log("KYANT28818_SKIP host=$trace28815Host reason=no_hardware_cell layer=${cell28818?.layerType}")
+                                        reboundLayerGuard28818.set(false)
+                                    }
+                                }
+                            }
+                            rebound28818RightDrag = false
+                        }
+                        if (rebound28818RightDrag && (reboundNow28818 - rebound28818LastPositiveNs) > 800000000L) rebound28818RightDrag = false
+                        rebound28818LastX = actualSample.x
+                    }
                     val moved = xy[0] != lastX || xy[1] != lastY ||
                         sampleDelta > (1f / 64f)
                     if (moved) {
