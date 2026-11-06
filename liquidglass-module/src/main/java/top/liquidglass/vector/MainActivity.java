@@ -88,68 +88,140 @@ public final class MainActivity extends Activity {
             putBooleanIfChanged193(key,checked);
         });current.addView(s);
     }
-    // V288.23: this controls the actual Launcher Kyant probe Global key, not a
-    // SharedPreferences-only cosmetic switch. Root work never blocks the UI thread.
-    private void kyantLauncherSwitch28823(){
-        final String key="liquidglass_kyant_persistent_probe_2884";
+    // V288.27: apply the complete, device-verified Kyant preset atomically.
+    // No UI success is reported until Root has completed and values are read back.
+    private static final String KYANT_FOLDER_KEY="liquidglass_kyant_persistent_probe_2884";
+    private static final String KYANT_DOCK_KEY="liquidglass_kyant_dock_28827";
+    private static final String[][] KYANT_SAFE_PRESET_28827={
+        {"liquidglass_kyant_pipeline_ab_28819","-1"},
+        {"liquidglass_kyant_display_isolation_28811","0"},
+        {"liquidglass_kyant_native_layer_28812","0"},
+        {"liquidglass_kyant_native_bridge_2888","0"},
+        {"liquidglass_kyant_motion_ab_2882","0"},
+        {"liquidglass_kyant_motion_ab_2884","0"},
+        {"liquidglass_kyant_native_compare_2887","0"},
+        {"liquidglass_kyant_legacy_sync_ab_2886","0"},
+        {"liquidglass_kyant_render_ab_2883","0"},
+        {"liquidglass_kyant_bridge_sync_2889","0"},
+        {"liquidglass_kyant_layer_trace_28817","0"},
+        {"liquidglass_kyant_right_start_trace_28813","0"},
+        {"liquidglass_kyant_frame_sync_ab_28822","0"},
+        {"liquidglass_kyant_native_coordinate_ab_28826","0"},
+        {"liquidglass_kyant_rebound_layer_ab_28818","0"},
+        {"liquidglass_kyant_matrix_trace_28814","0"},
+        {"liquidglass_kyant_frame_trace_28815","0"},
+        {"liquidglass_kyant_release_trace_28821","0"},
+        {"liquidglass_kyant_right_redraw_28816","0"}
+    };
+    private static String rootCommand28827(String command) throws Exception {
+        Process process=new ProcessBuilder("su","-c",command).redirectErrorStream(true).start();
+        java.io.ByteArrayOutputStream output=new java.io.ByteArrayOutputStream();
+        Thread reader=new Thread(()->{try(java.io.InputStream in=process.getInputStream()){
+            byte[] bytes=new byte[1024];int count;
+            while((count=in.read(bytes))!=-1 && output.size()<32768)output.write(bytes,0,count);
+        }catch(Exception ignored){}});
+        reader.start();
+        boolean finished=process.waitFor(12,java.util.concurrent.TimeUnit.SECONDS);
+        if(!finished){process.destroyForcibly();throw new Exception("Root command timeout");}
+        reader.join(1000);
+        if(process.exitValue()!=0)throw new Exception("Root command failed: "+output.toString());
+        return output.toString().trim();
+    }
+    // Both toggles share the SAME validated render preset, but persist separately.
+    private void kyantGlobalSwitch28827(String caption,String key){
         final Switch control=new Switch(this);
-        control.setText("启用 Kyant 桌面光学透镜（实验）");
-        control.setTextColor(ink);control.setTextSize(14);
-        control.setPadding(0,dp(8),0,dp(8));
-        control.setEnabled(false);
+        control.setText(caption);control.setTextColor(ink);control.setTextSize(14);
+        control.setPadding(0,dp(8),0,dp(8));control.setEnabled(false);
         current.addView(control);
-        final TextView state=text("正在读取 Launcher 实际开关…",12,false);
-        current.addView(state);
+        final TextView state=text("正在读取实际开关…",12,false);current.addView(state);
         new Thread(()->{
-            int value=-1;
-            try{
-                Process p=new ProcessBuilder("su","-c","settings get global "+key)
-                    .redirectErrorStream(true).start();
-                java.io.BufferedReader r=new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
-                String line=r.readLine();
-                if(p.waitFor(6,java.util.concurrent.TimeUnit.SECONDS) && p.exitValue()==0)
-                    value="1".equals(line)?1:0;
-                else if(p.isAlive())p.destroyForcibly();
-                p.destroy();
-            }catch(Throwable ignored){}
-            final int initial=value;
+            boolean enabled=false,success=false;
+            try {enabled="1".equals(rootCommand28827("settings get global "+key));success=true;}
+            catch(Exception ignored){}
+            final boolean initial=enabled,readOk=success;
             runOnUiThread(()->{
-                if(initial<0){state.setText("读取失败：请检查 KernelSU Root 授权");return;}
-                control.setChecked(initial==1);
-                control.setEnabled(true);
-                state.setText(initial==1?"已开启 · Kyant 实验透镜":"已关闭 · 保留现有稳定玻璃效果");
-                control.setOnCheckedChangeListener((button,enabled)->{
-                    control.setEnabled(false);
-                    state.setText("正在写入系统开关…");
+                if(!readOk){state.setText("Root 读取失败，请检查 KernelSU 授权");return;}
+                control.setChecked(initial);control.setEnabled(true);
+                state.setText(initial?"已开启 · 当前状态已读取":"已关闭 · 保留原有容器玻璃效果");
+                control.setOnCheckedChangeListener((button,wanted)->{
+                    control.setEnabled(false);state.setText("正在应用并核对光学配置…");
                     new Thread(()->{
-                        boolean ok=false;
-                        Process proc=null;
-                        try{
-                            proc=new ProcessBuilder("su","-c","settings put global "+key+" "+(enabled?1:0))
-                                .redirectErrorStream(true).start();
-                            ok=proc.waitFor(7,java.util.concurrent.TimeUnit.SECONDS) && proc.exitValue()==0;
-                            if(!ok && proc.isAlive())proc.destroyForcibly();
-                        }catch(Throwable ignored){}finally{if(proc!=null)proc.destroy();}
-                        final boolean success=ok;
+                        boolean verified=false;
+                        try {
+                            StringBuilder script=new StringBuilder("set -e\n");
+                            if(wanted)for(String[] entry:KYANT_SAFE_PRESET_28827)
+                                script.append("settings put global ").append(entry[0]).append(' ').append(entry[1]).append('\n');
+                            script.append("settings put global ").append(key).append(wanted?" 1\n":" 0\n");
+                            rootCommand28827(script.toString());
+                            verified=(wanted?"1":"0").equals(rootCommand28827("settings get global "+key));
+                            if(verified && wanted)for(String[] entry:KYANT_SAFE_PRESET_28827)
+                                if(!entry[1].equals(rootCommand28827("settings get global "+entry[0]))){verified=false;break;}
+                        }catch(Exception ignored){}
+                        final boolean ok=verified;
                         runOnUiThread(()->{
-                            if(!success){
-                                control.setOnCheckedChangeListener(null);
-                                control.setChecked(!enabled);
-                                control.setOnCheckedChangeListener((v,checked)->kyantSwitchRetry28823());
-                                state.setText("切换失败；请重新进入页面重试");
-                                control.setEnabled(false);
-                            }else{
-                                state.setText(enabled?"已开启 · 返回桌面测试（实验性，可能闪动）":"已关闭 · 返回桌面恢复稳定效果");
-                                control.setEnabled(true);
-                                Toast.makeText(this,"Kyant 实验透镜"+(enabled?"已开启":"已关闭")+"；返回桌面查看效果",Toast.LENGTH_LONG).show();
-                            }
+                            if(!ok){control.setOnCheckedChangeListener(null);control.setChecked(!wanted);
+                                state.setText("写入或核对失败，请重新打开页面检查");control.setEnabled(false);return;}
+                            state.setText(wanted?"已应用稳定光学配置 · 重启 Launcher 后生效":"已关闭 · 重启 Launcher 后恢复原有玻璃");
+                            control.setEnabled(true);
+                            Toast.makeText(this,"配置已核对，建议通过 Vector 重启 Launcher",Toast.LENGTH_LONG).show();
                         });
-                    },"KyantSwitch28823").start();
+                    },"KyantSwitch28827").start();
                 });
             });
-        },"KyantSwitchRead28823").start();
+        },"KyantRead28827").start();
     }
-    private void kyantSwitchRetry28823(){recreate();}
+    // Direct Settings.Global writes, verified after each change. Launcher observes
+    // these keys and both Compose optical hosts update without a process restart.
+    private void kyantGlobalSlider28827(String caption,String key,int fallback,int low,int high){
+        final TextView label=text(caption+" · 正在读取",13,false);current.addView(label);
+        final SeekBar seek=new SeekBar(this);
+        seek.setMax(high-low);seek.setEnabled(false);current.addView(seek);
+        new Thread(()->{
+            int n=fallback; boolean ready=false;
+            try {n=Integer.parseInt(rootCommand28827("settings get global "+key));ready=true;}
+            catch(Exception e){
+                // A new global has not yet been created: use renderer's actual default.
+                ready=true;
+            }
+            final int initial=Math.max(low,Math.min(high,n)); final boolean ok=ready;
+            runOnUiThread(()->{
+                if(!ok){label.setText(caption+" · Root 不可用");return;}
+                seek.setProgress(initial-low);seek.setEnabled(true);
+                label.setText(caption+" · "+initial);
+                seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+                    public void onProgressChanged(SeekBar bar,int progress,boolean user){
+                        if(user)label.setText(caption+" · "+(progress+low)+"（松手应用）");
+                    }
+                    public void onStartTrackingTouch(SeekBar bar){}
+                    public void onStopTrackingTouch(SeekBar bar){
+                        final int value=bar.getProgress()+low;
+                        bar.setEnabled(false);
+                        new Thread(()->{
+                            boolean applied=false;
+                            try {
+                                rootCommand28827("settings put global "+key+" "+value);
+                                applied=String.valueOf(value).equals(rootCommand28827("settings get global "+key));
+                            }catch(Exception ignored){}
+                            final boolean verified=applied;
+                            runOnUiThread(()->{
+                                bar.setEnabled(true);
+                                label.setText(caption+" · "+value+(verified?"（已同步）":"（写入失败）"));
+                            });
+                        },"KyantMaterial28827").start();
+                    }
+                });
+            });
+        },"KyantMaterialRead28827").start();
+    }
+    private void kyantSettingsPanel28827(){
+        kyantGlobalSwitch28827("桌面文件夹 · Kyant0 光学引擎",KYANT_FOLDER_KEY);
+        kyantGlobalSwitch28827("Dock 胶囊 · Kyant0 光学引擎",KYANT_DOCK_KEY);
+        current.addView(text("两个 Kyant 开关独立。Dock Kyant 需要上方「启用 Dock 玻璃」主开关处于开启状态；不会擅自打开已手动关闭的 Dock。任一 Kyant 开启都会自动应用稳定光学路径并关闭冲突实验。",12,false));
+        kyantGlobalSlider28827("Kyant 折射强度 (%)", "liquidglass_kyant_optical_strength_28827",100,0,200);
+        kyantGlobalSlider28827("Kyant 模糊半径 (dp)", "liquidglass_kyant_optical_blur_28827",0,0,20);
+        kyantGlobalSlider28827("Kyant 高光透明度 (%)", "liquidglass_kyant_optical_highlight_28827",100,0,100);
+        current.addView(text("三项参数直接对应 Kyant lens、blur、Highlight；默认值保留此前文件夹真实光学效果。调整后由 Launcher 监听全局配置并更新。",12,false));
+    }
     private void slider(String label,String key,int def,int min,int max){
         TextView caption=text("",13,false);current.addView(caption);
         SeekBar bar=new SeekBar(this);bar.setMax(max-min);bar.setProgress(Math.max(0,Math.min(max-min,prefs.getInt(key,def)-min)));current.addView(bar);
@@ -335,6 +407,8 @@ public final class MainActivity extends Activity {
         
         toggle("启用 Dock 玻璃（默认开启，手动关闭后保持关闭）","dock_glass_204",true);
         TextView dockInfo=text("Dock 保持原有尺寸和位置；V132 与文件夹共用直接背景采样及透镜位移 Shader，并按容器几何自适应。",12,false);current.addView(dockInfo);
+        section("Kyant0 液态玻璃 · 文件夹与 Dock", "统一光学入口；分别控制桌面文件夹和 Dock，参数共用且真实作用于 Kyant 渲染。");
+        kyantSettingsPanel28827();
 
         category229("03  统一玻璃材质","同一曲面驱动折射、环境响应和边缘厚度；默认关闭，新版可随时回退稳定引擎。");
         section("Unified Glass Surface · 单一光学模型","开启后由单次 Shader 合成整片玻璃；旧引擎仍完整保留，关闭即可恢复 V229 的渲染路径。");
@@ -481,8 +555,7 @@ public final class MainActivity extends Activity {
         TextView serviceHint=text("V221：保留已验证的 UI→Launcher 实时参数和独立二维透镜路由。新 Shader 尝试平滑距离场、局部 5/9 点采样及角部位移修正，若创建失败自动回退 V219。图标取消外圈月晕，改为薄内缘光影。",12,false);current.addView(serviceHint);
         toggle("详细诊断日志","diagnostics",false);
         TextView foot=text("提示：旧版校准、对照图和诊断模式不再显示在首页，已有数据不会自动删除。",12,false);body.addView(foot);
-        section("Kyant 桌面光学引擎 · 实验开关","直接控制 Launcher 的 Kyant 实验透镜开关；与 V230 统一玻璃曲面开关不同。当前壁纸采样仍可能闪动，默认关闭。关闭后回退原有玻璃效果。切换后返回桌面观察，必要时重启 Launcher。");
-        kyantLauncherSwitch28823();
+        section("Kyant0 实验与调试入口", "主光学控制已统一放在玻璃容器设置区；以下页面仅供独立实验。");
         action("V265 真实壁纸参考帧 Kyant 折射测试", () -> startActivity(new android.content.Intent(this, KyantReferenceFrame265Activity.class)));
         action("V256 原生 View 背景快照桥接测试", () -> startActivity(new android.content.Intent(this, KyantNativeBridge256Activity.class)));
         action("V255 Kyant 多背景与拖动透镜测试", () -> startActivity(new android.content.Intent(this, KyantEngine255Activity.class)));

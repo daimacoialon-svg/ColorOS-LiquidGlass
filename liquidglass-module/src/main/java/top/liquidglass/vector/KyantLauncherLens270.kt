@@ -311,6 +311,7 @@ object KyantLauncherLens270 {
         // Persistent experiment is explicitly opt-in; never disarm the switch on attach.
         if (try { Settings.Global.getInt(anchor.context.contentResolver, KEY, 0) != 1 }
                 catch (_: Throwable) { true }) return
+        KyantOptics28827.ensure(anchor.context)
         val pipelineMode28819 = try {
             Settings.Global.getInt(anchor.context.contentResolver, PIPELINE_AB_28819_KEY, -1).coerceIn(-1, 3)
         } catch (_: Throwable) { -1 }
@@ -1482,6 +1483,7 @@ object KyantLauncherLens270 {
         onComposed: () -> Unit
     ) {
         val density = androidx.compose.ui.platform.LocalDensity.current.density
+        val optics28827 = KyantOptics28827.material
         val backdrop = rememberLayerBackdrop()
         val image = androidx.compose.runtime.remember(reference) { reference.asImageBitmap() }
         val bitmapPaint = androidx.compose.runtime.remember { Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG) }
@@ -1689,13 +1691,16 @@ object KyantLauncherLens270 {
                 shape = { RoundedRectangle(cornerDp) },
                 effects = {
                     val m = size.minDimension
-                    blur(0.dp.toPx())
-                    if (motionAbMode != 2) {
-                        lens(refractionHeight = .1f * m, refractionAmount = .2f * m,
+                    blur(optics28827.blur.dp.toPx())
+                    if (motionAbMode != 2 && optics28827.strength > 0) {
+                        val amount28827 = optics28827.strength / 100f
+                        lens(refractionHeight = .1f * m * amount28827,
+                            refractionAmount = .2f * m * amount28827,
                             depthEffect = true, chromaticAberration = false)
                     }
                 },
-                highlight = { Highlight.Plain }
+                highlight = { Highlight(alpha = optics28827.highlight / 100f,
+                    style = com.kyant.backdrop.highlight.HighlightStyle.Plain) }
             ))
         }
         SideEffect { onComposed() }

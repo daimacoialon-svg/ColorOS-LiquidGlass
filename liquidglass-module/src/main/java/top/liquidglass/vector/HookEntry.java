@@ -8139,6 +8139,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
         }
         return null;
     }
+    // Called only when the experimental Kyant Dock composition fails after mount.
+    // Restore the original Drawer-based capsule instead of leaving Dock invisible.
+    static void restoreDockFallback28827(View hotseat){
+        if(hotseat==null||!dockGlass204)return;
+        try{
+            if(!(hotseat.getBackground() instanceof DockBackground204))
+                hotseat.setBackground(new DockBackground204(hotseat));
+            hotseat.invalidate();
+            log("KYANT28827_DOCK_RUNTIME_FALLBACK");
+        }catch(Throwable t){log("KYANT28827_DOCK_FALLBACK_ERROR "+t.getClass().getSimpleName());}
+    }
     private static void refreshLauncherOptics204(android.app.Activity activity){
         try{
             if(activity==null||activity.isFinishing()||activity.isDestroyed())return;
@@ -8156,15 +8167,40 @@ public final class HookEntry implements IXposedHookLoadPackage {
             log("DOCK_200_FOUND class="+hotseat.getClass().getName()+" id="+hotseat.getId()+
                 " bounds="+hotseat.getWidth()+"x"+hotseat.getHeight()+" enabled="+dockGlass204+
                 " glass="+glassEnabled);
-            if(dockGlass204){
-                if(!(hotseat.getBackground() instanceof DockBackground204)){
+            // V288.27: Kyant Dock is an independent Compose sibling UNDER Hotseat.
+            // Fall back to the original Dock Drawable on unsupported Launcher parents,
+            // a missing reference frame, or any host setup failure.
+            boolean kyantDockRequested=false;
+            try{kyantDockRequested=dockGlass204 &&
+                android.provider.Settings.Global.getInt(hotseat.getContext().getContentResolver(),
+                    KyantOptics28827.DOCK_KEY,0)==1;}
+            catch(Throwable t){log("KYANT28827_DOCK_SWITCH_READ_ERROR "+t.getClass().getSimpleName());}
+            boolean kyantDockAttached=false;
+            if(kyantDockRequested){
+                try{kyantDockAttached=KyantDockLens28827.attach(hotseat);}
+                catch(Throwable t){log("KYANT28827_DOCK_SETUP_ERROR "+t.getClass().getSimpleName());}
+            }
+            if(kyantDockAttached){
+                if(!DOCK_ORIGINAL_204.containsKey(hotseat))
                     DOCK_ORIGINAL_204.put(hotseat,hotseat.getBackground());
-                    hotseat.setBackground(new DockBackground204(hotseat));
-                    log("DOCK_200_ATTACHED class="+hotseat.getClass().getName());
+                // A nontransparent Drawable on Hotseat would cover the Kyant sibling.
+                // This affects BACKGROUND only; original Hotseat children/icons remain.
+                if(hotseat.getBackground()!=null)hotseat.setBackground(null);
+                log("KYANT28827_DOCK_OPTICS_ACTIVE");
+            }else{
+                KyantDockLens28827.detach(hotseat);
+                if(dockGlass204){
+                    if(!(hotseat.getBackground() instanceof DockBackground204)){
+                        if(!DOCK_ORIGINAL_204.containsKey(hotseat))
+                            DOCK_ORIGINAL_204.put(hotseat,hotseat.getBackground());
+                        hotseat.setBackground(new DockBackground204(hotseat));
+                        log("DOCK_200_ATTACHED class="+hotseat.getClass().getName());
+                    }
+                }else if(hotseat.getBackground() instanceof DockBackground204 ||
+                         DOCK_ORIGINAL_204.containsKey(hotseat)){
+                    hotseat.setBackground(DOCK_ORIGINAL_204.remove(hotseat));
+                    log("DOCK_200_DETACHED");
                 }
-            }else if(hotseat.getBackground() instanceof DockBackground204){
-                hotseat.setBackground(DOCK_ORIGINAL_204.remove(hotseat));
-                log("DOCK_200_DETACHED");
             }
             hotseat.invalidate();
             if(dockGlass204 && glassEnabled)scheduleReferenceLoad(hotseat);
