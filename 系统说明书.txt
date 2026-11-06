@@ -135,3 +135,8 @@ V1.9.205.272｜文件夹背景几何保守适配与诊断
 重启 Launcher 后观察 KYANT272_GEOMETRY / KYANT272_HOST_ATTACHED。
 优先读取 FolderIcon 自身背景 Drawable 的有效 bounds；若 OEM 手工绘制背景，则保留 View 范围，不猜测缩放比例，日志标记 measured=false。
 跟随移动时重新计算边界，尺寸变化同步更新 Compose 宿主和壁纸采样。6 秒后自动清理，仍为临时覆盖实验。
+
+
+V1.9.205.273｜旧玻璃几何复用与临时互斥接管诊断
+开关：su -c settings put global liquidglass_kyant_folder_probe_273 1
+原有 HookEntry 直接提供 mBackground preview Drawable + basePreviewOffsetX/Y 的几何 Rect 和圆角；失败时保留 V272 的回退。仅在实验 Kyant View 已挂载的同一文件夹上跳过原有玻璃 drawFolderIconFusion，释放后自动恢复。实验覆盖层仍在图标上方，并非最终背景层融合；6 秒后自动释放。不要长期打开。

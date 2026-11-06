@@ -6308,9 +6308,46 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 " diag=2 edgePass=true space=LOCAL rect="+visible.toShortString());
         }
     }
+    // V273: share the SAME OEM preview geometry used by the stable glass pipeline.
+    // Read-only: does not mutate the OEM drawable, shader, or existing render state.
+    public static android.graphics.RectF kyantFolderGlassRect273(View v) {
+        try {
+            Object preview=field(v.getClass(), "mBackground").get(v);
+            if(preview==null)return null;
+            Object value=backgroundGetter(preview.getClass()).invoke(preview);
+            if(!(value instanceof Drawable))return null;
+            Drawable blur=(Drawable)value;
+            Rect bounds=blur.getBounds();
+            if(bounds==null || bounds.isEmpty())return null;
+            Outline outline=new Outline(); blur.getOutline(outline);
+            Rect outlineRect=new Rect();
+            Rect b=(outline.getRect(outlineRect)&&!outlineRect.isEmpty())?outlineRect:bounds;
+            float x=((Number)field(preview.getClass(),"basePreviewOffsetX").get(preview)).floatValue();
+            float y=((Number)field(preview.getClass(),"basePreviewOffsetY").get(preview)).floatValue();
+            RectF r=new RectF(x+b.left,y+b.top,x+b.right,y+b.bottom);
+            if(r.isEmpty()||r.left < -1f||r.top < -1f||r.right>v.getWidth()+1f||r.bottom>v.getHeight()+1f)return null;
+            return r;
+        }catch(Throwable ignored){return null;}
+    }
+    public static float kyantFolderGlassRadius273(View v) {
+        try {
+            Object preview=field(v.getClass(),"mBackground").get(v);
+            Object value=backgroundGetter(preview.getClass()).invoke(preview);
+            if(!(value instanceof Drawable))return 0f;
+            Outline o=new Outline(); ((Drawable)value).getOutline(o);
+            float r=o.getRadius();
+            if(r<=0f)r=((Number)field(preview.getClass(),"mRadius").get(preview)).floatValue();
+            return Math.max(0f,r);
+        }catch(Throwable ignored){return 0f;}
+    }
     private static int glass123GateLogs=0;
     private static void drawFolderIconFusion(View v, Canvas canvas, boolean edgeOnly) {
         // V219: no second post-children edge or rim on the same folder.
+        if(KyantLauncherLensProbe270.isActiveFor273(v)) {
+            // Experimental mutual exclusion. The original path returns automatically
+            // when the one-shot Compose host is detached or fails.
+            return;
+        }
         if(edgeOnly && opticalPipeline173(v)==1)return;
         long[] fusion1761=DRAW_CONTEXT_1761.get();
         if(fusion1761!=null)fusion1761[edgeOnly?4:3]++;

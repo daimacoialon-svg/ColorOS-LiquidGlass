@@ -12,6 +12,13 @@ public final class FolderGlassGeometry272 {
     public static Rect resolve(View folder) {
         int w = Math.max(1, folder.getWidth()), h = Math.max(1, folder.getHeight());
         Rect full = new Rect(0, 0, w, h);
+        android.graphics.RectF precise=HookEntry.kyantFolderGlassRect273(folder);
+        if(precise!=null && !precise.isEmpty()) {
+            Rect b=new Rect(Math.round(precise.left),Math.round(precise.top),
+                Math.round(precise.right),Math.round(precise.bottom));
+            logOnce("legacyGlassGeometry",fallback,b,"mBackground.previewDrawable");
+            return b;
+        }
         Drawable bg = folder.getBackground();
         if (bg != null) {
             Rect b = bg.getBounds();
@@ -29,7 +36,7 @@ public final class FolderGlassGeometry272 {
                                               String drawable, boolean measured) {
         if (logged) return;
         logged = true;
-        XposedBridge.log("KYANT272_GEOMETRY source=" + source +
+        XposedBridge.log("KYANT273_GEOMETRY source=" + source +
             " viewBounds=" + view.toShortString() +
             " backgroundBounds=" + glass.toShortString() +
             " lensBounds=" + glass.toShortString() +

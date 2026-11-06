@@ -54,7 +54,7 @@ import kotlinx.coroutines.launch
 
 /** V269.1: isolated Compose composition/host-draw/disposal verification; no Launcher glass replacement. */
 object KyantLauncherLens270 {
-    private const val KEY = "liquidglass_kyant_folder_probe_272"
+    private const val KEY = "liquidglass_kyant_folder_probe_273"
 
     private class Owner : LifecycleOwner, SavedStateRegistryOwner, ViewModelStoreOwner {
         private val registry = LifecycleRegistry(this)
@@ -87,7 +87,7 @@ object KyantLauncherLens270 {
         if (!anchor.isAttachedToWindow) return
         val reference = KyantLauncherFrameBridge266.peekReferenceFrame270()
         if (reference == null) {
-            XposedBridge.log("KYANT272_REFERENCE_NOT_READY one_shot_not_consumed")
+            XposedBridge.log("KYANT273_REFERENCE_NOT_READY one_shot_not_consumed")
             return
         }
         val root = anchor.rootView as? ViewGroup ?: return
@@ -95,19 +95,21 @@ object KyantLauncherLens270 {
         val disarmed = try {
             Settings.Global.putInt(anchor.context.contentResolver, KEY, 0)
         } catch (t: Throwable) {
-            XposedBridge.log("KYANT272_GUARD_ERROR " + t.javaClass.simpleName)
+            XposedBridge.log("KYANT273_GUARD_ERROR " + t.javaClass.simpleName)
             false
         }
         if (!disarmed) {
-            XposedBridge.log("KYANT272_GUARD_ABORT cannot_disarm_test")
+            XposedBridge.log("KYANT273_GUARD_ABORT cannot_disarm_test")
             return
         }
-        XposedBridge.log("KYANT272_ONE_SHOT_DISARMED key=" + KEY)
+        XposedBridge.log("KYANT273_ONE_SHOT_DISARMED key=" + KEY)
 
         val startedAt = SystemClock.uptimeMillis()
         val displayWidth = root.width.coerceAtLeast(1)
         val displayHeight = root.height.coerceAtLeast(1)
         val initialBounds = FolderGlassGeometry272.resolve(anchor)
+        val nativeRadius = HookEntry.kyantFolderGlassRadius273(anchor)
+        XposedBridge.log("KYANT273_NATIVE_GEOMETRY rect=$initialBounds radius=$nativeRadius")
         val previewWidth = initialBounds.width().coerceAtLeast(1)
         val previewHeight = initialBounds.height().coerceAtLeast(1)
         val anchorXY = IntArray(2)
@@ -130,7 +132,7 @@ object KyantLauncherLens270 {
             override fun dispatchDraw(canvas: Canvas) {
                 super.dispatchDraw(canvas)
                 if (drawSeen.compareAndSet(false, true)) {
-                    XposedBridge.log("KYANT272_FIRST_DRAW elapsedMs=" +
+                    XposedBridge.log("KYANT273_FIRST_DRAW elapsedMs=" +
                         (SystemClock.uptimeMillis() - startedAt) +
                         " compositionSeen=" + compositionSeen.get() +
                         " width=" + width + " height=" + height +
@@ -155,24 +157,25 @@ object KyantLauncherLens270 {
         fun dispose(reason: String) {
             if (disposed) return
             disposed = true
+            KyantLauncherLensProbe270.setActiveFor273(anchor, false)
             try { followListener?.let { if (root.viewTreeObserver.isAlive) root.viewTreeObserver.removeOnPreDrawListener(it) } } catch (_: Throwable) {}
             try { compose.disposeComposition() } catch (t: Throwable) {
-                XposedBridge.log("KYANT272_DISPOSE_COMPOSE_ERROR " + t.javaClass.simpleName)
+                XposedBridge.log("KYANT273_DISPOSE_COMPOSE_ERROR " + t.javaClass.simpleName)
             }
             try { if (frame.parent === root) root.removeView(frame) } catch (t: Throwable) {
-                XposedBridge.log("KYANT272_DISPOSE_VIEW_ERROR " + t.javaClass.simpleName)
+                XposedBridge.log("KYANT273_DISPOSE_VIEW_ERROR " + t.javaClass.simpleName)
             }
             try { recomposer?.close() } catch (_: Throwable) {}
             try { scope?.cancel() } catch (_: Throwable) {}
             try { owner.stop() } catch (t: Throwable) {
-                XposedBridge.log("KYANT272_DISPOSE_OWNER_ERROR " + t.javaClass.simpleName)
+                XposedBridge.log("KYANT273_DISPOSE_OWNER_ERROR " + t.javaClass.simpleName)
             }
-            XposedBridge.log("KYANT272_DISPOSE_CHECK reason=" + reason +
+            XposedBridge.log("KYANT273_DISPOSE_CHECK reason=" + reason +
                 " composition=" + compositionSeen.get() +
                 " draw=" + drawSeen.get() +
                 " removed=" + (frame.parent == null) +
                 " elapsedMs=" + (SystemClock.uptimeMillis() - startedAt))
-            XposedBridge.log("KYANT272_HOST_DISPOSED reason=" + reason)
+            XposedBridge.log("KYANT273_HOST_DISPOSED reason=" + reason)
         }
         try {
             owner.start()
@@ -180,7 +183,7 @@ object KyantLauncherLens270 {
             // AndroidUiDispatcher.Main supplies Android's UI frame clock.
             val dispatcher = AndroidUiDispatcher.Main
             val exceptionHandler = CoroutineExceptionHandler { _, t ->
-                XposedBridge.log("KYANT272_RECOMPOSER_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
+                XposedBridge.log("KYANT273_RECOMPOSER_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
                 frame.post { dispose("recomposer_error") }
             }
             val newScope = CoroutineScope(dispatcher + SupervisorJob() + exceptionHandler)
@@ -192,12 +195,14 @@ object KyantLauncherLens270 {
             compose.setContent { LensContent270(reference, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, sampleX.intValue, sampleY.intValue) {
                 if (compositionSeen.compareAndSet(false, true)) {
-                    XposedBridge.log("KYANT272_COMPOSITION_CONFIRMED elapsedMs=" +
+                    XposedBridge.log("KYANT273_COMPOSITION_CONFIRMED elapsedMs=" +
                         (SystemClock.uptimeMillis() - startedAt))
                 }
             } }
             newScope.launch { newRecomposer.runRecomposeAndApplyChanges() }
             root.addView(frame, FrameLayout.LayoutParams(previewWidth, previewHeight))
+            KyantLauncherLensProbe270.setActiveFor273(anchor, true)
+            XposedBridge.log("KYANT273_MUTUAL_EXCLUSION active=true fallback=automatic_on_dispose")
             var lastX = anchorXY[0]
             var lastY = anchorXY[1]
             var lastBounds = android.graphics.Rect(initialBounds)
@@ -233,16 +238,16 @@ object KyantLauncherLens270 {
             root.viewTreeObserver.addOnPreDrawListener(listener)
             frame.translationX = (lastX + initialBounds.left - rootXY[0]).toFloat()
             frame.translationY = (lastY + initialBounds.top - rootXY[1]).toFloat()
-            XposedBridge.log("KYANT272_HOST_ATTACHED owners=isolated recomposer=explicit view=${anchor.width}x${anchor.height} glassBounds=$initialBounds lens=${previewWidth}x${previewHeight} reference=${reference.width}x${reference.height}")
+            XposedBridge.log("KYANT273_HOST_ATTACHED owners=isolated recomposer=explicit view=${anchor.width}x${anchor.height} glassBounds=$initialBounds lens=${previewWidth}x${previewHeight} reference=${reference.width}x${reference.height}")
             frame.postDelayed({
-                XposedBridge.log("KYANT272_PRE_DISPOSE composition=" + compositionSeen.get() +
+                XposedBridge.log("KYANT273_PRE_DISPOSE composition=" + compositionSeen.get() +
                     " draw=" + drawSeen.get() +
                     " attached=" + compose.isAttachedToWindow +
                     " recomposerState=" + (recomposer?.currentState?.value?.toString() ?: "null"))
                 dispose(if (compositionSeen.get() && drawSeen.get()) "timeout_success" else "timeout_incomplete")
             }, 6000L)
         } catch (t: Throwable) {
-            XposedBridge.log("KYANT272_HOST_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
+            XposedBridge.log("KYANT273_HOST_ERROR " + t.javaClass.simpleName + " " + (t.message ?: ""))
             dispose("setup_error")
         }
     }
