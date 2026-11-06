@@ -185,3 +185,9 @@ X/Y位置合并为单个Compose状态更新；位置变化不再无条件执行f
 默认关闭：su -c settings put global liquidglass_kyant_persistent_probe_280 1
 关闭：su -c settings put global liquidglass_kyant_persistent_probe_280 0
 此版未经过GitHub Actions编译和真机验证；请检查KYANT280_PERF与桌面滑动连续性。
+
+V1.9.205.281｜Kyant 全容器亚像素采样与启动坐标自同步实验版
+开关：su -c settings put global liquidglass_kyant_persistent_probe_281 1
+关闭：su -c settings put global liquidglass_kyant_persistent_probe_281 0
+修复方向：通过 transformMatrixToGlobal 获取 Workspace 小数位移；采样源和目标使用连续浮点映射；初始化阶段短期自动同步而无需触摸。保留 V279/280 圆角裁剪、部分可见采样、离屏暂停与文件夹图标层级。
+未经真机验证；请注意桌面滑动性能及左侧偏移是否仍存在。
