@@ -1,8 +1,13 @@
-ColorOS-LiquidGlass V1.9.205.286｜文件夹重摆放位置同步实验版
+ColorOS-LiquidGlass V1.9.205.286.1｜首次显示死锁修正版
 
-基于 V285，保留原 Kyant 光学参数和项目依赖。
-修复：删除固定启动延时门槛，首次布局和 Composition 就绪后显示；每次检测到全局位置变化时重新解析文件夹几何；布局变化主动请求下一帧；即使移出屏幕也更新采样坐标，返回页面时不沿用旧值。
-注意：拖动期间 Launcher 可能使用独立 DragView，此版本没有 Hook DragView，也不保证拖动中镜片随手指实时移动。它主要针对放置完成后的旧坐标与启动延迟，微抖仍需真机验证。
-开启：su -c settings put global liquidglass_kyant_persistent_probe_286 1
-关闭：su -c settings put global liquidglass_kyant_persistent_probe_286 0
-关闭旧版：su -c settings put global liquidglass_kyant_persistent_probe_285 0
+基于 V286，仅修复 Kyant Host 全局不可见回归。
+原因：Frame 初始为 INVISIBLE，旧逻辑要求渲染采样位置与实际位置完全一致才允许显示，导致首次绘制和显示条件可能相互等待。
+修复：只要求容器尺寸与布局有效、Compose 已初始化；首次显示前主动提交最新矩阵坐标，并请求绘制。保留实时坐标日志和原 Kyant 光学参数。
+不包含 DragView 实时追踪，跨桌面拖动与滑动微抖仍需后续验证。
+
+测试：
+su -c settings put global liquidglass_kyant_persistent_probe_285 0
+su -c settings put global liquidglass_kyant_persistent_probe_286 0
+su -c settings put global liquidglass_kyant_persistent_probe_2861 1
+su -c settings put global liquidglass_kyant_sampling_mode_283 1
+su -c "/system/bin/am force-stop com.android.launcher"
