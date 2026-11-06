@@ -8007,6 +8007,35 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // V1.9.204 preview: draw only inside the actual Hotseat View; never create a touch target.
     private static final java.util.Map<View,android.graphics.drawable.Drawable> DOCK_ORIGINAL_204=
         java.util.Collections.synchronizedMap(new java.util.WeakHashMap<View,android.graphics.drawable.Drawable>());
+    // V288.29: a single geometry contract for the original stable Dock Drawable
+    // and the Kyant optical Dock.  Do NOT derive a second rectangle from screen
+    // width, viewport insets, or an independently measured Compose host.
+    private static float[] dockGeometryFromBounds28829(Rect b,float density){
+        if(b==null||b.isEmpty()||density<=0f)return null;
+        final float inset=Math.max(10f*density,b.width()*.035f);
+        final float left=b.left+inset,right=b.right-inset;
+        final float top=b.top,bottom=b.bottom;
+        if(right<=left||bottom<=top)return null;
+        final float radius=Math.min(bottom-top,right-left)*.30f;
+        return new float[]{left,top,right-left,bottom-top,radius};
+    }
+    // Coordinates are Hotseat-LOCAL, exactly like Drawable.draw(Canvas).
+    // When Kyant is active, the original background may be null: in that case
+    // use the same [0,width]x[0,height] drawable bounds Android would assign.
+    static float[] dockGeometry28829(View hotseat){
+        if(hotseat==null||hotseat.getWidth()<=0||hotseat.getHeight()<=0)return null;
+        Rect b=null;
+        android.graphics.drawable.Drawable bg=hotseat.getBackground();
+        if(bg==null)bg=DOCK_ORIGINAL_204.get(hotseat);
+        if(bg!=null){
+            Rect candidate=bg.getBounds();
+            if(candidate!=null&&!candidate.isEmpty()&&candidate.left>=0&&candidate.top>=0&&
+                candidate.right<=hotseat.getWidth()&&candidate.bottom<=hotseat.getHeight())
+                b=new Rect(candidate);
+        }
+        if(b==null)b=new Rect(0,0,hotseat.getWidth(),hotseat.getHeight());
+        return dockGeometryFromBounds28829(b,hotseat.getResources().getDisplayMetrics().density);
+    }
     private static final class DockBackground204 extends android.graphics.drawable.Drawable {
         private final View target;
         private final Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -8024,10 +8053,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
             // Reduce horizontal inset and reclaim the previous 2dp top/bottom
             // padding to make the glass visually taller within native bounds.
             // Radius is now a rounded rectangle (not a half-height capsule).
-            final float inset=Math.max(10*density,b.width()*.035f);
-            final float top=0f,bottom=Math.max(0f,b.height());
-            final float r=Math.min(bottom-top,b.width()-2f*inset)*.30f;
-            RectF rect=new RectF(b.left+inset,b.top+top,b.right-inset,b.top+bottom);
+            final float[] g=dockGeometryFromBounds28829(b,density);
+            if(g==null)return;
+            final RectF rect=new RectF(g[0],g[1],g[0]+g[2],g[1]+g[3]);
+            final float r=g[4];
             // V1.9.205.6: reuse the folder's wallpaper sampling, blur, tint,
             // clear-refraction and surface optics renderer for Hotseat material.
             // The drawable belongs to the Hotseat itself, so coordinates remain

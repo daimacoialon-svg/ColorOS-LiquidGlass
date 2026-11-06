@@ -505,6 +505,17 @@ object KyantLauncherLens270 {
         var detachListener: View.OnAttachStateChangeListener? = null
         var layoutListener: View.OnLayoutChangeListener? = null
         // Reuse the global cached switch value; no Settings provider IPC per rendered frame.
+        // Large square folders expose missed source position updates much more
+        // visibly than small or strip-shaped previews.  Keep the original
+        // shader, but avoid repeated OEM geometry reflection and multiple
+        // global-matrix reads inside the same pre-draw frame.
+        val largeSquare28829 = previewWidth >= displayWidth * .30f &&
+            previewHeight >= previewWidth * .72f && previewHeight <= previewWidth * 1.4f &&
+            (try { Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_large_square_opt_28829", 1) != 0 }
+             catch (_: Throwable) { true })
+        var largeGeometryDirty28829 = false
+        if (largeSquare28829) XposedBridge.log("KYANT28829_LARGE_FOLDER_OPTIMIZED size=${previewWidth}x${previewHeight} screenW=$displayWidth")
         var frameChecks = 0L
         var geometryChanges = 0L
         var hostLayoutCorrections = 0L
@@ -1002,6 +1013,7 @@ object KyantLauncherLens270 {
             anchor.addOnAttachStateChangeListener(onDetach)
             val onLayout = View.OnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
                 if (!disposed) {
+                    if (largeSquare28829) largeGeometryDirty28829 = true
                     // Native layout may overwrite injected child's local placement.
                     // Schedule one frame after layout so the pre-draw reconciliation runs
                     // even when the user does not touch the Launcher.
@@ -1142,9 +1154,20 @@ object KyantLauncherLens270 {
                     // Background geometry is local to FolderIcon; skip expensive reflection
                     // while only the Workspace scrolls, but recheck periodically for OEM resize.
                     // A reparented/moved folder can change its local geometry as well as its global transform.
-                    val b = if (frame.visibility == View.INVISIBLE || moved || frameChecks % 20L == 0L)
+                    val mustResolveGeometry28829 = if (largeSquare28829) {
+                        frame.visibility == View.INVISIBLE || largeGeometryDirty28829 ||
+                            frameChecks % 8L == 0L
+                    } else frame.visibility == View.INVISIBLE || moved || frameChecks % 20L == 0L
+                    val b = if (mustResolveGeometry28829)
                         FolderGlassGeometry272.resolve(anchor) else lastBounds
+                    if (largeSquare28829 && mustResolveGeometry28829) largeGeometryDirty28829 = false
                     val boundsChangedNow = b != lastBounds
+                    // On large squares use ONE immutable screen position for
+                    // state commit + native snapshot within this pre-draw pass.
+                    // If OEM local geometry changed, calculate it once for b.
+                    val largeFrameSample28829 = if (largeSquare28829) {
+                        if (boundsChangedNow) glassScreenPosition(b) else actualSample
+                    } else null
                     // OEM FolderIcon can relayout an injected child after Launcher restores
                     // its workspace. Detect that independent of anchor motion or sampling.
                     val expectedW = b.width().coerceAtLeast(1)
@@ -1377,7 +1400,7 @@ object KyantLauncherLens270 {
                             }
                         }
                         run {
-                            val position = glassScreenPosition(b)
+                            val position = largeFrameSample28829 ?: glassScreenPosition(b)
                             if (samplePosition.value != position) {
                                 samplePosition.value = position
                                 lastCommitNs = SystemClock.elapsedRealtimeNanos()
@@ -1394,7 +1417,7 @@ object KyantLauncherLens270 {
                     // Keep geometry valid and composition initialized as the only gate.
                     val layoutMatches = frame.left == b.left && frame.top == b.top &&
                         frame.width == b.width() && frame.height == b.height()
-                    val currentSample = glassScreenPosition(b)
+                    val currentSample = largeFrameSample28829 ?: glassScreenPosition(b)
                     // Geometry may have changed since the initial pre-draw read.
                     nativePredrawPosition28824 = currentSample
                     predrawMatrixSnapshot.set(Pair(currentSample, SystemClock.elapsedRealtimeNanos()))
