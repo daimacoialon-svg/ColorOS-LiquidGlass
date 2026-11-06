@@ -71,6 +71,7 @@ object KyantLauncherLens270 {
     private const val MOTION_AB_KEY = "liquidglass_kyant_motion_ab_2884"
     private const val LEGACY_SYNC_AB_KEY = "liquidglass_kyant_legacy_sync_ab_2886"
     private const val NATIVE_COMPARISON_KEY = "liquidglass_kyant_native_compare_2887"
+    private const val NATIVE_BRIDGE_KEY = "liquidglass_kyant_native_bridge_2888"
     private val activeHostCount = java.util.concurrent.atomic.AtomicInteger(0)
     private val lastSamplingCommitNs = java.util.concurrent.atomic.AtomicLong(0L)
 
@@ -135,6 +136,10 @@ object KyantLauncherLens270 {
         val motionAbMode = try {
             Settings.Global.getInt(anchor.context.contentResolver, MOTION_AB_KEY, 0).coerceIn(0, 2)
         } catch (_: Throwable) { 0 }
+        val nativeBridgeMode = try {
+            Settings.Global.getInt(anchor.context.contentResolver, NATIVE_BRIDGE_KEY, 0).coerceIn(0, 1)
+        } catch (_: Throwable) { 0 }
+        XposedBridge.log("KYANT2888_NATIVE_BRIDGE mode=$nativeBridgeMode (0=baseline 1=native_bitmap_bridge)")
         val nativeCompareMode = try {
             Settings.Global.getInt(anchor.context.contentResolver, NATIVE_COMPARISON_KEY, 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 }
@@ -302,10 +307,47 @@ object KyantLauncherLens270 {
             isClickable = false
             isFocusable = false
         }
+        // V288.8 experimental bridge: native View Canvas draws wallpaper into a
+        // mutable Bitmap; Compose uses that Bitmap as its Kyant backdrop source.
+        // This tests input compatibility; it does NOT guarantee same-frame sync.
+        val bridgeBitmap = if (nativeBridgeMode == 1) Bitmap.createBitmap(
+            previewWidth.coerceAtLeast(1), previewHeight.coerceAtLeast(1), Bitmap.Config.ARGB_8888) else null
+        val bridgeVersion = androidx.compose.runtime.mutableIntStateOf(0)
+        val bridgeView = if (bridgeBitmap != null) object : View(anchor.context) {
+            private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            private val dst = RectF()
+            private val bitmapCanvas = Canvas(bridgeBitmap)
+            private var count = 0L
+            override fun onDraw(canvas: Canvas) {
+                super.onDraw(canvas)
+                if (disposed || width <= 0 || height <= 0) return
+                val pos = try { glassScreenPosition(lastBounds) } catch (_: Throwable) { return }
+                val sw = android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
+                val sh = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
+                val sx = reference.width.toFloat() / sw
+                val sy = reference.height.toFloat() / sh
+                val cropW = bridgeBitmap.width * sx
+                val cropH = bridgeBitmap.height * sy
+                val x = pos.x * sx
+                val y = pos.y * sy
+                dst.set(-x * bridgeBitmap.width / cropW.coerceAtLeast(.001f),
+                    -y * bridgeBitmap.height / cropH.coerceAtLeast(.001f),
+                    (reference.width - x) * bridgeBitmap.width / cropW.coerceAtLeast(.001f),
+                    (reference.height - y) * bridgeBitmap.height / cropH.coerceAtLeast(.001f))
+                bitmapCanvas.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
+                bitmapCanvas.drawBitmap(reference, null, dst, paint)
+                count++
+                // Schedule Compose redraw after the native sample has been produced.
+                // Never write Compose state synchronously from a Compose draw callback.
+                post { if (!disposed) bridgeVersion.intValue++ }
+                if (count % 120L == 0L) XposedBridge.log(
+                    "KYANT2888_NATIVE_BRIDGE_DRAW draws=$count x=${pos.x} y=${pos.y} version=${bridgeVersion.intValue}")
+            }
+        }.apply { isClickable = false; isFocusable = false; setWillNotDraw(false) } else null
         // V288.7: native Canvas reference, intentionally ABOVE Kyant on the LEFT half
         // only. Right half stays the unmodified Compose/Kyant optical renderer.
         // This is an A/B diagnostic, NOT the final hybrid optical implementation.
-        val nativeSampleView = if (nativeCompareMode == 1) object : View(anchor.context) {
+        val nativeSampleView = if (nativeCompareMode == 1 && nativeBridgeMode == 0) object : View(anchor.context) {
             private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
             private val destination = RectF()
             private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -414,13 +456,15 @@ object KyantLauncherLens270 {
             val newRecomposer = Recomposer(newScope.coroutineContext)
             recomposer = newRecomposer
             compose.setParentCompositionContext(newRecomposer)
+            bridgeView?.let { frame.addView(it, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)) }
             frame.addView(compose, FrameLayout.LayoutParams(previewWidth, previewHeight))
             // Added AFTER Compose: only left half is native, right half remains Kyant.
             nativeSampleView?.let { frame.addView(it, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)) }
 
             compose.setContent { LensContent270(reference, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode,
-                renderAbMode, motionAbMode, legacySyncAbMode, predrawMatrixSnapshot,
+                renderAbMode, motionAbMode, legacySyncAbMode, bridgeBitmap, bridgeVersion, predrawMatrixSnapshot,
                 { glassScreenPosition(lastBounds) }) {
                 if (compositionSeen.compareAndSet(false, true)) {
                     XposedBridge.log("KYANT2885_COMPOSITION_CONFIRMED elapsedMs=" +
@@ -529,6 +573,7 @@ object KyantLauncherLens270 {
                         positionChanges++
                         // Native invalidation only. No Compose snapshot writes in draw.
                         nativeSampleView?.postInvalidateOnAnimation()
+                        bridgeView?.postInvalidateOnAnimation()
                     }
                     // Background geometry is local to FolderIcon; skip expensive reflection
                     // while only the Workspace scrolls, but recheck periodically for OEM resize.
@@ -731,7 +776,8 @@ object KyantLauncherLens270 {
         reference: Bitmap, previewWidth: Int, previewHeight: Int,
         rootWidth: Int, rootHeight: Int, screenPosition: androidx.compose.runtime.State<Offset>,
         cornerRadiusPx: Float, samplingMode: Int, renderAbMode: Int, motionAbMode: Int,
-        legacySyncAbMode: Int,
+        legacySyncAbMode: Int, bridgeBitmap: Bitmap?,
+        bridgeVersion: androidx.compose.runtime.State<Int>,
         predrawMatrixSnapshot: java.util.concurrent.atomic.AtomicReference<Pair<Offset, Long>>,
         currentNativePosition: () -> Offset,
         onComposed: () -> Unit
@@ -792,7 +838,15 @@ object KyantLauncherLens270 {
                 // A/B: keep a stable, full-frame bitmap as the source and change only
                 // the destination transform. No per-frame source rectangle allocation.
                 // This isolates dynamic cropping from Compose/Backdrop frame scheduling.
-                if (renderAbMode != 1 && samplingMode == 1) {
+                if (bridgeBitmap != null) {
+                    // State read here registers the draw invalidation dependency.
+                    val version = bridgeVersion.value
+                    drawIntoCanvas { canvas ->
+                        canvas.nativeCanvas.drawBitmap(bridgeBitmap, 0f, 0f, bitmapPaint)
+                    }
+                    if (drawCadenceCount.get() % 240L == 0L)
+                        XposedBridge.log("KYANT2888_COMPOSE_BRIDGE_SOURCE version=$version")
+                } else if (renderAbMode != 1 && samplingMode == 1) {
                     val sourceScaleX = size.width / sw.coerceAtLeast(0.001f)
                     val sourceScaleY = size.height / sh.coerceAtLeast(0.001f)
                     wholeDestination.set(-x * sourceScaleX, -y * sourceScaleY,
