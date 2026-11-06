@@ -163,3 +163,12 @@ V1.9.205.277｜常驻性能与圆角外溢修复实验
 关闭：su -c settings put global liquidglass_kyant_persistent_probe_277 0
 使用 RoundedCornerShape 对壁纸背景和 Kyant 光学整体裁剪；Settings.Global 开关统一400ms缓存；仅几何变化时更新 Compose 状态；位置移动时避免每帧反射读取 OEM 背景参数；释放时输出 KYANT277_PERF。
 注意：本版仍为实验，尚未真机性能验证。旧276开关不控制本版。
+
+
+V1.9.205.278｜边缘采样坐标交集修复与性能计时
+开关：su -c settings put global liquidglass_kyant_persistent_probe_278 1
+关闭：su -c settings put global liquidglass_kyant_persistent_probe_278 0
+修复：壁纸采样源区越过屏幕左侧或顶部时，源矩形与目标矩形一起计算交集，不再直接 clamp 源起点而把残余部分错误拉伸。
+保留 V277 的圆角裁剪、V275 背景层级及 V274 形状。
+性能诊断：KYANT278_PERF 添加 positionChanges、maxPredrawUs、avgPredrawUs；仅测量预绘制监听器耗时，不等于 GPU 帧时间。
+Dock：源码中存在独立 DockBackground204 绘制路径。本版只确认 Dock 需要单独接入；未开启 Kyant Dock 渲染，以免未经验证地破坏 Dock 图标层级。
