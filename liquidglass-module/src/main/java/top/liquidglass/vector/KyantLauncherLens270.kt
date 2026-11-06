@@ -77,6 +77,7 @@ object KyantLauncherLens270 {
     // V288.21: isolated trace of release BEFORE and AFTER actual OEM touch handling.
     // The rendering pipeline remains identical to V288.19 mode 2.
     private const val RELEASE_TRACE_28821_KEY = "liquidglass_kyant_release_trace_28821"
+    private const val FRAME_SYNC_AB_28822_KEY = "liquidglass_kyant_frame_sync_ab_28822"
     private val releaseSeq28820 = AtomicLong(0L)
     private val releaseNs28820 = AtomicLong(0L)
     @Volatile private var releaseDx28820 = 0f
@@ -313,6 +314,10 @@ object KyantLauncherLens270 {
         val pipelineMode28819 = try {
             Settings.Global.getInt(anchor.context.contentResolver, PIPELINE_AB_28819_KEY, -1).coerceIn(-1, 3)
         } catch (_: Throwable) { -1 }
+        val frameSync28822 = if (pipelineMode28819 == 2) try {
+            Settings.Global.getInt(anchor.context.contentResolver, FRAME_SYNC_AB_28822_KEY, 0).coerceIn(0, 1)
+        } catch (_: Throwable) { 0 } else 0
+        if (pipelineMode28819 == 2) XposedBridge.log("KYANT28822_FRAME_SYNC host=${System.identityHashCode(anchor)} mode=$frameSync28822 pipeline=$pipelineMode28819")
         val releaseTrace28820 = pipelineMode28819 == 2 && try {
             Settings.Global.getInt(anchor.context.contentResolver, RELEASE_TRACE_28821_KEY, 0) == 1
         } catch (_: Throwable) { false }
@@ -690,7 +695,9 @@ object KyantLauncherLens270 {
                 super.onDraw(canvas)
                 if (disposed || width <= 0 || height <= 0) return
                 val pos = try { glassScreenPosition(lastBounds) } catch (_: Throwable) { return }
-                sampleBridgeAt(pos)
+                // V288.22 mode 1: Compose draw itself samples the reference frame.
+                // Do not publish an independent native Bitmap frame first.
+                if (frameSync28822 != 1) sampleBridgeAt(pos)
                 releaseTrace28820("NATIVE_SAMPLE", pos, "draw=${count + 1L} bridgeW=${bridgeBitmap?.width} bridgeH=${bridgeBitmap?.height}")
                 // Mode 3: sample into exactly the same bridge Bitmap as mode 2,
                 // but render it in the native View's own Canvas (no Compose handoff).
@@ -700,7 +707,7 @@ object KyantLauncherLens270 {
                     if (buffer != null) canvas.drawBitmap(buffer, 0f, 0f, bridgePaint)
                 }
                 count++
-                if (pipelineMode28819 != 3 && bridgeNotifyPending.compareAndSet(false, true)) {
+                if (frameSync28822 != 1 && pipelineMode28819 != 3 && bridgeNotifyPending.compareAndSet(false, true)) {
                     post {
                         bridgeNotifyPending.set(false)
                         if (!disposed) {
@@ -931,7 +938,7 @@ object KyantLauncherLens270 {
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode,
                 renderAbMode, motionAbMode, legacySyncAbMode, if (nativeLayerMode in 2..3) 3 else displayIsolationMode, nativeLayerMode, bridgeBitmap, bridgeVersion,
                 if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
-                pipelineMode28819,
+                pipelineMode28819, frameSync28822,
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
                 { glassScreenPosition(lastBounds) }, { stage, pos, info -> releaseTrace28820(stage, pos, info) }) {
                 if (compositionSeen.compareAndSet(false, true)) {
@@ -1420,7 +1427,7 @@ object KyantLauncherLens270 {
         legacySyncAbMode: Int, displayIsolationMode: Int, nativeLayerMode: Int, bridgeBitmap: Bitmap?,
         bridgeVersion: androidx.compose.runtime.State<Int>,
         bridgeSyncMode: Int,
-        pipelineMode28819: Int,
+        pipelineMode28819: Int, frameSync28822: Int,
         bridgePublishedPosition: java.util.concurrent.atomic.AtomicReference<Offset?>,
         bridgeMismatchObserved: java.util.concurrent.atomic.AtomicLong,
         bridgeResample: (Offset) -> Unit,
@@ -1498,6 +1505,13 @@ object KyantLauncherLens270 {
                 if (bridgeBitmap != null) {
                     // State read here registers the draw invalidation dependency.
                     val version = bridgeVersion.value
+                    if (pipelineMode28819 == 2 && frameSync28822 == 1) {
+                        // Same callback: sample at the exact position used to draw.
+                        // No post() handoff and no independent bridge-version update.
+                        bridgeResample(drawPosition)
+                        val n = drawCadenceCount.get()
+                        if (n % 60L == 1L) XposedBridge.log("KYANT28822_SAME_DRAW posX=${drawPosition.x} publishedX=${bridgePublishedPosition.get()?.x} draw=$n")
+                    }
                     if (pipelineMode28819 == 2) trace28820("COMPOSE_DRAW", drawPosition,
                         "consumedVersion=$version prePublished=${bridgePublishedPosition.get()?.x}")
                     if (bridgeSyncMode == 1 || bridgeSyncMode == 2) {
