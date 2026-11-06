@@ -228,3 +228,5 @@ V1.9.205.283｜Kyant 参考帧采样 A/B 诊断
 日志：KYANT283_SAMPLE_MODE、KYANT283_SOURCE_DRAW、KYANT283_DRAW_CADENCE、KYANT283_RENDER_DIAG。
 注意：本版是采样链路 A/B 诊断，未承诺修复 Compose/RenderThread 帧调度问题。
 关闭：su -c settings put global liquidglass_kyant_persistent_probe_283 0
+
+V1.9.205.284.3：修复 GitHub Actions 构建目标。使用 :liquidglass-module:assembleDebug 构建实际 LSPosed/Kyant 集成 APK，而非 :app 的 Kyant 示例模块；保留 :backdrop、Kyant Shapes、Compose 依赖。更新模块版本名。未进行实际 Gradle 编译。

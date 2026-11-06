@@ -18,11 +18,11 @@ jobs:
       - name: Install Android SDK 35
         run: ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Build debug APK
-        run: bash ./gradlew --no-daemon --stacktrace :app:assembleDebug
+      - name: Build LSPosed module APK (Kyant integrated)
+        run: bash ./gradlew --no-daemon --stacktrace :liquidglass-module:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: ColorOS-LiquidGlass-V1.9.205.284.2-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: ColorOS-LiquidGlass-V1.9.205.284.3-APK
+          path: liquidglass-module/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
