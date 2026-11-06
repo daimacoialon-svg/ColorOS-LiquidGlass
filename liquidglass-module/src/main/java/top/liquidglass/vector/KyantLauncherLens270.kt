@@ -555,6 +555,14 @@ object KyantLauncherLens270 {
         var lastSample = Offset(Float.NaN, Float.NaN)
         // V288.24: the native sampler consumes the same pre-draw coordinate snapshot.
         // This is a local View/Canvas-only change; no mutable Bitmap bridge is involved.
+        // V288.26: compare pre-draw snapshot with the native View's actual
+        // transformed origin. Mode 1 uses the same View that consumes Canvas.
+        // Mode 0 is the unchanged V288.25 control; mode 2 re-reads anchor.
+        val nativeCoordinateMode28826 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_native_coordinate_ab_28826", 0).coerceIn(0, 2)
+        } catch (_: Throwable) { 0 }
+        XposedBridge.log("KYANT28826_COORD_MODE host=$trace28815Host mode=$nativeCoordinateMode28826")
         var nativePredrawPosition28824 = samplePosition.value
         var nativePredrawSerial28824 = 0L
         var firstPositionSettled = false
@@ -754,12 +762,35 @@ object KyantLauncherLens270 {
             private var maxGapMs = 0L
             private var lastX = Float.NaN
             private var lastY = Float.NaN
+            private val nativeMatrix28826 = Matrix()
+            private val nativePoint28826 = FloatArray(2)
+            private val nativeScreen28826 = IntArray(2)
+            private val nativeWindow28826 = IntArray(2)
             override fun onDraw(canvas: Canvas) {
                 super.onDraw(canvas)
                 if (width <= 0 || height <= 0 || disposed) return
                 // Do not read a second Workspace transform after onPreDraw has
                 // already scheduled this frame's native redraw.
-                val position = nativePredrawPosition28824
+                val position = when (nativeCoordinateMode28826) {
+                    1 -> try {
+                        // Compute from the native sampling View's own transformed
+                        // origin; avoids mixing anchor and host transform epochs.
+                        nativeMatrix28826.reset()
+                        transformMatrixToGlobal(nativeMatrix28826)
+                        nativePoint28826[0] = 0f
+                        nativePoint28826[1] = 0f
+                        nativeMatrix28826.mapPoints(nativePoint28826)
+                        root.getLocationOnScreen(nativeScreen28826)
+                        root.getLocationInWindow(nativeWindow28826)
+                        Offset(nativePoint28826[0] + nativeScreen28826[0] - nativeWindow28826[0],
+                            nativePoint28826[1] + nativeScreen28826[1] - nativeWindow28826[1])
+                    } catch (_: Throwable) { nativePredrawPosition28824 }
+                    2 -> try { glassScreenPosition(lastBounds) }
+                        catch (_: Throwable) { nativePredrawPosition28824 }
+                    else -> nativePredrawPosition28824
+                }
+                if (releaseTrace28820) releaseTrace28820("COORD28826", position,
+                    "mode=$nativeCoordinateMode28826 snapshotX=${nativePredrawPosition28824.x} deltaX=${position.x-nativePredrawPosition28824.x}")
                 // V288.25: native Canvas diagnostics also work in pipeline=-1.
                 // Record only during the bounded release window; no bitmap readback.
                 if (releaseTrace28820) releaseTrace28820("NATIVE_DRAW", position,
