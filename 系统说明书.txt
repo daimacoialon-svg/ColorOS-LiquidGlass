@@ -1,14 +1,12 @@
-ColorOS-LiquidGlass V1.9.205.288.12｜原生背景直绘与 Kyant 光学分层可行性实验版
+ColorOS-LiquidGlass V1.9.205.288.13｜右滑起始十帧坐标诊断版
 
-目的：根据 V288.11 真机 A 稳定、B/C 闪动的结果，尝试原生 Canvas 直接显示背景，Compose 只承担光学层。不再将每帧原生采样 Bitmap 桥接给 Compose。
-
-模式：su -c settings put global liquidglass_kyant_native_layer_28812 N
-N=0：原 V288.11 隔离实验路径。
-N=1：原生 Canvas 直接绘制于 Compose 上层，作为稳定性对照；光学效果被原生层覆盖。
-N=2：原生 Canvas 在 Compose 下层；Compose 的背景源 alpha=0，保留 Kyant 光学绘制请求。检验 Kyant 是否能独立读取 Android View 背景（预期可能无法获得真实壁纸折射）。
-N=3：原生 Canvas 在 Compose 下层；Compose 背景源 alpha=0.02，保留 Kyant 光学绘制请求。观察 Backdrop 捕获与背景透出情况，可能有双层纹理、闪动或折射减弱。
-重启 Launcher：su -c "/system/bin/am force-stop com.android.launcher"
-
-重要：普通 Android View 不会自动进入 Compose 的 rememberLayerBackdrop。N=2/3 仅为光学输入可行性诊断，不能凭边缘高光就认为 Kyant 已折射原生壁纸。若 N=2/3 无真实纹理位移，应停止该方向，而非宣称融合成功。
-
-保留既有 Host 修复和光学参数；未完成 Android Gradle 编译与真机验证。新增日志 KYANT28812_NATIVE_LAYER。
+针对 V288.12 三种模式右滑起始必闪一次、左滑不闪的真机现象。
+仅被动记录实际文件夹水平移动的起始点及之后 10 次 PreDraw 的采样、Host、Workspace、壁纸源身份和原生绘制坐标，不拦截 ACTION_DOWN、不改变光学或渲染算法。
+注意：日志标记的 MOTION_START 是文件夹开始移动的第一帧，并非直接监听手指 ACTION_DOWN。
+启用：su -c settings put global liquidglass_kyant_right_start_trace_28813 1
+关闭：su -c settings put global liquidglass_kyant_right_start_trace_28813 0
+重启：su -c "/system/bin/am force-stop com.android.launcher"
+日志：KYANT28813_MOTION_START、KYANT28813_ONSET_FRAME、KYANT28813_NATIVE_DRAW。
+每个文件夹实例最多输出120条诊断，避免无限日志；在同一页面右滑3次、左滑3次后导出Vector日志。
+保留 V288.12 三模式开关 liquidglass_kyant_native_layer_28812，推荐先使用模式1排除 Compose 光学。
+仅完成静态源码检查和ZIP完整性检查；未进行Gradle编译或真机验证。
