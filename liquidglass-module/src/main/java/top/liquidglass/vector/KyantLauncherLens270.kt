@@ -348,12 +348,7 @@ object KyantLauncherLens270 {
         } catch (_: Throwable) { 0 }
         val layerSampleEffective28862 = if (pipelineMode28819 == -1) layerSampleAb28862 else 0
         val effectiveSamplingMode28862 = if (layerSampleEffective28862 == 1 || layerSampleEffective28862 == 3) 0 else samplingMode
-        val effectiveLargeContinuous28862 = if (layerSampleEffective28862 == 1 || layerSampleEffective28862 == 3) false else largeContinuousSource28830
         val effectiveRenderMode28862 = if (layerSampleEffective28862 == 2 || layerSampleEffective28862 == 3) 2 else renderAbMode
-        XposedBridge.log("KYANT28862_AB_HOST mode=$layerSampleAb28862 applied=$layerSampleEffective28862 " +
-            "sampling=$effectiveSamplingMode28862 continuous=$effectiveLargeContinuous28862 render=$effectiveRenderMode28862 " +
-            "originalSampling=$samplingMode originalRender=$renderAbMode pipeline=$pipelineMode28819 " +
-            "host=${System.identityHashCode(anchor)}")
         // Motion diagnostic is independent of the earlier render A/B switch.
         // 0 = baseline, 1 = freeze wallpaper source at its first draw,
         // 2 = live wallpaper source without lens refraction.
@@ -550,6 +545,13 @@ object KyantLauncherLens270 {
             Settings.Global.getInt(anchor.context.contentResolver,
                 "liquidglass_kyant_large_square_source_28830", 1) == 1
         } catch (_: Throwable) { true }
+        // V288.62.1: defer effective source selection until the original source
+        // switch has been computed; otherwise Kotlin sees an unresolved reference.
+        val effectiveLargeContinuous28862 = if (layerSampleEffective28862 == 1 || layerSampleEffective28862 == 3) false else largeContinuousSource28830
+        XposedBridge.log("KYANT28862_AB_HOST mode=$layerSampleAb28862 applied=$layerSampleEffective28862 " +
+            "sampling=$effectiveSamplingMode28862 continuous=$effectiveLargeContinuous28862 render=$effectiveRenderMode28862 " +
+            "originalSampling=$samplingMode originalRender=$renderAbMode pipeline=$pipelineMode28819 " +
+            "host=${System.identityHashCode(anchor)}")
         if (largeSquare28829) XposedBridge.log(
             "KYANT28830_LARGE_SOURCE mode=${if (largeContinuousSource28830) 1 else 0} " +
             "size=${previewWidth}x${previewHeight} reference=${reference.width}x${reference.height}")

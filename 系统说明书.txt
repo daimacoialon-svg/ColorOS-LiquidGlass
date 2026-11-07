@@ -71,3 +71,5 @@ V1.9.205.288.62｜Kyant 采样路径 / Compose 合成层隔离 A/B
 每秒运动汇总沿用 V288.61，附加 ab28862 字段；不增加逐帧 Logcat。
 如果模式 2 更好，优先调查 Compose 图层合成；模式 1 更好，优先调查整帧位移变换与源矩形裁剪差异；两者均无改善则继续调查后续 GPU 图层提交/合成时序。
 这属于隔离实验，不是已经完成抖动修复；实际结果以真机为准。
+
+V1.9.205.288.62.1：修复 KyantLauncherLens270.kt 中 effectiveLargeContinuous28862 在 largeContinuousSource28830 声明之前引用造成的 Kotlin 编译失败；将变量计算和 AB_HOST 日志移动到原始来源开关定义之后。保持 V288.62 的 A/B 模式、Root 壁纸即时同步和透镜算法不变。
