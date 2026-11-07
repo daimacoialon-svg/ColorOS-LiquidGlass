@@ -79,14 +79,16 @@ final class WallpaperAlignmentProbe28844 {
             int w=prefs.getInt("sourceWidth", 0), h=prefs.getInt("height", 0);
             int sw=prefs.getInt("screenWidth", 0), x=prefs.getInt("left", -1);
             if (!sourceKey.equals(key) || sw!=expectedWidth || h!=expectedHeight ||
-                w!=expectedWidth+2 || x<0 || x>2) return null;
+                w<expectedWidth || w>expectedWidth+2 || x<0 || x>w-expectedWidth) return null;
             return new CropApproval28850(x,w,sw,h,sourceKey);
         } catch(Throwable ignored) { return null; }
     }
-    // Only compare the three exact 2-pixel crop placements, not rounded/scaled mappings.
-    private static double cropMae28850(Bitmap original, Bitmap canonical, int startX) {
-        if(original.getWidth()!=canonical.getWidth()+2 ||
-           original.getHeight()!=canonical.getHeight()) return Double.POSITIVE_INFINITY;
+    // V288.53: compare actual pixel crops for width deltas 0, 1 and 2.
+    // The approval is always tied to the exact source bytes and dimensions.
+    private static double cropMae28853(Bitmap original, Bitmap canonical, int startX) {
+        final int delta=original.getWidth()-canonical.getWidth();
+        if (delta<0 || delta>2 || startX<0 || startX>delta ||
+            original.getHeight()!=canonical.getHeight()) return Double.POSITIVE_INFINITY;
         final int nx=84, ny=132;
         double error=0.0;
         for(int iy=0; iy<ny; iy++) {
@@ -101,43 +103,50 @@ final class WallpaperAlignmentProbe28844 {
         }
         return error/(nx*ny);
     }
-    private static String calibrateTwoPixelCrop28850(Context app, Bitmap a, Bitmap b,
-                                                     String sourceKey, String pair) {
-        if(a.getWidth()!=b.getWidth()+2 || a.getHeight()!=b.getHeight()) {
-            Log.i(TAG,"KYANT28852_CALIBRATION_REJECT reason=UNSUPPORTED_GEOMETRY early="+
-                a.getWidth()+"x"+a.getHeight()+" reference="+b.getWidth()+"x"+b.getHeight());
+    private static String calibrateCrop28853(Context app, Bitmap a, Bitmap b,
+                                              String sourceKey, String pair) {
+        final int widthDelta=a.getWidth()-b.getWidth();
+        if(widthDelta<0 || widthDelta>2 || a.getHeight()!=b.getHeight()) {
+            Log.i(TAG,"KYANT28853_CALIBRATION_REJECT reason=UNSUPPORTED_GEOMETRY early="+
+                a.getWidth()+"x"+a.getHeight()+" reference="+b.getWidth()+"x"+b.getHeight()+
+                " widthDelta="+widthDelta);
             return "REJECTED:UNSUPPORTED_GEOMETRY";
         }
-        double[] errors=new double[3];
         int bestX=-1; double best=Double.POSITIVE_INFINITY, runner=Double.POSITIVE_INFINITY;
-        for(int x=0;x<=2;x++) {
-            errors[x]=cropMae28850(a,b,x);
-            if(errors[x]<best) {runner=best;best=errors[x];bestX=x;}
-            else if(errors[x]<runner) runner=errors[x];
+        for(int x=0; x<=widthDelta; x++) {
+            double err=cropMae28853(a,b,x);
+            if(err<best) {runner=best; best=err; bestX=x;}
+            else if(err<runner) runner=err;
         }
-        double margin=runner-best;
-        // Pixel agreement, rather than mtime alone, is required for approval.
-        // The two files might have different file times when the screenshot
-        // is rewritten; an old *different* wallpaper should fail the MAE gate.
-        boolean pass=best<=4.0 && margin>=0.35 && Double.isFinite(best);
-        Log.i(TAG,"KYANT28850_CROP_CALIBRATION geometry="+a.getWidth()+"x"+a.getHeight()+
-            "->"+b.getWidth()+"x"+b.getHeight()+" bestLeft="+bestX+
+        // An equal-width bitmap has only one crop mapping: there is no second
+        // candidate, so uniqueness must not be evaluated against infinity.
+        final boolean hasRunner=widthDelta>0;
+        final double margin=hasRunner ? runner-best : 0.0;
+        final boolean pass=Double.isFinite(best) && best<=4.0 &&
+            (!hasRunner || (Double.isFinite(runner) && margin>=0.35));
+        Log.i(TAG,"KYANT28853_CROP_CALIBRATION geometry="+a.getWidth()+"x"+a.getHeight()+
+            "->"+b.getWidth()+"x"+b.getHeight()+" widthDelta="+widthDelta+
+            " candidates="+(widthDelta+1)+" bestLeft="+bestX+
             " mae="+String.format(Locale.US,"%.3f",best)+
-            " secondMae="+String.format(Locale.US,"%.3f",runner)+
-            " margin="+String.format(Locale.US,"%.3f",margin)+
+            " secondMae="+(hasRunner?String.format(Locale.US,"%.3f",runner):"NA")+
+            " margin="+(hasRunner?String.format(Locale.US,"%.3f",margin):"NA")+
             " status="+(pass?"APPROVED_SOURCE_ONLY":"REJECTED")+" pair="+pair);
-        if (!pass) {
-            Log.i(TAG,"KYANT28851_CALIBRATION_REJECT reason=LOW_CONFIDENCE best="+
-                String.format(Locale.US,"%.3f",best)+" margin="+
-                String.format(Locale.US,"%.3f",margin)+" source="+sourceKey);
+        if(!pass) {
+            Log.i(TAG,"KYANT28853_CALIBRATION_REJECT reason=LOW_CONFIDENCE widthDelta="+
+                widthDelta+" best="+String.format(Locale.US,"%.3f",best)+
+                " margin="+(hasRunner?String.format(Locale.US,"%.3f",margin):"NA")+
+                " source="+sourceKey);
             return "REJECTED:LOW_CONFIDENCE";
         }
-        Log.i(TAG,"KYANT28851_CALIBRATION_APPROVED source="+sourceKey+
-            " left="+bestX+" mae="+String.format(Locale.US,"%.3f",best));
+        // Retain existing preference names so the early-frame consumer reads
+        // approvals using one consistent schema for all three widths.
         app.getSharedPreferences(PREFS_28850,Context.MODE_PRIVATE).edit()
             .putString("sourceKey",sourceKey)
             .putInt("sourceWidth",a.getWidth()).putInt("screenWidth",b.getWidth())
             .putInt("height",b.getHeight()).putInt("left",bestX).apply();
+        Log.i(TAG,"KYANT28853_CALIBRATION_APPROVED widthDelta="+widthDelta+
+            " source="+sourceKey+" left="+bestX+
+            " mae="+String.format(Locale.US,"%.3f",best));
         return "APPROVED:LEFT_"+bestX;
     }
 
@@ -321,7 +330,7 @@ final class WallpaperAlignmentProbe28844 {
                 " timeVerified="+closeInTime+" deltaMs="+delay+
                 " source="+a.getWidth()+"x"+a.getHeight()+
                 " reference="+b.getWidth()+"x"+b.getHeight()+" pair="+pair);
-            String calibrationVerdict28852=calibrateTwoPixelCrop28850(
+            String calibrationVerdict28852=calibrateCrop28853(
                 app,a,b,contentPair.substring(0,contentPair.indexOf('|')),pair);
             double best=Double.POSITIVE_INFINITY, runner=Double.POSITIVE_INFINITY;
             int bestModel=0,bestDx=0,bestDy=0;

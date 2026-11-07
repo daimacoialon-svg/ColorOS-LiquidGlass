@@ -2789,35 +2789,35 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
                 opts.inJustDecodeBounds = true;
                 android.graphics.BitmapFactory.decodeFile(early.getAbsolutePath(), opts);
-                // V288.50: width+2 requires an exact-source approval from a
-                // prior authoritative screenshot comparison, not a guessed crop.
-                int left28850 = 0;
-                boolean newGeometry28850 = (opts.outWidth == w + 2 && opts.outHeight == h);
-                WallpaperAlignmentProbe28844.CropApproval28850 approval28850 = null;
-                if (newGeometry28850) {
-                    approval28850 = WallpaperAlignmentProbe28844.approvedCrop(app, early, w, h);
-                    if (approval28850 != null) left28850 = approval28850.left;
-                    log("KYANT28850_CROP_GATE mode="+mode+" geometry="+
-                        opts.outWidth+"x"+opts.outHeight+"->"+w+"x"+h+
-                        " approved="+(approval28850!=null)+
-                        " left="+(approval28850!=null?left28850:-1)+
-                        " trigger="+trigger);
-                }
-                if (w < 320 || h < 640 || opts.outHeight != h ||
-                    (opts.outWidth != w + 1 && !newGeometry28850)) {
-                    log("KYANT28850_EARLY_SKIP reason=UNVERIFIED_GEOMETRY early="+
-                        opts.outWidth+"x"+opts.outHeight+" screen="+w+"x"+h);
+                // V288.53: same source-specific calibration rule applies to
+                // equal width, +1px and +2px original wallpaper images.
+                final int widthDelta28853=opts.outWidth-w;
+                final boolean supportedGeometry28853 = w>=320 && h>=640 &&
+                    opts.outHeight==h && widthDelta28853>=0 && widthDelta28853<=2;
+                if (!supportedGeometry28853) {
+                    log("KYANT28853_EARLY_SKIP reason=UNSUPPORTED_GEOMETRY early="+
+                        opts.outWidth+"x"+opts.outHeight+" screen="+w+"x"+h+
+                        " widthDelta="+widthDelta28853+" trigger="+trigger);
                     return;
                 }
-                if (mode == 2) {
-                    log("KYANT28850_CROP_DRY_RUN geometry="+opts.outWidth+"x"+opts.outHeight+
-                        " left="+(newGeometry28850 && approval28850==null?-1:left28850)+
-                        " approved="+(!newGeometry28850 || approval28850!=null)+
-                        " trigger="+trigger); return;
+                final WallpaperAlignmentProbe28844.CropApproval28850 approval28853 =
+                    WallpaperAlignmentProbe28844.approvedCrop(app, early, w, h);
+                final int left28853=approval28853!=null?approval28853.left:-1;
+                log("KYANT28853_CROP_GATE mode="+mode+" geometry="+
+                    opts.outWidth+"x"+opts.outHeight+"->"+w+"x"+h+
+                    " widthDelta="+widthDelta28853+
+                    " approved="+(approval28853!=null)+
+                    " left="+left28853+" trigger="+trigger);
+                if (mode==2) {
+                    log("KYANT28853_CROP_DRY_RUN geometry="+opts.outWidth+"x"+opts.outHeight+
+                        " approved="+(approval28853!=null)+" left="+left28853+
+                        " trigger="+trigger);
+                    return;
                 }
-                if (newGeometry28850 && approval28850 == null) {
-                    log("KYANT28850_EARLY_SKIP reason=NO_SOURCE_SPECIFIC_CALIBRATION geometry="+
-                        opts.outWidth+"x"+opts.outHeight+" trigger="+trigger);
+                if (approval28853==null) {
+                    log("KYANT28853_EARLY_SKIP reason=NO_SOURCE_SPECIFIC_CALIBRATION geometry="+
+                        opts.outWidth+"x"+opts.outHeight+" widthDelta="+widthDelta28853+
+                        " trigger="+trigger);
                     return;
                 }
                 opts.inJustDecodeBounds = false;
@@ -2825,7 +2825,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 android.graphics.Bitmap decoded = android.graphics.BitmapFactory.decodeFile(early.getAbsolutePath(), opts);
                 if (decoded == null) return;
                 try {
-                    output = android.graphics.Bitmap.createBitmap(decoded, left28850, 0, w, h);
+                    output = android.graphics.Bitmap.createBitmap(decoded, left28853, 0, w, h);
                 } finally {
                     // createBitmap can share pixels with the source. Never recycle the source
                     // while the cropped bitmap might still reference them.
