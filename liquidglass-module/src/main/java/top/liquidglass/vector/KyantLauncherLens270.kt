@@ -457,6 +457,15 @@ object KyantLauncherLens270 {
             "KYANT28819_PIPELINE host=${System.identityHashCode(anchor)} mode=$pipelineMode28819 " +
             "native=$nativeLayerMode isolation=$displayIsolationMode bridge=$nativeBridgeMode " +
             "optics=false bridgeSync=$bridgeSyncMode sourceId=${System.identityHashCode(reference)}")
+        // V288.61: opt-in diagnostics; never alter geometry or shader output.
+        val motionCompare28861 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_motion_compare_28861", 0) == 1
+        } catch (_: Throwable) { false }
+        if (motionCompare28861) XposedBridge.log(
+            "KYANT28861_HOST_PROBE mode=$legacySyncAbMode host=$trace28815Host " +
+            "reference=${reference.width}x${reference.height} " +
+            "pipeline=$pipelineMode28819 source=$samplingMode")
         XposedBridge.log("KYANT2886_LEGACY_SYNC_AB mode=$legacySyncAbMode (0=predraw_state 1=draw_time_matrix)")
         XposedBridge.log("KYANT2885_MOTION_AB mode=$motionAbMode (0=baseline 1=freeze_source 2=no_refraction)")
         XposedBridge.log("KYANT2885_RENDER_AB mode=" + renderAbMode +
@@ -1024,7 +1033,7 @@ object KyantLauncherLens270 {
 
             compose.setContent { LensContent270(referenceState28832.value, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode,
-                largeContinuousSource28830, renderAbMode, motionAbMode, legacySyncAbMode, if (nativeLayerMode in 2..3) 3 else displayIsolationMode, nativeLayerMode, bridgeBitmap, bridgeVersion,
+                largeContinuousSource28830, renderAbMode, motionAbMode, legacySyncAbMode, motionCompare28861, if (nativeLayerMode in 2..3) 3 else displayIsolationMode, nativeLayerMode, bridgeBitmap, bridgeVersion,
                 if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
                 pipelineMode28819, frameSync28822,
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
@@ -1542,7 +1551,7 @@ object KyantLauncherLens270 {
         rootWidth: Int, rootHeight: Int, screenPosition: androidx.compose.runtime.State<Offset>,
         cornerRadiusPx: Float, samplingMode: Int,
         largeContinuousSource28830: Boolean, renderAbMode: Int, motionAbMode: Int,
-        legacySyncAbMode: Int, displayIsolationMode: Int, nativeLayerMode: Int, bridgeBitmap: Bitmap?,
+        legacySyncAbMode: Int, motionCompare28861: Boolean, displayIsolationMode: Int, nativeLayerMode: Int, bridgeBitmap: Bitmap?,
         bridgeVersion: androidx.compose.runtime.State<Int>,
         bridgeSyncMode: Int,
         pipelineMode28819: Int, frameSync28822: Int,
@@ -1573,6 +1582,11 @@ object KyantLauncherLens270 {
         val sourceOver16 = androidx.compose.runtime.remember { java.util.concurrent.atomic.AtomicLong(0L) }
         val sourceOver33 = androidx.compose.runtime.remember { java.util.concurrent.atomic.AtomicLong(0L) }
         val sourceMaxGapNs = androidx.compose.runtime.remember { java.util.concurrent.atomic.AtomicLong(0L) }
+        // V288.61: draw-side, per-host aggregated motion comparison.
+        // No per-frame Logcat and no writes to Compose State during drawing.
+        val motionStats28861 = androidx.compose.runtime.remember { FloatArray(6) }
+        val motionWindow28861 = androidx.compose.runtime.remember { longArrayOf(0L, 0L, 0L, 0L) }
+
         // Clip the WHOLE optical pipeline, including wallpaper source and highlight,
         // not just the Kyant lens shape. Prevent pixels escaping rounded corners.
         val cornerDp = (cornerRadiusPx / density).dp
@@ -1612,6 +1626,50 @@ object KyantLauncherLens270 {
                 } else committedPosition
                 if (motionAbMode == 1) frozenSource.compareAndSet(null, livePosition)
                 val drawPosition = if (motionAbMode == 1) (frozenSource.get() ?: livePosition) else livePosition
+                if (motionCompare28861) {
+                    val nativeNow = try { currentNativePosition() } catch (_: Throwable) { null }
+                    if (nativeNow != null) {
+                        val statNow = SystemClock.elapsedRealtimeNanos()
+                        val lastTime = motionWindow28861[1]
+                        val lagPx = kotlin.math.max(kotlin.math.abs(nativeNow.x - committedPosition.x),
+                            kotlin.math.abs(nativeNow.y - committedPosition.y))
+                        val drawLagPx = kotlin.math.max(kotlin.math.abs(nativeNow.x - drawPosition.x),
+                            kotlin.math.abs(nativeNow.y - drawPosition.y))
+                        val stepPx = if (lastTime > 0L)
+                            kotlin.math.max(kotlin.math.abs(nativeNow.x - motionStats28861[4]),
+                                kotlin.math.abs(nativeNow.y - motionStats28861[5])) else 0f
+                        motionStats28861[0] = kotlin.math.max(motionStats28861[0], lagPx)
+                        motionStats28861[1] = kotlin.math.max(motionStats28861[1], drawLagPx)
+                        motionStats28861[2] = kotlin.math.max(motionStats28861[2], stepPx)
+                        if (lagPx > 1f) motionWindow28861[2]++
+                        motionStats28861[3] += lagPx
+                        motionStats28861[4] = nativeNow.x
+                        motionStats28861[5] = nativeNow.y
+                        motionWindow28861[1] = statNow
+                        val count = ++motionWindow28861[0]
+                        if (motionWindow28861[0] > 0L && (lastTime == 0L ||
+                                statNow - (motionWindow28861[3]) >= 1_000_000_000L)) {
+                            // The first sample initializes the aggregation window.
+                            if (motionWindow28861[3] != 0L && count > 1L && motionStats28861[2] > 0.5f) {
+                                val observed = predrawMatrixSnapshot.get()
+                                val ageMs = if (observed.second > 0L)
+                                    (statNow - observed.second) / 1_000_000L else -1L
+                                XposedBridge.log("KYANT28861_MOTION_COMPARE mode=$legacySyncAbMode " +
+                                    "draws=$count maxCommitLagPx=${motionStats28861[0]} " +
+                                    "maxDrawLagPx=${motionStats28861[1]} " +
+                                    "maxStepPx=${motionStats28861[2]} " +
+                                    "meanCommitLagPx=${motionStats28861[3] / count} " +
+                                    "commitLagOver1px=${motionWindow28861[2]} " +
+                                    "predrawAgeMs=$ageMs")
+                            }
+                            motionWindow28861[3] = statNow
+                            motionWindow28861[0] = 0L
+                            motionWindow28861[2] = 0L
+                            for (i in 0..3) motionStats28861[i] = 0f
+                        }
+                    }
+                }
+
                 val rootScreenX = drawPosition.x
                 val rootScreenY = drawPosition.y
                 val x = rootScreenX * scaleX

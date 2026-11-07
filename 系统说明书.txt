@@ -46,3 +46,16 @@ V1.9.205.288.58：修复 Android CE 路径可能存在的别名规范化误判�
 V1.9.205.288.59｜多壁纸设备级裁剪 A/B 实验：原有 28847 模式1 与每图批准机制保持不变。新增独立开关 settings put global liquidglass_kyant_device_crop_ab_28859 1（默认0），仅在已确认的 1216×2640 屏幕、静态壁纸原图高度2640且宽度差0～2px、有同一原图最近3秒文件事件时，允许尚未逐图批准的原图按设备裁剪假设尝试提前发布：宽差0/1 左裁剪，宽差2 居中裁剪（未经真机校准的实验假设）。仍检查正式帧内容代际，不得用旧源覆盖新正式帧；正式截图继续接管。日志 KYANT28859_DEVICE_CROP_GATE / KYANT28859_PUBLICATION_PROFILE。此功能为受控实验，不保证任意新壁纸视觉对齐；不适时立即 settings put global liquidglass_kyant_device_crop_ab_28859 0 或同时关 28847 模式。Root 广播及原有 FileObserver 保持不变。
 
 V1.9.205.288.60｜提前壁纸事件短期持久化与进程恢复：Root 原图原子发布后同时原子写入 .liquidglass_early_event_28860（大小:秒级 mtime），Launcher 注册主动通知后及壁纸广播、标记移动事件到来时，读取私有 CE 固定路径、校验标记所有者/600 权限/尺寸/时间签名/3秒有效期；恢复真实事件年龄（不从当前时刻重新计时），再执行原有逐图或设备裁剪批准和正式帧代际保护。过期、内容不匹配、无法验证时禁止恢复，继续正式参考帧。日志：KYANT28860_EVENT_MARKER_READY（Root）、KYANT28860_EVENT_RECOVERED / KYANT28860_RECOVERY_SKIP（Launcher）。仅实验能力，不保证所有壁纸首次无延迟；多事件合并沿用原有源签名与任务去重。开关仍为 liquidglass_kyant_early_frame_ab_28847 及 liquidglass_kyant_device_crop_ab_28859。
+
+
+V1.9.205.288.61｜Kyant 与旧引擎动态采样坐标对照诊断（基于 V288.60）
+本次不修改 Kyant 光学算法、Host 几何、壁纸即时同步服务。
+旧引擎在快滑时稳定，Kyant 路径存在与速度相关的背景抖动，因此加入 opt-in 每秒汇总的 Draw 时坐标比较。
+诊断开关：su -c settings put global liquidglass_kyant_motion_compare_28861 1
+采样模式 0=PreDraw 状态坐标；1=绘制时重新读取实时原生矩阵（旧引擎同源坐标）。
+切换：su -c settings put global liquidglass_kyant_legacy_sync_ab_2886 0 或 1；切换后重启 Launcher 使新 Host 生效。
+比较日志：su -c 'logcat -d -v threadtime | grep KYANT28861'
+KYANT28861_MOTION_COMPARE: maxCommitLagPx 表示提交坐标相对实时原生坐标的最大差；maxDrawLagPx 表示 Kyant 实际取样坐标相对实时原生坐标的最大差；maxStepPx 表示每次绘制之间观察到的最大位移。
+汇总仅运动时每秒输出，非逐帧日志，不提供自动修复。诊断完成关闭：su -c settings put global liquidglass_kyant_motion_compare_28861 0。
+注意：Mode 1 是历史已存在的实验性绘制坐标 A/B，不保证完全消除异步图层/光学纹理抖动；真实效果需比较测试。
+完整 Gradle 构建及真机均待验证。
