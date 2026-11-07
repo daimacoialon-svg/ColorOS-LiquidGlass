@@ -2603,6 +2603,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 modified=local.lastModified();length=local.length();
                 if(REFRACTION_FRAME!=null && !REFRACTION_FRAME.isRecycled() && modified==REFRACTION_FRAME_MODIFIED && length==REFRACTION_FRAME_LENGTH){
                     if(REFRACTION_LOGS++<24)log("REFERENCE_REUSE_148 memory_hit=true source="+local.getAbsolutePath());
+                    // Metadata reuse must not prevent first-time calibration.
+                    // This is throttled per file metadata pair by the probe.
+                    WallpaperAlignmentProbe28844.scheduleOnReuse28851(app, "CANONICAL_METADATA_REUSE_28851");
                     if(customBlurMode==1 && customBlurDp>0){
                         android.util.DisplayMetrics metrics=app.getResources().getDisplayMetrics();
                         blurredWallpaper(REFRACTION_FRAME,metrics.density,null);
@@ -2634,6 +2637,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             log("KYANT28849_CANONICAL_VISUAL_DEDUP source="+local.getAbsolutePath()+
                                 " visualKey="+Long.toHexString(visualKey28849)+
                                 " modified="+loadedModified+" length="+loadedLength);
+                        // V288.51: identical optical content does not need another
+                        // generation, but a newly arrived early source may still
+                        // need a first-time crop calibration. Probe has its own
+                        // content-pair dedup and never changes the optical frame.
+                        WallpaperAlignmentProbe28844.schedule(app, "CANONICAL_VISUAL_DEDUP_28851");
                         return;
                     }
                     // An old canonical file may be rechecked during a fresh early preview.

@@ -26,6 +26,25 @@ final class WallpaperAlignmentProbe28844 {
     // Content-based dedup: timestamps can change when the very same screenshot is republished.
     private static volatile String lastCompletedContent = "";
     private static final long MAX_PAIR_AGE_MS = 45000L;
+    // Prevent per-draw metadata reuse from creating new calibration threads.
+    // Source metadata is included: a new early original re-arms the check.
+    private static volatile String lastReuseMetadata28851 = "";
+    static void scheduleOnReuse28851(Context context, String reason) {
+        if (context == null) return;
+        Context app = context.getApplicationContext();
+        File dir = ceFiles(app);
+        File early = new File(dir, "liquidglass_early_wallpaper_source");
+        File ref = new File(dir, "liquidglass_wallpaper_reference.jpg");
+        if (!early.isFile() || !ref.isFile()) return;
+        String metadata = early.length()+":"+early.lastModified()+"|"+
+            ref.length()+":"+ref.lastModified();
+        synchronized(WallpaperAlignmentProbe28844.class) {
+            if(metadata.equals(lastReuseMetadata28851)) return;
+            lastReuseMetadata28851=metadata;
+        }
+        Log.i(TAG,"KYANT28851_CALIBRATION_REARM reason="+reason+" metadata="+metadata);
+        schedule(app, reason);
+    }
     // V288.50: a crop is approved only for the EXACT original image bytes.
     // A geometrically similar future wallpaper cannot inherit that approval.
     private static final String PREFS_28850 = "kyant_early_calibration_28850";
@@ -82,7 +101,9 @@ final class WallpaperAlignmentProbe28844 {
             else if(errors[x]<runner) runner=errors[x];
         }
         double margin=runner-best;
-        // Conservative gate: matching screenshot required, no ties, clear advantage.
+        // Pixel agreement, rather than mtime alone, is required for approval.
+        // The two files might have different file times when the screenshot
+        // is rewritten; an old *different* wallpaper should fail the MAE gate.
         boolean pass=best<=4.0 && margin>=0.35 && Double.isFinite(best);
         Log.i(TAG,"KYANT28850_CROP_CALIBRATION geometry="+a.getWidth()+"x"+a.getHeight()+
             "->"+b.getWidth()+"x"+b.getHeight()+" bestLeft="+bestX+
@@ -90,7 +111,14 @@ final class WallpaperAlignmentProbe28844 {
             " secondMae="+String.format(Locale.US,"%.3f",runner)+
             " margin="+String.format(Locale.US,"%.3f",margin)+
             " status="+(pass?"APPROVED_SOURCE_ONLY":"REJECTED")+" pair="+pair);
-        if (!pass) return;
+        if (!pass) {
+            Log.i(TAG,"KYANT28851_CALIBRATION_REJECT reason=LOW_CONFIDENCE best="+
+                String.format(Locale.US,"%.3f",best)+" margin="+
+                String.format(Locale.US,"%.3f",margin)+" source="+sourceKey);
+            return;
+        }
+        Log.i(TAG,"KYANT28851_CALIBRATION_APPROVED source="+sourceKey+
+            " left="+bestX+" mae="+String.format(Locale.US,"%.3f",best));
         app.getSharedPreferences(PREFS_28850,Context.MODE_PRIVATE).edit()
             .putString("sourceKey",sourceKey)
             .putInt("sourceWidth",a.getWidth()).putInt("screenWidth",b.getWidth())
@@ -198,12 +226,17 @@ final class WallpaperAlignmentProbe28844 {
         }
         long em=early.lastModified(),rm=reference.lastModified(),es=early.length(),rs=reference.length();
         long delay=rm-em;
-        if(delay<0 || delay>MAX_PAIR_AGE_MS) {
-            Log.i(TAG,"KYANT28845_ALIGN_SKIP reason=UNPAIRED_TIME deltaMs="+delay); return;
+        boolean closeInTime = delay>=0 && delay<=MAX_PAIR_AGE_MS;
+        if (!closeInTime) {
+            // V288.51: mtime mismatch is not proof of different image content.
+            // Continue with one content-pair-deduplicated pixel comparison,
+            // but never authorize a crop based on timestamps alone.
+            Log.i(TAG,"KYANT28851_PAIR_TIME_UNVERIFIED deltaMs="+delay+
+                " action=PIXEL_VERIFY_ONLY reason="+reason);
         }
         String pair=es+":"+em+"|"+rs+":"+rm;
         if(pair.equals(lastCompleted)) {
-            Log.i(TAG,"KYANT28845_ALIGN_DEDUP pair="+pair); return;
+            Log.i(TAG,"KYANT28851_CALIBRATION_DEDUP kind=METADATA pair="+pair); return;
         }
         String contentPair;
         try {
@@ -217,7 +250,7 @@ final class WallpaperAlignmentProbe28844 {
         }
         if (contentPair.equals(lastCompletedContent)) {
             lastCompleted=pair;
-            Log.i(TAG,"KYANT28846_ALIGN_CONTENT_DEDUP contentPair="+contentPair+
+            Log.i(TAG,"KYANT28851_CALIBRATION_DEDUP kind=CONTENT contentPair="+contentPair+
                 " timePair="+pair);
             return;
         }
@@ -237,8 +270,13 @@ final class WallpaperAlignmentProbe28844 {
             if(early.length()!=es || reference.length()!=rs || early.lastModified()!=em || reference.lastModified()!=rm) {
                 Log.i(TAG,"KYANT28845_ALIGN_SKIP reason=FILE_CHANGED");return;
             }
-            // V288.50: only a closely timed reference is eligible for persisted
-            // calibration. Never approve mismatched generations or stale screenshots.
+            // V288.51: source-specific calibration is based on strict pixel
+            // agreement; mtime is retained in diagnostics, not used as a
+            // surrogate for image identity. Content key binds the approval.
+            Log.i(TAG,"KYANT28851_CALIBRATION_ATTEMPT reason="+reason+
+                " timeVerified="+closeInTime+" deltaMs="+delay+
+                " source="+a.getWidth()+"x"+a.getHeight()+
+                " reference="+b.getWidth()+"x"+b.getHeight()+" pair="+pair);
             calibrateTwoPixelCrop28850(app,a,b,contentPair.substring(0,contentPair.indexOf('|')),pair);
             double best=Double.POSITIVE_INFINITY, runner=Double.POSITIVE_INFINITY;
             int bestModel=0,bestDx=0,bestDy=0;
