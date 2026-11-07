@@ -320,10 +320,20 @@ object KyantLauncherLens270 {
         // V288.66: opt-in use the native matrix of the actual Compose source
         // View, not the FolderIcon anchor. This changes the sampling origin,
         // never the Shader, bitmap generation, or redraw cadence.
+        // V288.67: diagnostics only. Measure the actual wallpaper UV inputs in
+        // the Compose source draw and the gaps between visible motion draws.
+        // Disabled by default, never changes the shader, reference or invalidation.
+        val uvProbe28867 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_uv_motion_probe_28867", 0) == 1
+        } catch (_: Throwable) { false }
         val sourceMatrixAb28866 = try {
             Settings.Global.getInt(anchor.context.contentResolver,
                 "liquidglass_kyant_source_matrix_ab_28866", 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 }
+        if (uvProbe28867) XposedBridge.log(
+            "KYANT28867_UV_HOST host=${System.identityHashCode(anchor)} enabled=1 " +
+            "matrixMode=$sourceMatrixAb28866")
         val sourceMatrixStats28866 = FloatArray(3) // max dx, max dy, sum absolute delta
         val sourceMatrixCounts28866 = LongArray(3) // samples, invalid, over 1px
         var sourceMatrixWindowNs28866 = SystemClock.elapsedRealtimeNanos()
@@ -1154,6 +1164,11 @@ object KyantLauncherLens270 {
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
                 { glassScreenPosition(lastBounds) },
                 sourceMatrixAb28866, { composeViewScreenPosition28866() },
+                uvProbe28867, { frame.visibility == View.VISIBLE &&
+                    frame.isShown && frame.width > 0 && frame.height > 0 &&
+                    glassScreenPosition(lastBounds).let { pos ->
+                        pos.x + previewWidth > 0f && pos.y + previewHeight > 0f &&
+                        pos.x < displayWidth && pos.y < displayHeight } },
                 { nativePosition28866, sourcePosition28866 ->
                     val dx = kotlin.math.abs(nativePosition28866.x - sourcePosition28866.x)
                     val dy = kotlin.math.abs(nativePosition28866.y - sourcePosition28866.y)
@@ -1835,6 +1850,7 @@ object KyantLauncherLens270 {
         predrawMatrixSnapshot: java.util.concurrent.atomic.AtomicReference<Pair<Offset, Long>>,
         currentNativePosition: () -> Offset,
         sourceMatrixAb28866: Int, currentComposeViewPosition28866: () -> Offset,
+        uvProbe28867: Boolean, visibleSource28867: () -> Boolean,
         recordSourceMatrix28866: (Offset, Offset) -> Unit,
         lifecycleProbe28864: Boolean, drawProbe28865: Boolean,
         sourceDrawSerial28864: AtomicLong,
@@ -1865,6 +1881,12 @@ object KyantLauncherLens270 {
         // No per-frame Logcat and no writes to Compose State during drawing.
         val motionStats28861 = androidx.compose.runtime.remember { FloatArray(6) }
         val motionWindow28861 = androidx.compose.runtime.remember { longArrayOf(0L, 0L, 0L, 0L) }
+        // Draw-thread local diagnostics, reset every ~1 second. No state updates,
+        // texture copying, frame forcing, or per-frame Logcat.
+        val uvPrev28867 = androidx.compose.runtime.remember { floatArrayOf(Float.NaN, Float.NaN, Float.NaN, Float.NaN) }
+        val uvStats28867 = androidx.compose.runtime.remember { floatArrayOf(0f, 0f, 0f, 0f, 0f) }
+        val uvCounts28867 = androidx.compose.runtime.remember { longArrayOf(0L, 0L, 0L, 0L, 0L, 0L) }
+        val uvTimes28867 = androidx.compose.runtime.remember { longArrayOf(0L, 0L) }
 
         // Clip the WHOLE optical pipeline, including wallpaper source and highlight,
         // not just the Kyant lens shape. Prevent pixels escaping rounded corners.
@@ -1972,6 +1994,77 @@ object KyantLauncherLens270 {
                 val y = rootScreenY * scaleY
                 val sw = previewWidth * scaleX
                 val sh = previewHeight * scaleY
+                if (uvProbe28867) {
+                    val now67 = SystemClock.elapsedRealtimeNanos()
+                    if (uvTimes28867[0] == 0L) uvTimes28867[0] = now67
+                    val visible67 = try { visibleSource28867() } catch (_: Throwable) { false }
+                    // Wallpaper origin in normalized UV coordinates, before Kyant lens.
+                    val u67 = x / reference.width.coerceAtLeast(1).toFloat()
+                    val v67 = y / reference.height.coerceAtLeast(1).toFloat()
+                    if (visible67 && uvPrev28867[0].isFinite()) {
+                        val positionStep67 = kotlin.math.max(
+                            kotlin.math.abs(rootScreenX - uvPrev28867[0]),
+                            kotlin.math.abs(rootScreenY - uvPrev28867[1]))
+                        val uvStepPx67 = kotlin.math.max(
+                            kotlin.math.abs(u67 - uvPrev28867[2]) * screenW,
+                            kotlin.math.abs(v67 - uvPrev28867[3]) * screenH)
+                        if (positionStep67 > 0.5f) {
+                            uvCounts28867[0]++ // actual moving source draws
+                            uvStats28867[0] = maxOf(uvStats28867[0], positionStep67)
+                            uvStats28867[1] = maxOf(uvStats28867[1], uvStepPx67)
+                            val residual67 = kotlin.math.abs(uvStepPx67 - positionStep67)
+                            uvStats28867[2] = maxOf(uvStats28867[2], residual67)
+                            if (residual67 > 0.5f) uvCounts28867[1]++
+                            val gapMs67 = if (uvTimes28867[1] > 0L)
+                                (now67 - uvTimes28867[1]) / 1_000_000f else 0f
+                            uvStats28867[3] = maxOf(uvStats28867[3], gapMs67)
+                            if (gapMs67 > 16.7f) uvCounts28867[2]++
+                            if (gapMs67 > 33.3f) uvCounts28867[3]++
+                            if (gapMs67 > 50f) uvCounts28867[4]++
+                            val predraw = predrawMatrixSnapshot.get()
+                            if (predraw.second > 0L) {
+                                uvStats28867[4] = maxOf(uvStats28867[4],
+                                    kotlin.math.max(kotlin.math.abs(predraw.first.x - rootScreenX),
+                                        kotlin.math.abs(predraw.first.y - rootScreenY)))
+                            }
+                        }
+                    }
+                    // Do not let an offscreen interval appear as a motion draw gap.
+                    if (visible67) {
+                        uvPrev28867[0] = rootScreenX
+                        uvPrev28867[1] = rootScreenY
+                        uvPrev28867[2] = u67
+                        uvPrev28867[3] = v67
+                        uvTimes28867[1] = now67
+                    } else {
+                        uvPrev28867.fill(Float.NaN)
+                        uvTimes28867[1] = 0L
+                    }
+                    uvCounts28867[5]++
+                    if (now67 - uvTimes28867[0] >= 1_000_000_000L) {
+                        if (uvCounts28867[0] >= 3L) {
+                            val path67 = when {
+                                bridgeBitmap != null -> "BRIDGE"
+                                renderAbMode != 1 && (samplingMode == 1 || largeContinuousSource28830) -> "FULL_FRAME"
+                                else -> "SOURCE_CROP"
+                            }
+                            XposedBridge.log("KYANT28867_UV_MOTION path=$path67 " +
+                                "hostDraws=${uvCounts28867[5]} movingDraws=${uvCounts28867[0]} " +
+                                "uvResidualOverHalfPx=${uvCounts28867[1]} " +
+                                "maxPositionStepPx=${uvStats28867[0]} maxUvStepPx=${uvStats28867[1]} " +
+                                "maxUvResidualPx=${uvStats28867[2]} " +
+                                "movingGapOver16=${uvCounts28867[2]} " +
+                                "movingGapOver33=${uvCounts28867[3]} " +
+                                "movingGapOver50=${uvCounts28867[4]} " +
+                                "maxMovingGapMs=${uvStats28867[3]} " +
+                                "maxPredrawPositionDiffPx=${uvStats28867[4]} " +
+                                "reference=${reference.width}x${reference.height}")
+                        }
+                        uvStats28867.fill(0f)
+                        uvCounts28867.fill(0L)
+                        uvTimes28867[0] = now67
+                    }
+                }
                 // A/B: keep a stable, full-frame bitmap as the source and change only
                 // the destination transform. No per-frame source rectangle allocation.
                 // This isolates dynamic cropping from Compose/Backdrop frame scheduling.

@@ -106,3 +106,12 @@ V1.9.205.288.66｜Kyant 壁纸源原生 ComposeView 矩阵 A/B
 - KYANT28866_HOST 确认模式，KYANT28866_SOURCE_MATRIX 以每秒低频日志汇总两种来源的偏差；若两个矩阵无差异但抖动依旧，不能宣称实现了真正的同帧合成修复。
 - 保留 V288.60 Root 原图事件、Dock 及文件夹共用壁纸帧、Kyant Shader；本版没有改动壁纸发布、光学位移函数、文件夹圆角。
 - 未完成完整 Android Gradle 编译或真机验证。
+
+
+V1.9.205.288.67｜Kyant 运动期间壁纸 UV 输入连续性诊断
+本版本以 V288.66 为基线，仅添加默认关闭的屏幕内文件夹壁纸源绘制统计：
+开关：settings put global liquidglass_kyant_uv_motion_probe_28867 1 （关闭设为0，重启 Launcher）
+日志：KYANT28867_UV_HOST、KYANT28867_UV_MOTION。
+maxUvResidualPx 只检验 Kotlin 绘制坐标换算的连续性，不代表 GPU 最终输出差异；
+movingGapOver33 和 maxMovingGapMs 仅统计可见源图绘制之间，且位置发生变化的间隔。
+默认关闭，不改变 Root 壁纸同步、Dock、Kyant Shader、源图发布及其他旧实验设置。
