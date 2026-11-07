@@ -409,6 +409,13 @@ object KyantLauncherLens270 {
         // 1=native View produces a wallpaper bitmap, Compose consumes it with lens;
         // 2=actual native View displays wallpaper above Compose (no Kyant lens).
         // Mode 2 is a DIAGNOSTIC control, NOT a retained optical design.
+        // V288.70: native-carrier settle-phase A/B; 0 preserves v288.69.1,
+        // 1 samples from the actual drawing View's current floating matrix.
+        // This reads a position, it does not alter reference pixels or Kyant lens.
+        val nativeSettleAb28870 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_native_settle_ab_28870", 0).coerceIn(0, 1)
+        } catch (_: Throwable) { 0 }
         val nativeCarrierAb28869 = try {
             Settings.Global.getInt(anchor.context.contentResolver,
                 "liquidglass_kyant_native_carrier_ab_28869", 0).coerceIn(0, 2)
@@ -556,6 +563,8 @@ object KyantLauncherLens270 {
             Settings.Global.getInt(anchor.context.contentResolver, NATIVE_BRIDGE_KEY, 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 }
         XposedBridge.log("KYANT2888_NATIVE_BRIDGE mode=$nativeBridgeMode (0=baseline 1=native_bitmap_bridge)")
+        XposedBridge.log("KYANT28870_SETTLE_HOST host=${System.identityHashCode(anchor)} " +
+            "carrier=$nativeCarrierAb28869 settleMode=$nativeSettleAb28870")
         XposedBridge.log("KYANT28869_RENDER_PATH host=${System.identityHashCode(anchor)} " +
             "ab=$nativeCarrierAb28869 producer=${when(nativeCarrierAb28869) { 1 -> "NATIVE_BITMAP_BRIDGE"; 2 -> "NATIVE_VIEW_DIRECT"; else -> "COMPOSE_DIRECT" }} " +
             "consumer=${if(nativeCarrierAb28869 == 2) "NATIVE_VIEW_ONLY_NO_LENS" else "COMPOSE_KYANT_LENS"} " +
@@ -722,6 +731,56 @@ object KyantLauncherLens270 {
             root.getLocationInWindow(rootWindow)
             return Offset(matrixPoint[0] + rootScreen[0] - rootWindow[0],
                 matrixPoint[1] + rootScreen[1] - rootWindow[1])
+        }
+        // V288.70: both native background carriers can use the SAME coordinate
+        // source as the View actually drawing pixels. Reusable objects; no
+        // allocation and no reference-bitmap regeneration on a normal draw.
+        val settleMatrix28870 = Matrix()
+        val settlePoint28870 = FloatArray(2)
+        val settleScreen28870 = IntArray(2)
+        val settleWindow28870 = IntArray(2)
+        var settleWindowNs28870 = SystemClock.elapsedRealtimeNanos()
+        var settleCount28870 = 0L
+        var settleSubpixel28870 = 0L
+        var settleReverse28870 = 0L
+        var settleMaxGap28870 = 0f
+        var settlePrevX28870 = Float.NaN
+        var settlePrevDx28870 = 0f
+        fun nativeCarrierDrawPosition28870(carrier: View, baseline: Offset, path: String): Offset {
+            if (nativeSettleAb28870 != 1 || !carrier.isAttachedToWindow) return baseline
+            val result = try {
+                settleMatrix28870.reset()
+                carrier.transformMatrixToGlobal(settleMatrix28870)
+                settlePoint28870[0] = 0f
+                settlePoint28870[1] = 0f
+                settleMatrix28870.mapPoints(settlePoint28870)
+                root.getLocationOnScreen(settleScreen28870)
+                root.getLocationInWindow(settleWindow28870)
+                Offset(settlePoint28870[0] + settleScreen28870[0] - settleWindow28870[0],
+                    settlePoint28870[1] + settleScreen28870[1] - settleWindow28870[1])
+            } catch (_: Throwable) { baseline }
+            if (!result.x.isFinite() || !result.y.isFinite()) return baseline
+            settleCount28870++
+            val gap = maxOf(kotlin.math.abs(result.x - baseline.x), kotlin.math.abs(result.y - baseline.y))
+            settleMaxGap28870 = maxOf(settleMaxGap28870, gap)
+            if (settlePrevX28870.isFinite()) {
+                val dx = result.x - settlePrevX28870
+                if (kotlin.math.abs(dx) in 0.0001f..1.0f) settleSubpixel28870++
+                if (dx * settlePrevDx28870 < -0.25f) settleReverse28870++
+                settlePrevDx28870 = dx
+            }
+            settlePrevX28870 = result.x
+            val now = SystemClock.elapsedRealtimeNanos()
+            if (now - settleWindowNs28870 >= 1_000_000_000L) {
+                XposedBridge.log("KYANT28870_SETTLE_MATRIX host=${System.identityHashCode(anchor)} " +
+                    "path=$path mode=$nativeSettleAb28870 samples=$settleCount28870 " +
+                    "subpixelMoves=$settleSubpixel28870 reversals=$settleReverse28870 " +
+                    "maxOriginGapPx=$settleMaxGap28870 viewX=${result.x} baseX=${baseline.x} " +
+                    "fractionX=${result.x-kotlin.math.floor(result.x)}")
+                settleCount28870=0L; settleSubpixel28870=0L; settleReverse28870=0L
+                settleMaxGap28870=0f; settleWindowNs28870=now
+            }
+            return result
         }
         // Initialize only after the local coordinate helper is declared.
         samplePosition.value = glassScreenPosition(initialBounds)
@@ -907,7 +966,9 @@ object KyantLauncherLens270 {
             override fun onDraw(canvas: Canvas) {
                 super.onDraw(canvas)
                 if (disposed || width <= 0 || height <= 0) return
-                val pos = try { glassScreenPosition(lastBounds) } catch (_: Throwable) { return }
+                val oldPos = try { glassScreenPosition(lastBounds) } catch (_: Throwable) { return }
+                val pos = if (nativeCarrierAb28869 == 1)
+                    nativeCarrierDrawPosition28870(this, oldPos, "NATIVE_BITMAP_BRIDGE") else oldPos
                 // V288.22 mode 1: Compose draw itself samples the reference frame.
                 // Do not publish an independent native Bitmap frame first.
                 if (frameSync28822 != 1 || nativeCarrierAb28869 == 1) sampleBridgeAt(pos)
@@ -979,7 +1040,7 @@ object KyantLauncherLens270 {
                 if (width <= 0 || height <= 0 || disposed) return
                 // Do not read a second Workspace transform after onPreDraw has
                 // already scheduled this frame's native redraw.
-                val position = when (nativeCoordinateMode28826) {
+                val basePosition28870 = when (nativeCoordinateMode28826) {
                     1 -> try {
                         // Compute from the native sampling View's own transformed
                         // origin; avoids mixing anchor and host transform epochs.
@@ -997,6 +1058,9 @@ object KyantLauncherLens270 {
                         catch (_: Throwable) { nativePredrawPosition28824 }
                     else -> nativePredrawPosition28824
                 }
+                val position = if (nativeCarrierAb28869 == 2)
+                    nativeCarrierDrawPosition28870(this, basePosition28870, "NATIVE_VIEW_DIRECT")
+                    else basePosition28870
                 if (releaseTrace28820) releaseTrace28820("COORD28826", position,
                     "mode=$nativeCoordinateMode28826 snapshotX=${nativePredrawPosition28824.x} deltaX=${position.x-nativePredrawPosition28824.x}")
                 // V288.25: native Canvas diagnostics also work in pipeline=-1.

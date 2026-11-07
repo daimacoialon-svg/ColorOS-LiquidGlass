@@ -136,3 +136,12 @@ V1.9.205.288.69.1 渲染承载路径实验
 一切实验不修改 V288.60 的 Root 壁纸发布/事件恢复。
 
 V1.9.205.288.69.1：修复 LensContent270 内日志使用超出作用域的 bridgeDrawCount。改为读取已传入的 bridgeVersion.value，保持 Native Carrier A/B 行为不变。
+
+
+V1.9.205.288.70｜原生背景归位阶段采样矩阵 A/B
+- 保留 V288.60 壁纸即时同步和 V288.69.1 的模式1/模式2背景路径。
+- liquidglass_kyant_native_carrier_ab_28869 = 1 或 2。
+- liquidglass_kyant_native_settle_ab_28870 = 0 保留原逻辑；1 在原生背景 onDraw 内用实际绘制 View 的变换矩阵计算浮点采样原点。重新加载 Launcher 生效。
+- 日志：KYANT28870_SETTLE_HOST、KYANT28870_SETTLE_MATRIX。检测绘制位置相对于旧坐标的差值、小于1px的步进与运动反向。
+- 本版是实验，不保证修复最终 GPU 画面回弹不同步；不冻结背景，不修改 Kyant Shader，不频繁重解码。
+- 测试后将 settle_ab_28870 设为0并重新加载 Launcher 即可回退。
