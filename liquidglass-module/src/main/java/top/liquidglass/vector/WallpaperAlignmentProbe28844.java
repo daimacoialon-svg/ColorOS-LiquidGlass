@@ -26,6 +26,77 @@ final class WallpaperAlignmentProbe28844 {
     // Content-based dedup: timestamps can change when the very same screenshot is republished.
     private static volatile String lastCompletedContent = "";
     private static final long MAX_PAIR_AGE_MS = 45000L;
+    // V288.50: a crop is approved only for the EXACT original image bytes.
+    // A geometrically similar future wallpaper cannot inherit that approval.
+    private static final String PREFS_28850 = "kyant_early_calibration_28850";
+    static final class CropApproval28850 {
+        final int left, sourceWidth, screenWidth, height;
+        final String sourceKey;
+        CropApproval28850(int left, int sourceWidth, int screenWidth, int height, String sourceKey) {
+            this.left=left; this.sourceWidth=sourceWidth; this.screenWidth=screenWidth;
+            this.height=height; this.sourceKey=sourceKey;
+        }
+    }
+    static CropApproval28850 approvedCrop(Context app, File early, int expectedWidth, int expectedHeight) {
+        if (app == null || early == null || !early.isFile()) return null;
+        if (early.length() < 1024 || early.length() > 32000000L) return null;
+        long size=early.length(), time=early.lastModified();
+        try {
+            String sourceKey=size+":"+contentCrc(early);
+            if (early.length()!=size || early.lastModified()!=time) return null;
+            android.content.SharedPreferences prefs=app.getSharedPreferences(PREFS_28850, Context.MODE_PRIVATE);
+            String key=prefs.getString("sourceKey", "");
+            int w=prefs.getInt("sourceWidth", 0), h=prefs.getInt("height", 0);
+            int sw=prefs.getInt("screenWidth", 0), x=prefs.getInt("left", -1);
+            if (!sourceKey.equals(key) || sw!=expectedWidth || h!=expectedHeight ||
+                w!=expectedWidth+2 || x<0 || x>2) return null;
+            return new CropApproval28850(x,w,sw,h,sourceKey);
+        } catch(Throwable ignored) { return null; }
+    }
+    // Only compare the three exact 2-pixel crop placements, not rounded/scaled mappings.
+    private static double cropMae28850(Bitmap original, Bitmap canonical, int startX) {
+        if(original.getWidth()!=canonical.getWidth()+2 ||
+           original.getHeight()!=canonical.getHeight()) return Double.POSITIVE_INFINITY;
+        final int nx=84, ny=132;
+        double error=0.0;
+        for(int iy=0; iy<ny; iy++) {
+            int y=(int)((long)iy*(canonical.getHeight()-1)/(ny-1));
+            for(int ix=0; ix<nx; ix++) {
+                int x=(int)((long)ix*(canonical.getWidth()-1)/(nx-1));
+                int a=original.getPixel(x+startX,y), b=canonical.getPixel(x,y);
+                error+=(Math.abs(((a>>>16)&255)-((b>>>16)&255))+
+                    Math.abs(((a>>>8)&255)-((b>>>8)&255))+
+                    Math.abs((a&255)-(b&255)))/3.0;
+            }
+        }
+        return error/(nx*ny);
+    }
+    private static void calibrateTwoPixelCrop28850(Context app, Bitmap a, Bitmap b,
+                                                     String sourceKey, String pair) {
+        if(a.getWidth()!=b.getWidth()+2 || a.getHeight()!=b.getHeight()) return;
+        double[] errors=new double[3];
+        int bestX=-1; double best=Double.POSITIVE_INFINITY, runner=Double.POSITIVE_INFINITY;
+        for(int x=0;x<=2;x++) {
+            errors[x]=cropMae28850(a,b,x);
+            if(errors[x]<best) {runner=best;best=errors[x];bestX=x;}
+            else if(errors[x]<runner) runner=errors[x];
+        }
+        double margin=runner-best;
+        // Conservative gate: matching screenshot required, no ties, clear advantage.
+        boolean pass=best<=4.0 && margin>=0.35 && Double.isFinite(best);
+        Log.i(TAG,"KYANT28850_CROP_CALIBRATION geometry="+a.getWidth()+"x"+a.getHeight()+
+            "->"+b.getWidth()+"x"+b.getHeight()+" bestLeft="+bestX+
+            " mae="+String.format(Locale.US,"%.3f",best)+
+            " secondMae="+String.format(Locale.US,"%.3f",runner)+
+            " margin="+String.format(Locale.US,"%.3f",margin)+
+            " status="+(pass?"APPROVED_SOURCE_ONLY":"REJECTED")+" pair="+pair);
+        if (!pass) return;
+        app.getSharedPreferences(PREFS_28850,Context.MODE_PRIVATE).edit()
+            .putString("sourceKey",sourceKey)
+            .putInt("sourceWidth",a.getWidth()).putInt("screenWidth",b.getWidth())
+            .putInt("height",b.getHeight()).putInt("left",bestX).apply();
+    }
+
     // Two full-resolution 1217x2640 ARGB_8888 images require about 25 MiB.
     // Refuse unusually large images to avoid temporary memory pressure.
     private static final long MAX_TOTAL_PIXELS = 13000000L;
@@ -166,6 +237,9 @@ final class WallpaperAlignmentProbe28844 {
             if(early.length()!=es || reference.length()!=rs || early.lastModified()!=em || reference.lastModified()!=rm) {
                 Log.i(TAG,"KYANT28845_ALIGN_SKIP reason=FILE_CHANGED");return;
             }
+            // V288.50: only a closely timed reference is eligible for persisted
+            // calibration. Never approve mismatched generations or stale screenshots.
+            calibrateTwoPixelCrop28850(app,a,b,contentPair.substring(0,contentPair.indexOf('|')),pair);
             double best=Double.POSITIVE_INFINITY, runner=Double.POSITIVE_INFINITY;
             int bestModel=0,bestDx=0,bestDy=0;
             String bestMapping="";

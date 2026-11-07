@@ -2781,23 +2781,43 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
                 opts.inJustDecodeBounds = true;
                 android.graphics.BitmapFactory.decodeFile(early.getAbsolutePath(), opts);
-                // Restrict the optical handoff to the exact geometry already measured
-                // on this device. Anything else stays on the authoritative screenshot.
-                if (w < 320 || h < 640 || opts.outWidth != w + 1 || opts.outHeight != h) {
-                    log("KYANT28847_EARLY_SKIP reason=UNVERIFIED_GEOMETRY early="+
+                // V288.50: width+2 requires an exact-source approval from a
+                // prior authoritative screenshot comparison, not a guessed crop.
+                int left28850 = 0;
+                boolean newGeometry28850 = (opts.outWidth == w + 2 && opts.outHeight == h);
+                WallpaperAlignmentProbe28844.CropApproval28850 approval28850 = null;
+                if (newGeometry28850) {
+                    approval28850 = WallpaperAlignmentProbe28844.approvedCrop(app, early, w, h);
+                    if (approval28850 != null) left28850 = approval28850.left;
+                    log("KYANT28850_CROP_GATE mode="+mode+" geometry="+
+                        opts.outWidth+"x"+opts.outHeight+"->"+w+"x"+h+
+                        " approved="+(approval28850!=null)+
+                        " left="+(approval28850!=null?left28850:-1)+
+                        " trigger="+trigger);
+                }
+                if (w < 320 || h < 640 || opts.outHeight != h ||
+                    (opts.outWidth != w + 1 && !newGeometry28850)) {
+                    log("KYANT28850_EARLY_SKIP reason=UNVERIFIED_GEOMETRY early="+
                         opts.outWidth+"x"+opts.outHeight+" screen="+w+"x"+h);
                     return;
                 }
                 if (mode == 2) {
-                    log("KYANT28847_EARLY_DRY_RUN geometry=LEFT_CROP size="+w+"x"+h+
-                        " source="+signature+" trigger="+trigger); return;
+                    log("KYANT28850_CROP_DRY_RUN geometry="+opts.outWidth+"x"+opts.outHeight+
+                        " left="+(newGeometry28850 && approval28850==null?-1:left28850)+
+                        " approved="+(!newGeometry28850 || approval28850!=null)+
+                        " trigger="+trigger); return;
+                }
+                if (newGeometry28850 && approval28850 == null) {
+                    log("KYANT28850_EARLY_SKIP reason=NO_SOURCE_SPECIFIC_CALIBRATION geometry="+
+                        opts.outWidth+"x"+opts.outHeight+" trigger="+trigger);
+                    return;
                 }
                 opts.inJustDecodeBounds = false;
                 opts.inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888;
                 android.graphics.Bitmap decoded = android.graphics.BitmapFactory.decodeFile(early.getAbsolutePath(), opts);
                 if (decoded == null) return;
                 try {
-                    output = android.graphics.Bitmap.createBitmap(decoded, 0, 0, w, h);
+                    output = android.graphics.Bitmap.createBitmap(decoded, left28850, 0, w, h);
                 } finally {
                     // createBitmap can share pixels with the source. Never recycle the source
                     // while the cropped bitmap might still reference them.
