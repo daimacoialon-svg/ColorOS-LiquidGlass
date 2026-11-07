@@ -1,3 +1,26 @@
+ColorOS-LiquidGlass V1.9.205.288.31｜Dock Kotlin 编译错误修正版
+
+本次修复（基于 V1.9.205.288.30）：
+1. 修复 liquidglass-module/src/main/java/top/liquidglass/vector/KyantDockLens28827.kt 的 Host.start() 内错误引用构造参数 initialGeometry 导致的 Kotlin 编译失败。
+2. 使用 Host 已保存的 geometry.value 生成初始胶囊 FrameLayout.LayoutParams，变量 initialCapsule 为同一几何快照。保留既有尺寸、圆角、位置及壁纸采样逻辑。
+3. 模块 versionName 更新为 1.9.205.288.31，versionCode 从 192052868 升至 192052869。
+4. 保留 V288.30 的 Dock 原生轮廓裁剪、大方形文件夹连续浮点壁纸采样、Kyant 文件夹/Dock 开关和真实光学引擎；没有改动渲染算法。
+5. 保留 V288.30 的大方形文件夹对照开关（设置后需重启 Launcher）：
+   su -c settings put global liquidglass_kyant_large_square_source_28830 1
+   0=旧动态裁剪；1=连续采样。
+
+验证：已完成原始编译错误对应的变量作用域静态修复、文件匹配检查及 ZIP 完整性检查。
+当前容器没有可用的项目 Gradle 分发包，无法确认完整 Android/Kotlin 构建通过；请通过 Android Studio 或 GitHub Actions 执行：
+./gradlew :liquidglass-module:assembleDebug
+若编译器仍报错，请提供首个错误及其文件行号。
+
+Termux Git：
+cd ~/ColorOS-LiquidGlass-V1.0-Source
+git add .
+git commit -m "V1.9.205.288.31 版本"
+git push origin main
+
+--- V288.30 开发记录 ---
 ColorOS-LiquidGlass V1.9.205.288.30｜Dock 原生宿主轮廓与大方形文件夹连续采样修正版
 
 本版本源码改动：

@@ -157,10 +157,13 @@ object KyantDockLens28827 {
             val index = parent.indexOfChild(hotseat)
             if (index < 0) throw IllegalStateException("Hotseat parent changed")
             frame.addView(compose, FrameLayout.LayoutParams(-1, -1))
+            // The constructor parameter is only available during initialization;
+            // start() reads the retained geometry state for initial capsule size.
             // Placed beneath Hotseat: existing icons keep their touch and z-order.
+            val initialCapsule = geometry.value
             parent.addView(frame, index, FrameLayout.LayoutParams(
-                max(1, ceil(initialGeometry.width.toDouble()).toInt()),
-                max(1, ceil(initialGeometry.height.toDouble()).toInt())))
+                max(1, ceil(initialCapsule.width.toDouble()).toInt()),
+                max(1, ceil(initialCapsule.height.toDouble()).toInt())))
             compose.setParentCompositionContext(recomposer)
             compose.setContent {
                 val source = wallpaper.value
