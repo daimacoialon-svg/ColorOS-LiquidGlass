@@ -1,13 +1,14 @@
-ColorOS-LiquidGlass V1.9.205.288.45｜全分辨率像素对齐与重复任务去重
+ColorOS-LiquidGlass V1.9.205.288.46｜壁纸全分辨率对齐去重与等价映射诊断
 
-本版在 V288.44 基础上更新 WallpaperAlignmentProbe28844.java：
-- 仅在壁纸参考帧发布、提前源完成时进行后台对齐；不在滑动帧工作。
-- 使用原图全分辨率进行网格像素对比，检查左/中/右裁剪和缩放模型及 ±3px/±2px 微调。
-- 同一对壁纸文件签名只完整比较一次；重复发布输出 KYANT28845_ALIGN_DEDUP。
-- 限制最大解码像素数量，发现不完整、代际时间不合理、处理中变动等情况主动跳过。
-- 当前像素对齐仅用于诊断，不直接切换提前参考帧，也不修改 Kyant 渲染；即使尺寸接近，也不能据此断言真实画面完全一致。
-- 继续保留 V288.31 Dock 边界修正、V288.32 共享帧及 V288.36 配置优化逻辑。
+基于 V1.9.205.288.45，保留原有 Dock 胶囊、文件夹与 Kyant 光学效果、正式参考帧。
 
-日志：su -c 'logcat -d -v threadtime | grep KYANT28845'
+本次修复：
+1. 用原图和参考图内容 CRC32 进行去重，即使文件修改时间变更、内容相同，也不再重复全分辨率解码和比较。CRC32 用于快速内容去重，不用于安全验证或证明两张不同图片来自同一壁纸代际。
+2. 区分裁剪模型的文字名称与实际采样坐标映射；模型参数等价时不再计入“次优”。
+3. 新日志 KYANT28846_FULL_RES_ALIGN 输出最佳模型、secondDistinctMae、margin、distinctTie、uniqueMappings。
+4. 同内容重复发布输出 KYANT28846_ALIGN_CONTENT_DEDUP。
+5. 仍为纯诊断，绝不直接把未经全面验证的提前原图接管 Kyant 渲染。
 
-编译和真机校准需在 Android Studio / GitHub Actions 中完成；本文件不宣称真机提前同步已实现。
+真机：su -c 'logcat -d -v threadtime | grep KYANT28846'
+
+仍需 GitHub Actions 编译与真机检查；大文件夹抖动、正式提前渲染尚未在本版修复。
