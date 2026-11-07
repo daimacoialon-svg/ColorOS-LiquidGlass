@@ -1,4 +1,6 @@
 #!/system/bin/sh
+# V1.9.205.288.37: source events are hints, not 2.4s polling jobs;
+# finished screenshot events publish the shared reference immediately.
 # V1.9.205.288.35: watch directory child CREATE / MODIFY / MOVED_TO / CLOSE_WRITE;
 # previous :wm missed ColorOS in-place screenshot changes on some builds.
 # Keep all wallpaper event work outside Launcher render frames.
@@ -296,13 +298,13 @@ if [ "$1" = "--event-wallpaper" ]; then
   event_name=$2
   source_before=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
   published_before=$(cat "$LAUNCHERSIG" 2>/dev/null)
-  echo "KYANT28835_EVENT_BEGIN uptimeSec=$event_up file=$event_name screenshotSig=$source_before publishedSig=$published_before" >> "$LOG"
-  # Screenshot close/move already signals a finished source. A change to the
-  # underlying wallpaper/crop can precede screenshot production: watch for it
-  # for up to 2.4 seconds, with small stat-only checks (no bitmap decoding).
+  echo "KYANT28837_EVENT_BEGIN uptimeSec=$event_up file=$event_name screenshotSig=$source_before publishedSig=$published_before" >> "$LOG"
+  # Source hints are logged by notify.sh only. Publishing must wait for
+  # ColorOS' screen-space screenshot; never substitute an uncalibrated source.
+  # Retain short retries for close-write races and atomic replacements.
   case "$event_name" in
     wallpaper_screenshot.png) attempts=4;;
-    *) attempts=24;;
+    *) echo "KYANT28837_SOURCE_ONLY_NO_POLL event=$event_name" >> "$LOG"; exit 0;;
   esac
   n=0
   published_ok=0
@@ -316,7 +318,7 @@ if [ "$1" = "--event-wallpaper" ]; then
       published=$(cat "$LAUNCHERSIG" 2>/dev/null)
       if [ "$current" = "$published" ] && [ -s "$LAUNCHERDST" ]; then
         read publish_up _ < /proc/uptime
-        echo "KYANT28835_SCREENSHOT_PUBLISHED uptimeSec=$publish_up event=$event_name retry=$n sig=$current" >> "$LOG"
+        echo "KYANT28837_SCREENSHOT_PUBLISHED uptimeSec=$publish_up event=$event_name retry=$n sig=$current" >> "$LOG"
         published_ok=1
         break
       fi
@@ -325,7 +327,7 @@ if [ "$1" = "--event-wallpaper" ]; then
   done
   if [ "$published_ok" -eq 0 ]; then
     read end_up _ < /proc/uptime
-    echo "KYANT28835_SCREENSHOT_WAIT_LIMIT uptimeSec=$end_up event=$event_name source=$(stat -c '%s:%y' "$SRC" 2>/dev/null)" >> "$LOG"
+    echo "KYANT28837_SCREENSHOT_WAIT_LIMIT uptimeSec=$end_up event=$event_name source=$(stat -c '%s:%y' "$SRC" 2>/dev/null)" >> "$LOG"
   fi
   # The normal service is a fallback if ColorOS produces the screenshot later.
   touch "$TRIGGER"
