@@ -412,6 +412,13 @@ object KyantLauncherLens270 {
         // V288.70: native-carrier settle-phase A/B; 0 preserves v288.69.1,
         // 1 samples from the actual drawing View's current floating matrix.
         // This reads a position, it does not alter reference pixels or Kyant lens.
+        // V288.71: observation only. Both native carriers report settle-stage
+        // source continuity, pixel-grid transitions and reference generation.
+        // No bitmap decoding, readback, cropping changes, or extra invalidation.
+        val settleProbe28871 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_settle_probe_28871", 0) == 1
+        } catch (_: Throwable) { false }
         val nativeSettleAb28870 = try {
             Settings.Global.getInt(anchor.context.contentResolver,
                 "liquidglass_kyant_native_settle_ab_28870", 0).coerceIn(0, 1)
@@ -563,6 +570,9 @@ object KyantLauncherLens270 {
             Settings.Global.getInt(anchor.context.contentResolver, NATIVE_BRIDGE_KEY, 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 }
         XposedBridge.log("KYANT2888_NATIVE_BRIDGE mode=$nativeBridgeMode (0=baseline 1=native_bitmap_bridge)")
+        if (settleProbe28871) XposedBridge.log(
+            "KYANT28871_HOST host=${System.identityHashCode(anchor)} carrier=$nativeCarrierAb28869 " +
+            "settleMode=$nativeSettleAb28870 enabled=true")
         XposedBridge.log("KYANT28870_SETTLE_HOST host=${System.identityHashCode(anchor)} " +
             "carrier=$nativeCarrierAb28869 settleMode=$nativeSettleAb28870")
         XposedBridge.log("KYANT28869_RENDER_PATH host=${System.identityHashCode(anchor)} " +
@@ -936,6 +946,76 @@ object KyantLauncherLens270 {
                 "version=$nowVersion publishes=${bridgeDrawCount.get()} bitmapSig=$fingerprint $details")
         }
         releaseTracePulse28820 = { stage, pos, details -> releaseTrace28820(stage, pos, details) }
+        // V288.71: reuse one low-cost monitor per folder Host for native mode 1/2.
+        // Only report visible near-rest motion; do not mistake offscreen or idle
+        // intervals for synchronization defects.
+        var probe71StartNs = SystemClock.elapsedRealtimeNanos()
+        var probe71PrevNs = 0L
+        var probe71PrevX = Float.NaN
+        var probe71PrevRef = 0
+        var probe71Samples = 0L
+        var probe71NearRest = 0L
+        var probe71PixelTransitions = 0L
+        var probe71ReferenceSwitches = 0L
+        var probe71LongNearRestGaps = 0L
+        var probe71MaxSmallStep = 0f
+        var probe71MaxNearRestGapMs = 0f
+        var probe71MaxIntegerDiscontinuity = 0f
+        fun recordNativeSettle28871(path: String, pos: Offset, reference: Bitmap, generation: Long) {
+            if (!settleProbe28871) return
+            val now = SystemClock.elapsedRealtimeNanos()
+            val onScreen = pos.x + previewWidth > 0f && pos.x < displayWidth &&
+                pos.y + previewHeight > 0f && pos.y < displayHeight &&
+                frame.visibility == View.VISIBLE && frame.isShown
+            val refId = System.identityHashCode(reference)
+            if (onScreen) {
+                probe71Samples++
+                if (probe71PrevRef != 0 && probe71PrevRef != refId) probe71ReferenceSwitches++
+                if (probe71PrevX.isFinite()) {
+                    val dx = pos.x - probe71PrevX
+                    val magnitude = kotlin.math.abs(dx)
+                    // Near-rest motion is identified geometrically, independent
+                    // of whether a touch-up or automatic page snap occurred.
+                    if (magnitude > 0.0001f && magnitude <= 3f) {
+                        probe71NearRest++
+                        probe71MaxSmallStep = maxOf(probe71MaxSmallStep, magnitude)
+                        val integerDelta = kotlin.math.abs(kotlin.math.floor(pos.x) - kotlin.math.floor(probe71PrevX))
+                        if (integerDelta >= 1f) probe71PixelTransitions++
+                        probe71MaxIntegerDiscontinuity = maxOf(probe71MaxIntegerDiscontinuity,
+                            kotlin.math.abs(integerDelta - magnitude))
+                        if (probe71PrevNs != 0L) {
+                            val gapMs = (now - probe71PrevNs).toFloat() / 1_000_000f
+                            probe71MaxNearRestGapMs = maxOf(probe71MaxNearRestGapMs, gapMs)
+                            if (gapMs > 33.3f) probe71LongNearRestGaps++
+                        }
+                    }
+                }
+                probe71PrevX = pos.x
+                probe71PrevNs = now
+                probe71PrevRef = refId
+            } else {
+                // A new visible run must not inherit a stale offscreen position.
+                probe71PrevX = Float.NaN
+                probe71PrevNs = 0L
+                probe71PrevRef = 0
+            }
+            if (now - probe71StartNs >= 1_000_000_000L) {
+                if (probe71Samples > 0) XposedBridge.log(
+                    "KYANT28871_NATIVE_SETTLE host=${System.identityHashCode(anchor)} " +
+                    "path=$path samples=$probe71Samples nearRest=$probe71NearRest " +
+                    "pixelTransitions=$probe71PixelTransitions " +
+                    "maxIntegerResidualPx=$probe71MaxIntegerDiscontinuity " +
+                    "maxSmallStepPx=$probe71MaxSmallStep " +
+                    "over33NearRest=$probe71LongNearRestGaps " +
+                    "maxNearRestGapMs=$probe71MaxNearRestGapMs " +
+                    "referenceSwitches=$probe71ReferenceSwitches " +
+                    "gen=$generation x=${pos.x}")
+                probe71Samples=0L; probe71NearRest=0L; probe71PixelTransitions=0L
+                probe71ReferenceSwitches=0L; probe71LongNearRestGaps=0L
+                probe71MaxSmallStep=0f; probe71MaxNearRestGapMs=0f
+                probe71MaxIntegerDiscontinuity=0f; probe71StartNs=now
+            }
+        }
         val bridgePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val bridgeDst = RectF()
         val bridgeCanvas = bridgeBitmap?.let { Canvas(it) }
@@ -959,7 +1039,8 @@ object KyantLauncherLens270 {
             target.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
             target.drawBitmap(activeReference, null, bridgeDst, bridgePaint)
             bridgePublishedPosition.set(pos)
-            bridgeDrawCount.incrementAndGet()
+            val gen = bridgeDrawCount.incrementAndGet()
+            recordNativeSettle28871("NATIVE_BITMAP_BRIDGE", pos, activeReference, gen)
         }
         val bridgeView = if (bridgeBitmap != null) object : View(anchor.context) {
             private var count = 0L
@@ -1147,6 +1228,8 @@ object KyantLauncherLens270 {
                 }
                 canvas.drawBitmap(activeReference, null, destination, bitmapPaint)
                 canvas.restoreToCount(checkpoint)
+                if (nativeCarrierAb28869 == 2) recordNativeSettle28871(
+                    "NATIVE_VIEW_DIRECT", position, activeReference, drawCount + 1L)
                 if (nativeCarrierAb28869 != 2 && displayIsolationMode != 1 && nativeLayerMode == 0)
                     canvas.drawLine(width * 0.5f, 0f, width * 0.5f, height.toFloat(), dividerPaint)
                 val now = SystemClock.elapsedRealtimeNanos()

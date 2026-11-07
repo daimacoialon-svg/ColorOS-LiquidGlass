@@ -145,3 +145,14 @@ V1.9.205.288.70｜原生背景归位阶段采样矩阵 A/B
 - 日志：KYANT28870_SETTLE_HOST、KYANT28870_SETTLE_MATRIX。检测绘制位置相对于旧坐标的差值、小于1px的步进与运动反向。
 - 本版是实验，不保证修复最终 GPU 画面回弹不同步；不冻结背景，不修改 Kyant Shader，不频繁重解码。
 - 测试后将 settle_ab_28870 设为0并重新加载 Launcher 即可回退。
+
+
+V1.9.205.288.71｜原生背景归位阶段采样与位图代际诊断
+- 保留 V288.60 即时壁纸同步、V288.69.1 原生背景模式 1/2 及 Kyant Shader。
+- `liquidglass_kyant_settle_probe_28871=1` 开启低频诊断（默认 0）。修改设置后重新加载 Launcher。
+- `liquidglass_kyant_native_carrier_ab_28869=1` 为原生背景位图+Kyant 透镜；=2 为纯原生背景控制组。
+- 只监测屏幕可见的原生背景 onDraw，统计 0～3px 小幅归位、整数像素边界跨越、背景参考图身份变化，以及小幅运动两次绘制间隔。每秒打印 KYANT28871_NATIVE_SETTLE。
+- `maxIntegerResidualPx` 是浮点运动与整数像素格变化之间的差异统计，不等于 GPU 屏幕真实错位。
+- Mode1 的 gen 是原生背景生成次数，Mode2 的 gen 是原生绘制次数；两者不能直接横向比较。
+- 这是诊断版，没有改变原生背景的采样、位图发布、刷新频率或归位速度，不保证消除抖动。
+- 测试后 `settings put global liquidglass_kyant_settle_probe_28871 0` 并重启 Launcher。
