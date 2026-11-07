@@ -124,3 +124,13 @@ V1.9.205.288.68｜光学位移隔离与连续移动源绘制诊断
 日志：KYANT28868_HOST（真实 Host 设置）、KYANT28868_CONTINUOUS_MOTION（可见且连续移动 >=80ms 的绘制样本）、KYANT28868_PREDRAW_RUN（连续运动被打断统计）。
 maxQualifiedGapMs 是满足诊断前提的相邻绘制最大间隔，不代表 SurfaceFlinger 最终屏幕帧；如果 PreDraw 发生卡顿并中断连续运动，将另由 PREDRAW_RUN 表示。
 本版严禁将零折射位移模式当作长期视觉修复：仅作短时 A/B，完成后恢复 0。
+
+
+V1.9.205.288.69 渲染承载路径实验
+设置：liquidglass_kyant_native_carrier_ab_28869 = 0/1/2（默认 0；重启 Launcher 生效）
+0：原始 Compose 采样 + Kyant 折射。
+1：原生 View 先生成背景位图，Compose 使用该位图继续进行 Kyant 透镜渲染；原生到 Compose 的交接仍可能产生时序延迟。
+2：原生 View 直接显示壁纸背景，覆盖 Compose（此诊断控制组不显示 Kyant 折射，不能作为最终方案）。
+对照时请确保 pipeline_ab_28819=-1、display_isolation_28811=0、native_layer_28812=0。
+诊断日志：KYANT28869_RENDER_PATH / KYANT28869_NATIVE_DRAW / KYANT28869_OPTICAL_CONSUME。
+一切实验不修改 V288.60 的 Root 壁纸发布/事件恢复。

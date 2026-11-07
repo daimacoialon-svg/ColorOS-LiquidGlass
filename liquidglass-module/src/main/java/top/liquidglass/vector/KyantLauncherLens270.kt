@@ -403,6 +403,16 @@ object KyantLauncherLens270 {
         } catch (_: Throwable) { -1 }
         if (lifecycleProbe28864) XposedBridge.log(
             "KYANT28864_LIFECYCLE_HOST host=${System.identityHashCode(anchor)} enabled=true pipeline=$pipelineMode28819")
+        // V288.69 renderer ownership A/B. Read at host creation, never switched
+        // during draw; the source bitmap and optics are not reconfigured globally.
+        // 0=unchanged Compose source+Kyant lens;
+        // 1=native View produces a wallpaper bitmap, Compose consumes it with lens;
+        // 2=actual native View displays wallpaper above Compose (no Kyant lens).
+        // Mode 2 is a DIAGNOSTIC control, NOT a retained optical design.
+        val nativeCarrierAb28869 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_native_carrier_ab_28869", 0).coerceIn(0, 2)
+        } catch (_: Throwable) { 0 }
         val frameSync28822 = if (pipelineMode28819 == 2) try {
             Settings.Global.getInt(anchor.context.contentResolver, FRAME_SYNC_AB_28822_KEY, 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 } else 0
@@ -534,7 +544,11 @@ object KyantLauncherLens270 {
         if (frameTrace28815) XposedBridge.log(
             "KYANT28815_TRACE_ENABLED host=$trace28815Host native=${nativeLayerMode in 1..3} sourceId=${System.identityHashCode(reference)}")
         val onsetSourceId = System.identityHashCode(reference)
-        val nativeBridgeMode = if (pipelineMode28819 >= 0) {
+        val nativeBridgeMode = if (nativeCarrierAb28869 != 0) {
+            // Both A/B paths sample via the native Canvas; mode 2 also draws
+            // directly to the native View instead of waiting for Compose.
+            if (nativeCarrierAb28869 == 1) 1 else 0
+        } else if (pipelineMode28819 >= 0) {
             if (pipelineMode28819 <= 1) 0 else 1
         } else if (nativeLayerMode in 1..3) 0 else if (displayIsolationMode in 1..3) {
             if (displayIsolationMode == 1) 0 else 1
@@ -542,6 +556,11 @@ object KyantLauncherLens270 {
             Settings.Global.getInt(anchor.context.contentResolver, NATIVE_BRIDGE_KEY, 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 }
         XposedBridge.log("KYANT2888_NATIVE_BRIDGE mode=$nativeBridgeMode (0=baseline 1=native_bitmap_bridge)")
+        XposedBridge.log("KYANT28869_RENDER_PATH host=${System.identityHashCode(anchor)} " +
+            "ab=$nativeCarrierAb28869 producer=${when(nativeCarrierAb28869) { 1 -> "NATIVE_BITMAP_BRIDGE"; 2 -> "NATIVE_VIEW_DIRECT"; else -> "COMPOSE_DIRECT" }} " +
+            "consumer=${if(nativeCarrierAb28869 == 2) "NATIVE_VIEW_ONLY_NO_LENS" else "COMPOSE_KYANT_LENS"} " +
+            "pipeline=$pipelineMode28819 displayIsolation=$displayIsolationMode nativeLayer=$nativeLayerMode " +
+            "nativeBridge=$nativeBridgeMode")
         val nativeCompareMode = if (pipelineMode28819 >= 0) 0 else try {
             Settings.Global.getInt(anchor.context.contentResolver, NATIVE_COMPARISON_KEY, 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 }
@@ -789,7 +808,7 @@ object KyantLauncherLens270 {
             isClickable = false
             isFocusable = false
             // Keep the composition owner alive; native A/B modes render their own pixels.
-            if (pipelineMode28819 == 0 || pipelineMode28819 == 3) alpha = 0f
+            if (pipelineMode28819 == 0 || pipelineMode28819 == 3 || nativeCarrierAb28869 == 2) alpha = 0f
         }
         // The ComposeView is the actual native child carrying the Kyant source.
         // A/B 1 gets its current transformed origin directly from that child,
@@ -891,17 +910,18 @@ object KyantLauncherLens270 {
                 val pos = try { glassScreenPosition(lastBounds) } catch (_: Throwable) { return }
                 // V288.22 mode 1: Compose draw itself samples the reference frame.
                 // Do not publish an independent native Bitmap frame first.
-                if (frameSync28822 != 1) sampleBridgeAt(pos)
+                if (frameSync28822 != 1 || nativeCarrierAb28869 == 1) sampleBridgeAt(pos)
                 releaseTrace28820("NATIVE_SAMPLE", pos, "draw=${count + 1L} bridgeW=${bridgeBitmap?.width} bridgeH=${bridgeBitmap?.height}")
                 // Mode 3: sample into exactly the same bridge Bitmap as mode 2,
                 // but render it in the native View's own Canvas (no Compose handoff).
-                if (pipelineMode28819 == 3) {
+                if (pipelineMode28819 == 3 && nativeCarrierAb28869 == 0) {
                     // Native bridge mode: the Bitmap is allocated when bridgeView exists.
                     val buffer = bridgeBitmap
                     if (buffer != null) canvas.drawBitmap(buffer, 0f, 0f, bridgePaint)
                 }
                 count++
-                if (frameSync28822 != 1 && pipelineMode28819 != 3 && bridgeNotifyPending.compareAndSet(false, true)) {
+                if ((frameSync28822 != 1 || nativeCarrierAb28869 == 1) &&
+                    pipelineMode28819 != 3 && bridgeNotifyPending.compareAndSet(false, true)) {
                     post {
                         bridgeNotifyPending.set(false)
                         if (!disposed) {
@@ -913,6 +933,10 @@ object KyantLauncherLens270 {
                 if (count % 60L == 1L && pipelineMode28819 >= 0) XposedBridge.log(
                     "KYANT28819_NATIVE_BRIDGE host=$trace28815Host mode=$pipelineMode28819 " +
                     "draws=$count x=${pos.x} y=${pos.y} version=${bridgeVersion.intValue}")
+                if (nativeCarrierAb28869 != 0 && count % 60L == 0L) XposedBridge.log(
+                    "KYANT28869_NATIVE_DRAW mode=$nativeCarrierAb28869 draws=$count " +
+                    "x=${pos.x} y=${pos.y} bridgeGen=${bridgeDrawCount.get()} " +
+                    "publishedX=${bridgePublishedPosition.get()?.x} canvasHardware=${canvas.isHardwareAccelerated}")
                 if (count % 120L == 0L) XposedBridge.log(
                     "KYANT2889_NATIVE_PUBLISH draws=$count x=${pos.x} y=${pos.y} version=${bridgeVersion.intValue}")
             }
@@ -932,7 +956,9 @@ object KyantLauncherLens270 {
         // V288.7: native Canvas reference, intentionally ABOVE Kyant on the LEFT half
         // only. Right half stays the unmodified Compose/Kyant optical renderer.
         // This is an A/B diagnostic, NOT the final hybrid optical implementation.
-        val nativeSampleView = if ((nativeCompareMode == 1 && nativeBridgeMode == 0 && displayIsolationMode == 0) || displayIsolationMode == 1 || nativeLayerMode in 1..3) object : View(anchor.context) {
+        val nativeSampleView = if (nativeCarrierAb28869 == 2 ||
+            (nativeCompareMode == 1 && nativeBridgeMode == 0 && displayIsolationMode == 0) ||
+            displayIsolationMode == 1 || nativeLayerMode in 1..3) object : View(anchor.context) {
             private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
             private val destination = RectF()
             private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -1050,14 +1076,14 @@ object KyantLauncherLens270 {
                     (activeReference.width - x) * width / sw,
                     (activeReference.height - y) * height / sh)
                 val checkpoint = canvas.save()
-                if (displayIsolationMode == 1 || nativeLayerMode in 1..3) {
+                if (nativeCarrierAb28869 == 2 || displayIsolationMode == 1 || nativeLayerMode in 1..3) {
                     canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat())
                 } else {
                     canvas.clipRect(0f, 0f, width * 0.5f, height.toFloat())
                 }
                 canvas.drawBitmap(activeReference, null, destination, bitmapPaint)
                 canvas.restoreToCount(checkpoint)
-                if (displayIsolationMode != 1 && nativeLayerMode == 0)
+                if (nativeCarrierAb28869 != 2 && displayIsolationMode != 1 && nativeLayerMode == 0)
                     canvas.drawLine(width * 0.5f, 0f, width * 0.5f, height.toFloat(), dividerPaint)
                 val now = SystemClock.elapsedRealtimeNanos()
                 if (lastDrawTimeNs > 0L) {
@@ -1180,12 +1206,13 @@ object KyantLauncherLens270 {
             compose.setContent { LensContent270(referenceState28832.value, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, effectiveSamplingMode28862,
                 effectiveLargeContinuous28862, effectiveRenderMode28862, motionAbMode, legacySyncAbMode, motionCompare28861, layerSampleEffective28862, if (nativeLayerMode in 2..3) 3 else displayIsolationMode, nativeLayerMode, bridgeBitmap, bridgeVersion,
-                if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
+                if (nativeCarrierAb28869 == 1) 2 else if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
                 pipelineMode28819, frameSync28822,
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
                 { glassScreenPosition(lastBounds) },
                 sourceMatrixAb28866, { composeViewScreenPosition28866() },
                 zeroLensAb28868, continuousMotionProbe28868, continuousRun28868,
+                nativeCarrierAb28869,
                 uvProbe28867, { frame.visibility == View.VISIBLE &&
                     frame.isShown && frame.width > 0 && frame.height > 0 &&
                     glassScreenPosition(lastBounds).let { pos ->
@@ -1907,6 +1934,7 @@ object KyantLauncherLens270 {
         sourceMatrixAb28866: Int, currentComposeViewPosition28866: () -> Offset,
         zeroLensAb28868: Int, continuousMotionProbe28868: Boolean,
         continuousRun28868: java.util.concurrent.atomic.AtomicReference<Pair<Long, Long>>,
+        nativeCarrierAb28869: Int,
         uvProbe28867: Boolean, visibleSource28867: () -> Boolean,
         recordSourceMatrix28866: (Offset, Offset) -> Unit,
         lifecycleProbe28864: Boolean, drawProbe28865: Boolean,
@@ -2251,6 +2279,10 @@ object KyantLauncherLens270 {
                 val now = SystemClock.elapsedRealtimeNanos()
                 val previous = sourceLastDrawNs.getAndSet(now)
                 val draws = sourceDrawCount.incrementAndGet()
+                if (nativeCarrierAb28869 == 1 && draws % 60L == 1L) XposedBridge.log(
+                    "KYANT28869_OPTICAL_CONSUME draws=$draws nativeGen=${bridgeDrawCount.get()} " +
+                    "composeOriginX=$rootScreenX publishedX=${bridgePublishedPosition.get()?.x} " +
+                    "posGapPx=${bridgePublishedPosition.get()?.let { kotlin.math.abs(rootScreenX - it.x) }}")
                 if (pipelineMode28819 >= 0 && draws % 60L == 1L) XposedBridge.log(
                     "KYANT28819_COMPOSE_DRAW mode=$pipelineMode28819 draws=$draws " +
                     "sourceX=$rootScreenX bridge=${bridgeBitmap != null} " +
