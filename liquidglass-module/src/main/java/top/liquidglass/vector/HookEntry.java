@@ -2665,8 +2665,18 @@ public final class HookEntry implements IXposedHookLoadPackage {
         new Thread(() -> {
             try {
                 android.content.Context app = context.getApplicationContext();
-                java.io.File candidate = new java.io.File(app.getFilesDir(), "liquidglass_early_wallpaper_source");
+                // V288.41: Root publishes into the credential-encrypted Launcher
+                // directory. OEM launchers may default to device-protected storage,
+                // so app.getFilesDir() is not necessarily the same directory.
+                android.content.Context ce = app.createCredentialProtectedStorageContext();
+                java.io.File candidate = new java.io.File(ce.getFilesDir(), "liquidglass_early_wallpaper_source");
                 boolean exists = candidate.isFile();
+                log("KYANT28841_EARLY_RESOLVE reason=" + reason +
+                    " package=" + app.getPackageName() +
+                    " defaultDir=" + app.getFilesDir().getAbsolutePath() +
+                    " ceDir=" + ce.getFilesDir().getAbsolutePath() +
+                    " path=" + candidate.getAbsolutePath() +
+                    " exists=" + exists);
                 long size = exists ? candidate.length() : 0L;
                 long modified = exists ? candidate.lastModified() : 0L;
                 String signature = size + ":" + modified;
@@ -2722,8 +2732,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
             probeEarlySource28840(app, "WATCH_ALREADY_READY");
             return;
         }
-        String[] dirs = {app.getFilesDir().getAbsolutePath(),
-            app.createDeviceProtectedStorageContext().getFilesDir().getAbsolutePath()};
+        // Watch the actual CE path written by the Root worker, as well as DE.
+        // Deduplicate because on some OEM processes the default context is CE.
+        java.util.LinkedHashSet<String> watchDirs28841 = new java.util.LinkedHashSet<>();
+        watchDirs28841.add(app.createCredentialProtectedStorageContext().getFilesDir().getAbsolutePath());
+        watchDirs28841.add(app.createDeviceProtectedStorageContext().getFilesDir().getAbsolutePath());
+        String[] dirs = watchDirs28841.toArray(new String[0]);
         for (final String dir : dirs) {
             try {
                 android.os.FileObserver observer = new android.os.FileObserver(dir,
@@ -2749,9 +2763,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 observer.startWatching();
                 REFERENCE_OBSERVERS_124.add(observer);
                 log("KYANT28840_WATCH_READY dir=" + dir + " mask=CLOSE_WRITE|MOVED_TO|CREATE");
-                if (dir.equals(app.getFilesDir().getAbsolutePath())) {
+                if (dir.equals(app.createCredentialProtectedStorageContext().getFilesDir().getAbsolutePath())) {
                     EARLY_WATCH_READY_28840 = true;
-                    probeEarlySource28840(app, "WATCH_START");
+                    probeEarlySource28840(app, "WATCH_START_CE");
                 }
             } catch (Throwable t) {
                 log("KYANT28840_WATCH_FAILED dir=" + dir + " error=" + t.getClass().getSimpleName() +
