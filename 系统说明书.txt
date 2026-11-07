@@ -18,3 +18,5 @@ Termux：su -c settings put global liquidglass_kyant_early_frame_ab_28847 0  # �
 su -c settings put global liquidglass_kyant_early_frame_ab_28847 1  # 静态壁纸早期左裁剪预览（实验）
 su -c settings put global liquidglass_kyant_early_frame_ab_28847 2  # 仅诊断，不替换显示
 仅处理已校准 1px 宽差的静态壁纸；正式截图仍会接管。不要在动态壁纸上启用。
+
+V1.9.205.288.48：修复提前渲染只依赖新签名诊断的触发缺陷，文件完成事件直接通知渲染；缓存探测和事件合并可重试。新增 KYANT28848_TRIGGER / EARLY_SKIP 日志。A/B 默认关闭，打开需 settings put global liquidglass_kyant_early_frame_ab_28847 1。尚未真机验证。

@@ -2689,18 +2689,29 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static final java.util.concurrent.atomic.AtomicBoolean EARLY_RENDER_BUSY_28847 =
         new java.util.concurrent.atomic.AtomicBoolean(false);
     private static volatile String EARLY_LAST_PUBLISHED_28847 = "";
+    // V288.48: event delivery must not depend on the geometry-probe cache.
+    private static final java.util.concurrent.atomic.AtomicBoolean EARLY_RENDER_PENDING_28848 =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
     private static volatile boolean EARLY_PREVIEW_ACTIVE_28847 = false;
     private static volatile long EARLY_PREVIEW_SOURCE_TIME_28847 = -1L;
     private static void scheduleEarlyPreview28847(final android.content.Context app, final String trigger) {
         final int mode;
         try { mode = android.provider.Settings.Global.getInt(app.getContentResolver(), EARLY_MODE_KEY_28847, 0); }
-        catch (Throwable ignored) { return; }
+        catch (Throwable ex) {
+            log("KYANT28848_MODE_READ_FAILED trigger=" + trigger + " error=" + ex.getClass().getSimpleName());
+            return;
+        }
+        log("KYANT28848_TRIGGER trigger=" + trigger + " mode=" + mode);
         if (mode == 0) {
             // A/B can be disabled without replacing the normal reference loader.
             if (EARLY_PREVIEW_ACTIVE_28847) scheduleReferenceLoad28833(app, null, true);
             return;
         }
-        if (!EARLY_RENDER_BUSY_28847.compareAndSet(false, true)) return;
+        if (!EARLY_RENDER_BUSY_28847.compareAndSet(false, true)) {
+            EARLY_RENDER_PENDING_28848.set(true);
+            log("KYANT28848_RENDER_PENDING trigger=" + trigger);
+            return;
+        }
         new Thread(() -> {
             android.graphics.Bitmap output = null;
             try {
@@ -2711,10 +2722,16 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 }
                 java.io.File early = new java.io.File(earlyCeFilesDir28842(app),
                     "liquidglass_early_wallpaper_source");
-                if (!early.isFile() || early.length() < 1024) return;
+                if (!early.isFile() || early.length() < 1024) {
+                    log("KYANT28848_EARLY_SKIP reason=SOURCE_NOT_READY trigger=" + trigger);
+                    return;
+                }
                 final long size = early.length(), mtime = early.lastModified();
                 final String signature = size + ":" + mtime;
-                if (signature.equals(EARLY_LAST_PUBLISHED_28847)) return;
+                if (signature.equals(EARLY_LAST_PUBLISHED_28847)) {
+                    log("KYANT28848_EARLY_SKIP reason=ALREADY_PUBLISHED source=" + signature);
+                    return;
+                }
                 android.util.DisplayMetrics dm = app.getResources().getDisplayMetrics();
                 final int w = dm.widthPixels, h = dm.heightPixels;
                 android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
@@ -2748,7 +2765,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if (REFRACTION_FRAME_MODIFIED >= mtime && !EARLY_PREVIEW_ACTIVE_28847) {
                     log("KYANT28847_EARLY_SKIP reason=CANONICAL_NEWER"); return;
                 }
-                if (!glassEnabled || (customBlurMode != 1 && !REFRACTION_ENABLED)) return;
+                if (!glassEnabled || (customBlurMode != 1 && !REFRACTION_ENABLED)) {
+                    log("KYANT28848_EARLY_SKIP reason=GLASS_NOT_READY glassEnabled=" + glassEnabled +
+                        " blurMode=" + customBlurMode + " refractionEnabled=" + REFRACTION_ENABLED);
+                    return;
+                }
                 if (android.provider.Settings.Global.getInt(app.getContentResolver(),
                         EARLY_MODE_KEY_28847, 0) != 1) return;
                 REFRACTION_FRAME = output;
@@ -2769,6 +2790,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 log("KYANT28847_EARLY_ERROR type="+ex.getClass().getSimpleName());
             } finally {
                 EARLY_RENDER_BUSY_28847.set(false);
+                if (EARLY_RENDER_PENDING_28848.getAndSet(false))
+                    scheduleEarlyPreview28847(app, "COALESCED_RENDER_28848");
             }
         }, "LiquidGlass-EarlyPreview28847").start();
     }
@@ -2848,6 +2871,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         " reference=" + EARLY_VALID_REFERENCE_28843 +
                         " display=" + EARLY_VALID_DISPLAY_28843 +
                         " signature=" + signature + " status=DIAGNOSTIC_ONLY");
+                    scheduleEarlyPreview28847(app, "CACHED_PROBE_28848_" + reason);
                     return;
                 }
                 android.graphics.BitmapFactory.Options opt = new android.graphics.BitmapFactory.Options();
@@ -2883,7 +2907,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     " display=" + displayDimensions +
                     " signature=" + signature + " status=DIAGNOSTIC_ONLY");
                 WallpaperAlignmentProbe28844.schedule(app, "EARLY_SOURCE_VALIDATED");
-                if (reason.startsWith("FILE_EVENT_")) scheduleEarlyPreview28847(app, reason);
+                scheduleEarlyPreview28847(app, "VALIDATED_PROBE_28848_" + reason);
                 log("KYANT28840_EARLY_PROBE_OK reason=" + reason + " signature=" + signature +
                     " elapsedRealtimeMs=" + android.os.SystemClock.elapsedRealtime());
             } catch (Throwable t) {
@@ -2927,6 +2951,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             // Root publishes via atomic rename; CLOSE_WRITE handles direct writes.
                             // A CREATE event might be incomplete, hence validation in the worker.
                             probeEarlySource28840(app, "FILE_EVENT_" + event);
+                            if ((event & (android.os.FileObserver.CLOSE_WRITE |
+                                    android.os.FileObserver.MOVED_TO)) != 0)
+                                scheduleEarlyPreview28847(app, "EARLY_FILE_EVENT_28848_" + event);
                             return;
                         }
                         if (!"liquidglass_wallpaper_reference.jpg".equals(name)) return;
