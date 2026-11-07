@@ -1,5 +1,8 @@
 #!/system/bin/sh
-# V1.9.205.288.33: event-first wallpaper snapshot, stable-copy validation, no per-frame polling.
+# V1.9.205.288.34: observe wallpaper source completion as an early wake-up;
+# publish ONLY the verified screen-space screenshot. Do not replace it with an
+# uncropped wallpaper source that would shift optical sampling UVs.
+# Bound short-lived event retries; normal draw loop never scans the filesystem.
 # Source is checked twice before atomic replacement; never expose partial copies.
 # Android toybox inotifyd is optional; fallback works without it.
 PKG=top.liquidglass.vector
@@ -54,6 +57,8 @@ fi
  # Watch source directory for close-write / moved-to / create events.
 # If inotifyd is absent or fails, the 5-minute fallback remains active.
 if [ -z "$1" ] && command -v inotifyd >/dev/null 2>&1; then
+  # Observe the directory rather than only the screenshot filename. ColorOS
+  # may update wallpaper/wallpaper_orig before wallpaper_screenshot.png exists.
   inotifyd /data/adb/service.d/99-liquidglass-wallpaper-notify.sh /data/system/users/0:wm >/dev/null 2>&1 &
   WATCHER_PID=$!
 fi
@@ -268,28 +273,51 @@ if [ "$1" = "--event-config" ]; then
   exit $?
 fi
 if [ "$1" = "--event-wallpaper" ]; then
+  # Event workers are temporary. A burst of system file events is coalesced
+  # into one bounded retry, and a locked-out worker leaves a resident trigger.
   event_lock=/data/local/tmp/.liquidglass-wallpaper-event.lock
   if ! mkdir "$event_lock" 2>/dev/null; then
-    # Never drop overlapping events: the resident worker will also retry.
     touch "$TRIGGER"
     exit 0
   fi
-  # The inotify event can precede the final source close/rename on some
-  # ColorOS builds. Retry only on this event, not continuously during drawing.
-  for attempt in 1 2 3 4; do
-    sync_launcher_reference
-    sync_de_reference
-    sync_once
-    source_sig=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
-    published_sig=$(cat "$LAUNCHERSIG" 2>/dev/null)
-    if [ -n "$source_sig" ] && [ "$source_sig" = "$published_sig" ] && [ -s "$LAUNCHERDST" ]; then
-      read uptime_sec _ < /proc/uptime
-      echo "KYANT28833_ROOT_PUBLISHED attempt=$attempt uptimeSec=$uptime_sec sig=$source_sig" >> "$LOG"
-      break
+  trap 'rmdir "$event_lock" 2>/dev/null' EXIT INT TERM
+  read event_up _ < /proc/uptime
+  event_name=$2
+  source_before=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
+  published_before=$(cat "$LAUNCHERSIG" 2>/dev/null)
+  echo "KYANT28834_EVENT_BEGIN uptimeSec=$event_up file=$event_name screenshotSig=$source_before publishedSig=$published_before" >> "$LOG"
+  # Screenshot close/move already signals a finished source. A change to the
+  # underlying wallpaper/crop can precede screenshot production: watch for it
+  # for up to 2.4 seconds, with small stat-only checks (no bitmap decoding).
+  case "$event_name" in
+    wallpaper_screenshot.png) attempts=4;;
+    *) attempts=24;;
+  esac
+  n=0
+  published_ok=0
+  while [ "$n" -lt "$attempts" ]; do
+    n=$((n + 1))
+    current=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
+    if [ -n "$current" ] && [ "$current" != "$published_before" ]; then
+      sync_launcher_reference
+      sync_de_reference
+      sync_once
+      published=$(cat "$LAUNCHERSIG" 2>/dev/null)
+      if [ "$current" = "$published" ] && [ -s "$LAUNCHERDST" ]; then
+        read publish_up _ < /proc/uptime
+        echo "KYANT28834_SCREENSHOT_PUBLISHED uptimeSec=$publish_up event=$event_name retry=$n sig=$current" >> "$LOG"
+        published_ok=1
+        break
+      fi
     fi
-    sleep 0.08
+    sleep 0.1
   done
-  rmdir "$event_lock" 2>/dev/null
+  if [ "$published_ok" -eq 0 ]; then
+    read end_up _ < /proc/uptime
+    echo "KYANT28834_SCREENSHOT_WAIT_LIMIT uptimeSec=$end_up event=$event_name source=$(stat -c '%s:%y' "$SRC" 2>/dev/null)" >> "$LOG"
+  fi
+  # The normal service is a fallback if ColorOS produces the screenshot later.
+  touch "$TRIGGER"
   exit 0
 fi
 sync_config

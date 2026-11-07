@@ -2600,8 +2600,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     REFRACTION_FRAME_LENGTH=loadedLength;
                     KyantReferenceBridge264.onReferenceReady(app, next, loadedModified, loadedLength);
                     KyantLauncherFrameBridge266.onReferenceReady(next, loadedModified, loadedLength);
-                    log("KYANT28833_REFERENCE_PUBLISHED elapsedMs="+
-                        (android.os.SystemClock.elapsedRealtime()-started28833)+
+                    log("KYANT28834_REFERENCE_PUBLISHED elapsedRealtimeMs="+
+                        android.os.SystemClock.elapsedRealtime()+
+                        " decodeElapsedMs="+(android.os.SystemClock.elapsedRealtime()-started28833)+
                         " generation="+KyantLauncherFrameBridge266.peekGeneration270());
                     // V1.9.137: Prewarm blur as soon as the reference is decoded.
                     // Do not wait for the folder's first draw after unlock.
@@ -2661,7 +2662,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         // Callback is already delivered off the UI thread by
                         // FileObserver. Avoid the extra UI queueing delay and
                         // immediately decode after the producer's atomic rename.
-                        log("KYANT28833_REFERENCE_FILE_EVENT type="+event+
+                        log("KYANT28834_REFERENCE_FILE_EVENT type="+event+
                             " elapsedRealtimeMs="+android.os.SystemClock.elapsedRealtime());
                         scheduleReferenceLoad28833(app,null,true);
                     }
@@ -7970,7 +7971,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             android.content.Intent.ACTION_WALLPAPER_CHANGED);
                         app.registerReceiver(new android.content.BroadcastReceiver(){
                             @Override public void onReceive(android.content.Context c,android.content.Intent i){
-                                log("KYANT28833_WALLPAPER_CHANGED at="+android.os.SystemClock.uptimeMillis());
+                                log("KYANT28834_WALLPAPER_CHANGED elapsedRealtimeMs="+android.os.SystemClock.elapsedRealtime()+
+                                    " frameGeneration="+KyantLauncherFrameBridge266.peekGeneration270()+
+                                    " sourceReady="+(REFRACTION_FRAME!=null));
+                                // A broadcast cannot make ColorOS produce the
+                                // screenshot; check whether Root has published it.
                                 scheduleReferenceLoad28833(app,null,true);
                             }
                         },wallpaper28833);
@@ -8160,6 +8165,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
     }
     private static final java.util.Set<String> DOCK_CALLBACK_DIAG_201=
         java.util.Collections.synchronizedSet(new java.util.HashSet<String>());
+    private static volatile long LAST_FOREGROUND_REFERENCE_CHECK_28834=0L;
     private static void dockCallback201(android.app.Activity a,String trigger){
         if(a==null)return;
         String type=a.getClass().getName();
@@ -8167,7 +8173,23 @@ public final class HookEntry implements IXposedHookLoadPackage {
         String key=trigger+"|"+type;
         if(DOCK_CALLBACK_DIAG_201.add(key))
             log("DOCK_201_CALLBACK trigger="+trigger+" class="+type+" matched="+matched);
-        if(matched)scheduleDock200(a,trigger);
+        if(matched){
+            // V288.34: an inactive/cached Launcher may not receive FileObserver
+            // callbacks until it returns. Check the already-published atomic
+            // snapshot immediately at resume/focus instead of waiting for the
+            // ordinary 1-second pre-draw throttle. Decode remains off-thread.
+            if("onResume".equals(trigger) || "onPostResume".equals(trigger) ||
+               "Activity.windowFocus".equals(trigger)){
+                long now28834=android.os.SystemClock.elapsedRealtime();
+                if(now28834-LAST_FOREGROUND_REFERENCE_CHECK_28834>350L){
+                    LAST_FOREGROUND_REFERENCE_CHECK_28834=now28834;
+                    log("KYANT28834_LAUNCHER_FOREGROUND elapsedRealtimeMs="+
+                        now28834+" trigger="+trigger);
+                    scheduleReferenceLoad28833(a.getApplicationContext(),null,true);
+                }
+            }
+            scheduleDock200(a,trigger);
+        }
     }
     private static void installDockFallback201(){
         // Activity.onCreate executes even when the Launcher was already running

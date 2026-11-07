@@ -1,4 +1,4 @@
-V1.9.205.288.33｜壁纸事件驱动同步优化版
+V1.9.205.288.34｜壁纸源事件预唤醒与前台即时采样版
 
 基于 V1.9.205.288.32 的共享参考帧机制，优化壁纸更新触发时序。
 
@@ -10,7 +10,7 @@ V1.9.205.288.33｜壁纸事件驱动同步优化版
 3. KyantDockLens28827.kt 订阅同一事件并更新 Dock 的 wallpaper 状态，保留此前已存在的 onPreDraw 兜底检查。两个容器共用相同的参考帧发布源和 generation。
 4. 文件夹在 onPreDraw 上也有轻量引用相等检查，避免极端情况下主线程通知尚未处理而漏掉新帧；平时仅比较对象引用，不新增壁纸读取或逐帧 Bitmap 拷贝。
 5. Dock V288.31 通过真机确认的右侧裁剪边界、固定胶囊几何保持不变。大方形文件夹快速滑动抖动问题仍待单独修复，本版不修改其采样/光学算法。
-6. 本版在 V288.32 基础上增加事件驱动同步，versionName=1.9.205.288.33；versionCode=192052871。
+6. 本版在 V288.32 基础上增加事件驱动同步，versionName=1.9.205.288.34；versionCode=192052872。
 
 注意事项：
 - 仅更新壁纸“参考帧”输入：不会替换系统壁纸，也不会强制重新截屏。沿用现有 Launcher-owned 文件监听及解码链路；如果系统本身没有生成/更新参考文件，仍需排查上游流程。
@@ -27,7 +27,7 @@ V1.9.205.288.33｜壁纸事件驱动同步优化版
 Termux Git：
 cd ~/ColorOS-LiquidGlass-V1.0-Source
 git add .
-git commit -m "V1.9.205.288.33 版本"
+git commit -m "V1.9.205.288.34 版本"
 git push origin main
 
 
@@ -44,3 +44,12 @@ git push origin main
 - 安装新 APK 后，在模块 UI 执行 Root 脚本更新，重启手机使常驻服务加载新版脚本，否则旧版进程仍按原节奏执行。
 - 继续沿用原 V288.32 文件夹/Dock 共用壁纸参考帧机制。
 - 此版本未改变 Dock 几何、Kyant 光学算法以及大文件夹采样，后者抖动仍待单独优化。
+
+【V288.34 额外修改】
+- Root 新增系统壁纸 crop/orig 与元数据写入完成事件预唤醒；仍只把经确认完整的 wallpaper_screenshot.png 作为屏幕坐标参考帧，避免原图裁切错位。
+- 事件工作线程至多持续约 2.4 秒，仅在壁纸变化期间轻量 stat，常态无额外轮询。
+- Launcher 返回前台或获得焦点时立即触发工作线程重载，跳过正常帧绘制的 1 秒检查限频。
+- 新增 KYANT28834_SOURCE_EVENT、EVENT_BEGIN、SCREENSHOT_PUBLISHED、SCREENSHOT_WAIT_LIMIT、LAUNCHER_FOREGROUND、REFERENCE_FILE_EVENT、REFERENCE_PUBLISHED 日志。
+- 若 ColorOS 的 wallpaper_screenshot.png 本身在返回桌面前尚未生成，本版不能保证设置页面内立即同步；需根据日志判断是否另建准确的早期壁纸裁剪来源。
+- Dock 胶囊几何和 V288.32 的 Dock/文件夹统一通知未改动，大方形文件夹滑动抖动仍为独立问题。
+- Android 完整编译及 OnePlus 13T 真机验证待完成。
