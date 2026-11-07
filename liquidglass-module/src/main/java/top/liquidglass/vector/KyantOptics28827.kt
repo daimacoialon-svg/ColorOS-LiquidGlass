@@ -35,7 +35,13 @@ object KyantOptics28827 {
                 override fun onChange(selfChange: Boolean) { refresh(app) }
             }
             try {
-                app.contentResolver.registerContentObserver(Settings.Global.CONTENT_URI, true, listener)
+                // V288.36: Observe only the three optical material keys.
+                // A broad Settings.Global observer also woke Compose for unrelated
+                // system changes (brightness, animation scale, radio state, etc.).
+                val resolver = app.contentResolver
+                resolver.registerContentObserver(Settings.Global.getUriFor(STRENGTH_KEY), false, listener)
+                resolver.registerContentObserver(Settings.Global.getUriFor(BLUR_KEY), false, listener)
+                resolver.registerContentObserver(Settings.Global.getUriFor(HIGHLIGHT_KEY), false, listener)
                 observer = listener
                 registered = true
             } catch (t: Throwable) {

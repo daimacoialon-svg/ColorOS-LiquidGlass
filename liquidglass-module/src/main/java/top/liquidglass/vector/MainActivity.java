@@ -153,9 +153,17 @@ public final class MainActivity extends Activity {
                                 script.append("settings put global ").append(entry[0]).append(' ').append(entry[1]).append('\n');
                             script.append("settings put global ").append(key).append(wanted?" 1\n":" 0\n");
                             rootCommand28827(script.toString());
-                            verified=(wanted?"1":"0").equals(rootCommand28827("settings get global "+key));
-                            if(verified && wanted)for(String[] entry:KYANT_SAFE_PRESET_28827)
-                                if(!entry[1].equals(rootCommand28827("settings get global "+entry[0]))){verified=false;break;}
+                            // V288.36: verify the complete preset in ONE root
+                            // process instead of launching su separately for each key.
+                            StringBuilder verifyScript=new StringBuilder("set -e\n");
+                            verifyScript.append("[ \"$(settings get global ").append(key)
+                                .append(")\" = \"").append(wanted?"1":"0").append("\" ]\n");
+                            if(wanted)for(String[] entry:KYANT_SAFE_PRESET_28827){
+                                verifyScript.append("[ \"$(settings get global ").append(entry[0])
+                                    .append(")\" = \"").append(entry[1]).append("\" ]\n");
+                            }
+                            rootCommand28827(verifyScript.toString());
+                            verified=true;
                         }catch(Exception ignored){}
                         final boolean ok=verified;
                         runOnUiThread(()->{
