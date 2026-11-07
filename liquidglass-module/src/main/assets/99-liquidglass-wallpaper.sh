@@ -45,7 +45,7 @@ lock_owner_alive() {
   now_start=$(sed 's/.*) //' "/proc/$old/stat" 2>/dev/null | awk '{print $20}')
   [ -n "$now_start" ] && [ "$old_start" = "$now_start" ]
 }
-if [ "$1" != "--event-wallpaper" ] && [ "$1" != "--event-config" ]; then
+if [ "$1" != "--event-wallpaper" ] && [ "$1" != "--event-config" ] && [ "$1" != "--event-early-source" ]; then
 if ! mkdir "$LOCK" 2>/dev/null; then
   if lock_owner_alive; then exit 0; fi
   rm -rf "$LOCK"
@@ -321,11 +321,19 @@ if [ "$1" = "--event-config" ]; then
   exit $?
 fi
 if [ "$1" = "--event-early-source" ]; then
+  # Worker bypasses the RESIDENT service's PID lock (fixed V288.39).
+  read early_up _ < /proc/uptime
+  echo "KYANT28839_EARLY_WORKER_START uptimeSec=$early_up pid=$$" >> "$LOG"
   # One worker per event burst. Only w/m events start a copy; c/n are hints.
   lock=/data/local/tmp/.liquidglass-early-source.lock
-  mkdir "$lock" 2>/dev/null || exit 0
+  if ! mkdir "$lock" 2>/dev/null; then
+    echo "KYANT28839_EARLY_WORKER_COALESCED pid=$$" >> "$LOG"
+    exit 0
+  fi
   trap 'rmdir "$lock" 2>/dev/null' EXIT INT TERM
   publish_early_source_28838
+  read early_done _ < /proc/uptime
+  echo "KYANT28839_EARLY_WORKER_FINISH uptimeSec=$early_done pid=$$" >> "$LOG"
   exit 0
 fi
 if [ "$1" = "--event-wallpaper" ]; then
