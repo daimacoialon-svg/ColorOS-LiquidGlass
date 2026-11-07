@@ -469,6 +469,16 @@ object KyantLauncherLens270 {
             "native=$nativeLayerMode isolation=$displayIsolationMode bridge=$nativeBridgeMode " +
             "optics=false bridgeSync=$bridgeSyncMode sourceId=${System.identityHashCode(reference)}")
         // V288.61: opt-in diagnostics; never alter geometry or shader output.
+        // V288.63 A/B: 0 = unchanged baseline, 1 = commit native matrix on
+        // every visibly changed PreDraw, independent of OEM moved/geometry gates.
+        // This deliberately changes only invalidation scheduling, not the shader,
+        // optics, reference bitmap, coordinate transform, or wallpaper publication.
+        val nativeFrameCommit28863 = if (pipelineMode28819 >= 0) 0 else try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_native_frame_commit_ab_28863", 0).coerceIn(0, 1)
+        } catch (_: Throwable) { 0 }
+        XposedBridge.log("KYANT28863_HOST host=$trace28815Host commitAb=$nativeFrameCommit28863 " +
+            "bridge=$nativeBridgeMode pipeline=$pipelineMode28819")
         val motionCompare28861 = try {
             Settings.Global.getInt(anchor.context.contentResolver,
                 "liquidglass_kyant_motion_compare_28861", 0) == 1
@@ -573,6 +583,13 @@ object KyantLauncherLens270 {
         var maxPredrawUs = 0L
         var totalPredrawUs = 0L
         var offscreenChecks = 0L
+        var sync28863WindowNs = 0L
+        var sync28863Checks = 0L
+        var sync28863Commits = 0L
+        var sync28863NativeChanged = 0L
+        var sync28863MaxLag = 0f
+        var sync28863MaxStep = 0f
+        var sync28863LastX = Float.NaN
         var skippedPositionUpdates = 0L
         var stableLayoutFrames = 0
         var lastDrawNs = 0L
@@ -1495,6 +1512,52 @@ object KyantLauncherLens270 {
                     val currentSample = largeFrameSample28829 ?: glassScreenPosition(b)
                     // Geometry may have changed since the initial pre-draw read.
                     nativePredrawPosition28824 = currentSample
+                    // The existing moved/geometry gate may skip committing the
+                    // real native matrix while Workspace is scrolling. Mode 1
+                    // closes that gap using the same PreDraw snapshot for every
+                    // visible host; there is no background thread or timer.
+                    if (nativeFrameCommit28863 == 1 && visible &&
+                        frame.visibility == View.VISIBLE && layoutMatches &&
+                        currentSample.x.isFinite() && currentSample.y.isFinite()) {
+                        val previous = samplePosition.value
+                        val deltaX = kotlin.math.abs(currentSample.x - previous.x)
+                        val deltaY = kotlin.math.abs(currentSample.y - previous.y)
+                        val maxLag = kotlin.math.max(deltaX, deltaY)
+                        sync28863Checks++
+                        sync28863MaxLag = kotlin.math.max(sync28863MaxLag, maxLag)
+                        if (sync28863LastX.isFinite()) {
+                            sync28863MaxStep = kotlin.math.max(sync28863MaxStep,
+                                kotlin.math.abs(currentSample.x - sync28863LastX))
+                        }
+                        sync28863LastX = currentSample.x
+                        if (maxLag > 0.015625f) {
+                            sync28863NativeChanged++
+                            samplePosition.value = currentSample
+                            lastSample = currentSample
+                            lastCommitNs = SystemClock.elapsedRealtimeNanos()
+                            sampleCommitCount++
+                            cadenceCommits++
+                            sync28863Commits++
+                            // A changed Compose source state invalidates its draw
+                            // node; request a View frame as well so the native
+                            // parent's scrolling display list is refreshed.
+                            compose.postInvalidateOnAnimation()
+                        }
+                        val ns = SystemClock.elapsedRealtimeNanos()
+                        if (sync28863WindowNs == 0L) sync28863WindowNs = ns
+                        if (ns - sync28863WindowNs >= 1_000_000_000L) {
+                            XposedBridge.log("KYANT28863_FRAME_COMMIT host=${System.identityHashCode(anchor)} " +
+                                "checks=$sync28863Checks nativeChanges=$sync28863NativeChanged " +
+                                "commits=$sync28863Commits maxLagPx=$sync28863MaxLag " +
+                                "maxStepPx=$sync28863MaxStep")
+                            sync28863WindowNs = ns
+                            sync28863Checks = 0L
+                            sync28863NativeChanged = 0L
+                            sync28863Commits = 0L
+                            sync28863MaxLag = 0f
+                            sync28863MaxStep = 0f
+                        }
+                    }
                     predrawMatrixSnapshot.set(Pair(currentSample, SystemClock.elapsedRealtimeNanos()))
                     releaseTrace28820("POST_PREDRAW", currentSample,
                         "committedX=${samplePosition.value.x} committedY=${samplePosition.value.y} changed=$updatePosition")
