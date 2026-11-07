@@ -1,5 +1,5 @@
 #!/system/bin/sh
-# V1.9.205.219: 33-field boot snapshot, 0.1dp blur precision, legacy visual probes OFF.
+# V1.9.205.288.33: event-first wallpaper snapshot, stable-copy validation, no per-frame polling.
 # Source is checked twice before atomic replacement; never expose partial copies.
 # Android toybox inotifyd is optional; fallback works without it.
 PKG=top.liquidglass.vector
@@ -54,7 +54,7 @@ fi
  # Watch source directory for close-write / moved-to / create events.
 # If inotifyd is absent or fails, the 5-minute fallback remains active.
 if [ -z "$1" ] && command -v inotifyd >/dev/null 2>&1; then
-  inotifyd /data/adb/service.d/99-liquidglass-wallpaper-notify.sh /data/system/users/0:cmw >/dev/null 2>&1 &
+  inotifyd /data/adb/service.d/99-liquidglass-wallpaper-notify.sh /data/system/users/0:wm >/dev/null 2>&1 &
   WATCHER_PID=$!
 fi
 # V123: watch the app's private preferences directory. Android SharedPreferences
@@ -168,17 +168,17 @@ sync_once() {
   [ -f "$SRC" ] && [ -d "$DSTDIR" ] || return
   UIDNUM=$(stat -c %u "/data/user/0/$PKG" 2>/dev/null)
   case "$UIDNUM" in ''|*[!0-9]*) return;; esac
-  BEFORE=$(stat -c '%s:%Y' "$SRC" 2>/dev/null)
+  BEFORE=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
   [ -n "$BEFORE" ] || return
   PREV=$(cat "$SIGFILE" 2>/dev/null)
   [ "$BEFORE" != "$PREV" ] || return
   # Debounce writes and verify that the source has stabilized.
-  sleep 0.2
-  AFTER=$(stat -c '%s:%Y' "$SRC" 2>/dev/null)
+  sleep 0.06
+  AFTER=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
   [ "$BEFORE" = "$AFTER" ] || return
   TMP="$DSTDIR/.wallpaper_reference.new.$$"
   if cp "$SRC" "$TMP" 2>/dev/null && [ "$(stat -c %s "$TMP" 2>/dev/null)" -gt 1024 ]; then
-    FINAL=$(stat -c '%s:%Y' "$SRC" 2>/dev/null)
+    FINAL=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
     if [ "$FINAL" = "$AFTER" ]; then
       chown "$UIDNUM:$UIDNUM" "$TMP" && chmod 600 "$TMP"
       restorecon "$TMP" 2>/dev/null
@@ -205,16 +205,16 @@ sync_launcher_reference() {
     chown "$LUID:$LGID" "$LAUNCHERDIR" && chmod 700 "$LAUNCHERDIR"
     restorecon -R "$LAUNCHERDIR" 2>/dev/null
   fi
-  BEFORE=$(stat -c '%s:%Y' "$SRC" 2>/dev/null)
+  BEFORE=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
   [ -n "$BEFORE" ] || return
   PREV=$(cat "$LAUNCHERSIG" 2>/dev/null)
   if [ "$BEFORE" = "$PREV" ] && [ -s "$LAUNCHERDST" ]; then return; fi
-  sleep 0.2
-  AFTER=$(stat -c '%s:%Y' "$SRC" 2>/dev/null)
+  sleep 0.06
+  AFTER=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
   [ "$BEFORE" = "$AFTER" ] || return
   TMP="$LAUNCHERDIR/.liquidglass_wallpaper.new.$$"
   if cp "$SRC" "$TMP" 2>/dev/null && [ "$(stat -c %s "$TMP" 2>/dev/null)" -gt 1024 ]; then
-    FINAL=$(stat -c '%s:%Y' "$SRC" 2>/dev/null)
+    FINAL=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
     if [ "$FINAL" = "$AFTER" ]; then
       chown "$LUID:$LGID" "$TMP" && chmod 600 "$TMP"
       restorecon "$TMP" 2>/dev/null
@@ -269,11 +269,26 @@ if [ "$1" = "--event-config" ]; then
 fi
 if [ "$1" = "--event-wallpaper" ]; then
   event_lock=/data/local/tmp/.liquidglass-wallpaper-event.lock
-  mkdir "$event_lock" 2>/dev/null || exit 0
-  # Wait briefly for system to finish replacing its source screenshot.
-  sync_launcher_reference
-  sync_de_reference
-  sync_once
+  if ! mkdir "$event_lock" 2>/dev/null; then
+    # Never drop overlapping events: the resident worker will also retry.
+    touch "$TRIGGER"
+    exit 0
+  fi
+  # The inotify event can precede the final source close/rename on some
+  # ColorOS builds. Retry only on this event, not continuously during drawing.
+  for attempt in 1 2 3 4; do
+    sync_launcher_reference
+    sync_de_reference
+    sync_once
+    source_sig=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
+    published_sig=$(cat "$LAUNCHERSIG" 2>/dev/null)
+    if [ -n "$source_sig" ] && [ "$source_sig" = "$published_sig" ] && [ -s "$LAUNCHERDST" ]; then
+      read uptime_sec _ < /proc/uptime
+      echo "KYANT28833_ROOT_PUBLISHED attempt=$attempt uptimeSec=$uptime_sec sig=$source_sig" >> "$LOG"
+      break
+    fi
+    sleep 0.08
+  done
   rmdir "$event_lock" 2>/dev/null
   exit 0
 fi

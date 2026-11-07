@@ -2516,6 +2516,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static volatile long REFRACTION_FRAME_MODIFIED = -1L;
     private static volatile long REFRACTION_FRAME_LENGTH = -1L;
     private static volatile boolean REFRACTION_LOADING;
+    // V288.33: Event-driven reference changes cannot be discarded while the
+    // prior Bitmap decode is running. Coalesce them into one follow-up check.
+    private static final Object REFRACTION_LOAD_LOCK_28833 = new Object();
+    private static boolean REFRACTION_RELOAD_PENDING_28833;
     // 145: do not allow concurrent boot prewarm loops on repeated unlock broadcasts.
     private static volatile boolean BOOT_PREWARM_RUNNING;
     private static volatile long BOOT_PREWARM_GENERATION;
@@ -2526,17 +2530,27 @@ public final class HookEntry implements IXposedHookLoadPackage {
         scheduleReferenceLoad(view.getContext().getApplicationContext(), view);
     }
     private static void scheduleReferenceLoad(final android.content.Context context, final View view) {
-        if (!glassEnabled || REFRACTION_LOADING || (customBlurMode!=1 && !REFRACTION_ENABLED)) return;
+        scheduleReferenceLoad28833(context, view, false);
+    }
+    // urgent=true is used only for atomic wallpaper-file events, never for draw frames.
+    private static void scheduleReferenceLoad28833(final android.content.Context context,
+                                                     final View view, final boolean urgent) {
+        if (!glassEnabled || (customBlurMode!=1 && !REFRACTION_ENABLED)) return;
         long now=android.os.SystemClock.uptimeMillis();
-        // On boot the Launcher-owned wallpaper file can arrive after the first draw.
-        // Retry rapidly until the first valid frame exists; use the longer interval
-        // only after the frame is ready, to avoid steady-state disk churn.
-        // Metadata checks run on the worker thread; hot wallpaper changes should not wait 30s.
-        long retryMs=REFRACTION_FRAME==null ? 120L : 1000L;
-        if(now-REFRACTION_LAST_CHECK<retryMs)return;
-        REFRACTION_LAST_CHECK=now;
-        REFRACTION_LOADING=true;
+        synchronized(REFRACTION_LOAD_LOCK_28833){
+            if(REFRACTION_LOADING){
+                if(urgent) REFRACTION_RELOAD_PENDING_28833=true;
+                return;
+            }
+            // Normal pre-draw checks keep their original low-cost throttle; a
+            // finished atomic replacement immediately bypasses it.
+            long retryMs=REFRACTION_FRAME==null ? 120L : 1000L;
+            if(!urgent && now-REFRACTION_LAST_CHECK<retryMs)return;
+            REFRACTION_LAST_CHECK=now;
+            REFRACTION_LOADING=true;
+        }
         final android.content.Context app=context;
+        final long started28833=android.os.SystemClock.elapsedRealtime();
         new Thread(new Runnable(){public void run(){
             android.graphics.Bitmap next=null;
             try {
@@ -2586,6 +2600,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     REFRACTION_FRAME_LENGTH=loadedLength;
                     KyantReferenceBridge264.onReferenceReady(app, next, loadedModified, loadedLength);
                     KyantLauncherFrameBridge266.onReferenceReady(next, loadedModified, loadedLength);
+                    log("KYANT28833_REFERENCE_PUBLISHED elapsedMs="+
+                        (android.os.SystemClock.elapsedRealtime()-started28833)+
+                        " generation="+KyantLauncherFrameBridge266.peekGeneration270());
                     // V1.9.137: Prewarm blur as soon as the reference is decoded.
                     // Do not wait for the folder's first draw after unlock.
                     if(customBlurMode==1 && customBlurDp>0){
@@ -2615,7 +2632,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if(REFRACTION_LOGS++<12)log("REFRACTION_FRAME status=INVALID_OR_MISSING");
                 }
             }catch(Throwable t){if(REFRACTION_LOGS++<24)log("REFRACTION_FRAME status=UNAVAILABLE reason="+t.getClass().getSimpleName()+" detail="+String.valueOf(t.getMessage()));}
-            finally{REFRACTION_LOADING=false;}
+            finally{
+                boolean retry;
+                synchronized(REFRACTION_LOAD_LOCK_28833){
+                    REFRACTION_LOADING=false;
+                    retry=REFRACTION_RELOAD_PENDING_28833;
+                    REFRACTION_RELOAD_PENDING_28833=false;
+                }
+                if(retry) scheduleReferenceLoad28833(app, null, true);
+            }
         }},"LiquidGlass-Wallpaper-Reference").start();
     }
     // V124: watch the Launcher-owned reference file, not the protected system source.
@@ -2630,15 +2655,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
         for(final String dir:dirs){
             try {
                 android.os.FileObserver observer=new android.os.FileObserver(dir,
-                    android.os.FileObserver.CLOSE_WRITE | android.os.FileObserver.MOVED_TO |
-                    android.os.FileObserver.CREATE){
+                    android.os.FileObserver.CLOSE_WRITE | android.os.FileObserver.MOVED_TO){
                     @Override public void onEvent(int event,String name){
                         if(name==null || !"liquidglass_wallpaper_reference.jpg".equals(name))return;
-                        handler.post(()->{
-                            REFRACTION_LAST_CHECK=0L;
-                            scheduleReferenceLoad(app,null);
-                            log("WALLPAPER_REFERENCE_EVENT_124 event="+event);
-                        });
+                        // Callback is already delivered off the UI thread by
+                        // FileObserver. Avoid the extra UI queueing delay and
+                        // immediately decode after the producer's atomic rename.
+                        log("KYANT28833_REFERENCE_FILE_EVENT type="+event+
+                            " elapsedRealtimeMs="+android.os.SystemClock.elapsedRealtime());
+                        scheduleReferenceLoad28833(app,null,true);
                     }
                 };
                 observer.startWatching();
@@ -7936,6 +7961,21 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         log("CONFIG_194 stage=HINT_RECEIVER_READY authority=GLOBAL_SNAPSHOT");
                     }catch(Throwable t){log("CONFIG_194 stage=HINT_RECEIVER_FAILED reason="+t.getClass().getSimpleName());}
                     watchReferenceChanges124(app,handler);
+                    // V288.33: read-only wallpaper-change notification for
+                    // tracing. It does not decode an incomplete system wallpaper
+                    // or restart the optical hosts; the private-file observer
+                    // performs the eventual single-frame publication.
+                    try {
+                        android.content.IntentFilter wallpaper28833=new android.content.IntentFilter(
+                            android.content.Intent.ACTION_WALLPAPER_CHANGED);
+                        app.registerReceiver(new android.content.BroadcastReceiver(){
+                            @Override public void onReceive(android.content.Context c,android.content.Intent i){
+                                log("KYANT28833_WALLPAPER_CHANGED at="+android.os.SystemClock.uptimeMillis());
+                                scheduleReferenceLoad28833(app,null,true);
+                            }
+                        },wallpaper28833);
+                        log("KYANT28833_WALLPAPER_LISTENER_READY");
+                    }catch(Throwable t){log("KYANT28833_WALLPAPER_LISTENER_FAILED "+t.getClass().getSimpleName());}
                     prewarmBootRefraction(app,handler);
                     try {
                         app.getContentResolver().registerContentObserver(CONFIG,false,new android.database.ContentObserver(handler){
