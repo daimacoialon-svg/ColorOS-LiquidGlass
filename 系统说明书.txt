@@ -1,85 +1,29 @@
-ColorOS-LiquidGlass V1.9.205.288.31｜Dock Kotlin 编译错误修正版
+ColorOS-LiquidGlass V1.9.205.288.32｜Kyant 文件夹与 Dock 壁纸参考帧同步版
 
-本次修复（基于 V1.9.205.288.30）：
-1. 修复 liquidglass-module/src/main/java/top/liquidglass/vector/KyantDockLens28827.kt 的 Host.start() 内错误引用构造参数 initialGeometry 导致的 Kotlin 编译失败。
-2. 使用 Host 已保存的 geometry.value 生成初始胶囊 FrameLayout.LayoutParams，变量 initialCapsule 为同一几何快照。保留既有尺寸、圆角、位置及壁纸采样逻辑。
-3. 模块 versionName 更新为 1.9.205.288.31，versionCode 从 192052868 升至 192052869。
-4. 保留 V288.30 的 Dock 原生轮廓裁剪、大方形文件夹连续浮点壁纸采样、Kyant 文件夹/Dock 开关和真实光学引擎；没有改动渲染算法。
-5. 保留 V288.30 的大方形文件夹对照开关（设置后需重启 Launcher）：
-   su -c settings put global liquidglass_kyant_large_square_source_28830 1
-   0=旧动态裁剪；1=连续采样。
+本次目标：壁纸更换后，已经挂载的 Kyant 文件夹光学宿主与 Dock 光学宿主同步使用最新的 Launcher-owned 壁纸参考帧，不必重启桌面或关闭重开光学开关。
 
-验证：已完成原始编译错误对应的变量作用域静态修复、文件匹配检查及 ZIP 完整性检查。
-当前容器没有可用的项目 Gradle 分发包，无法确认完整 Android/Kotlin 构建通过；请通过 Android Studio 或 GitHub Actions 执行：
-./gradlew :liquidglass-module:assembleDebug
-若编译器仍报错，请提供首个错误及其文件行号。
+变更明细（基于已修复 Dock 越界的 V1.9.205.288.31）：
+1. KyantLauncherFrameBridge266.java 新增轻量引用发布订阅：在现有 HookEntry.scheduleReferenceLoad() 解码新参考 Bitmap 并调用 onReferenceReady() 后，只对真正发生变化的参考帧发出一次主线程通知。使用 WeakHashMap 管理监听器，并在宿主退出时取消注册。
+2. KyantLauncherLens270.kt 不再永久锁定宿主首次创建时的参考 Bitmap；改为 Compose 可观察状态 referenceState28832。接收到新参考帧后更新 LensContent270、原生 Canvas 对照绘制及桥接实验的背景输入，并请求一次重绘；不销毁重建光学宿主、不改变透镜几何和折射参数。
+3. KyantDockLens28827.kt 订阅同一事件并更新 Dock 的 wallpaper 状态，保留此前已存在的 onPreDraw 兜底检查。两个容器共用相同的参考帧发布源和 generation。
+4. 文件夹在 onPreDraw 上也有轻量引用相等检查，避免极端情况下主线程通知尚未处理而漏掉新帧；平时仅比较对象引用，不新增壁纸读取或逐帧 Bitmap 拷贝。
+5. Dock V288.31 通过真机确认的右侧裁剪边界、固定胶囊几何保持不变。大方形文件夹快速滑动抖动问题仍待单独修复，本版不修改其采样/光学算法。
+6. 模块版本升级：versionName=1.9.205.288.32；versionCode=192052870。
 
-Termux Git：
-cd ~/ColorOS-LiquidGlass-V1.0-Source
-git add .
-git commit -m "V1.9.205.288.31 版本"
-git push origin main
+注意事项：
+- 仅更新壁纸“参考帧”输入：不会替换系统壁纸，也不会强制重新截屏。沿用现有 Launcher-owned 文件监听及解码链路；如果系统本身没有生成/更新参考文件，仍需排查上游流程。
+- 不改动此前确认正常的 Kyant 文件夹/Dock UI 开关、共享光学参数、诊断环境配置。
+- 源码静态一致性检查及 ZIP 完整性可在交付时完成；完整 Android Gradle 编译、OnePlus 13T 真机壁纸切换验证需在有 Android SDK/构建依赖的环境完成。不要将静态检查描述成编译通过。
 
---- V288.30 开发记录 ---
-ColorOS-LiquidGlass V1.9.205.288.30｜Dock 原生宿主轮廓与大方形文件夹连续采样修正版
-
-本版本源码改动：
-1. 修复 Dock 光学 View 自己占据整个 Hotseat 所致的潜在裁剪越界：新的 Kyant Dock FrameLayout 尺寸直接等于 DockBackground204 原始胶囊尺寸，原生 View outline 使用相同圆角并启用 clipToOutline。Compose 中不再重复应用几何偏移。
-2. 光学 View 在 Hotseat 同级下方，位置=Hotseat 本地位置+原胶囊偏移；pivot=Hotseat pivot-胶囊偏移；继承 Hotseat 缩放和旋转，保留旧 Dock 图标布局与原先稳定的玻璃光学参数。
-3. 提供 KYANT28830_DOCK_HOST_BOUNDS 诊断，包含 Hotseat 和光学宿主尺寸、坐标、圆角裁剪、pivot，便于确认真机最终几何。该变更仍需真机验证。
-4. 大方形文件夹默认尝试整张参考帧的连续浮点变换，避免动态整数源矩形裁剪的纹理采样阶梯变化；不创建额外 Bitmap、不冻结、不降采样。仅大方形文件夹，其他容器保持原路径。
-5. 大方形文件夹 A/B 设置：su -c settings put global liquidglass_kyant_large_square_source_28830 1（默认连续采样）；设置为 0 使用 V288.29 动态裁剪作为对照。修改后重启 Launcher。
-6. 正常运行时不再做 DragView 全树诊断扫描，也不反复分配主机矩阵诊断对象；需要日志诊断时原有 trace 开关仍可开启。
-7. 文件夹/ Dock Kyant UI 开关、自动应用已验证稳定配置、统一光学参数与旧 Dock 回退均保留。
-
-验证：源码已经完成静态检查；需要在本机／GitHub Actions 进行 Android Gradle 编译和 OnePlus 13T 真机测试。没有真机结果前不能声称溢出或抖动已彻底修复。
+真机验证：
+(1) 保持 Kyant 文件夹和 Dock 光学效果均开启。
+(2) 更换桌面壁纸，不重启 Launcher，观察 Dock 和全部不同大小的文件夹是否同步切换到新壁纸。
+(3) 反复更换两三张壁纸，检查是否有旧图片残留、短暂白块、光学层消失。
+(4) 若更新异常，Vector 日志搜索：KYANT28832_FOLDER_REFERENCE_UPDATED 或 KYANT28832_DOCK_REFERENCE_UPDATED。
+(5) 大文件夹快速左右滑动抖动仍单独观察，勿将本版视为抖动修复版。
 
 Termux Git：
 cd ~/ColorOS-LiquidGlass-V1.0-Source
 git add .
-git commit -m "V1.9.205.288.30 版本"
-git push origin main
-
---- 之前系统说明（留档） ---
-ColorOS-LiquidGlass V1.9.205.288.29｜固定 Dock 几何适配与大方形文件夹采样同步优化
-
-适用：OnePlus 13T / ColorOS 15 / Android 15 / KernelSU / LSPosed Vector。
-原始来源：基于 V1.9.205.288.28 工程改进，保留已验证可工作的 Kyant0 文件夹与 Dock 真实光学引擎。
-
-【Dock 几何修复】
-1. 旧 DockBackground204 与 KyantDockLens28827 统一调用 HookEntry.dockGeometryFromBounds28829；玻璃矩形、宽高、3.5%水平内边距与30%圆角比例完全共用。
-2. 取消 V288.28 的 screen viewport 裁边/再居中方案；Kyant 直接绘制在原生 Dock 所使用的 Hotseat 局部矩形上，不重算胶囊尺寸。
-3. Dock 光学宿主是 Hotseat 下方的兄弟 View；与 Hotseat 同步父容器本地 x/y、缩放、旋转、pivot 和 alpha，避免屏幕坐标倒推造成额外位移。
-4. 壁纸参考源按原生胶囊左上角的实际屏幕位置采样，与新的几何映射对应。保留图标与旧 Dock Drawable 失败回退。
-5. 启动首帧日志：KYANT28829_DOCK_NATIVE_BOUNDS。只有实际安装运行后才能确认 ColorOS 实机布局是否与计算一致。
-
-【大方形文件夹优化】
-1. 仅针对宽度达到可视范围约30%、且宽高比接近方形的大型文件夹。其余文件夹、横条、竖条沿用先前路径。
-2. 大方形文件夹在 Workspace 滑动期间，减少高频 OEM 几何反射查询；布局变化会强制刷新，另每8个 PreDraw 周期进行一次复核。
-3. 大方形文件夹在同一次 PreDraw 事件内，统一用于 Compose 提交与原生诊断的壁纸采样坐标，避免相同帧多次读取矩阵造成不同位置。
-4. 不修改 Kyant 原始 Shader、折射参数、图片质量，不强制冻结采样或牺牲分辨率。
-5. 大方形优化默认开启，若出现回归可在 Termux 关闭后通过 Vector 重启 Launcher：
-   su -c settings put global liquidglass_kyant_large_square_opt_28829 0
-   恢复开启改为 1。日志：KYANT28829_LARGE_FOLDER_OPTIMIZED。
-注意：大方形文件夹的 GPU 帧延迟尚未真机实测，此优化旨在降低主线程开销及帧内位置不一致，不能预先宣称抖动完全消除。
-
-【原有功能】
-文件夹 Kyant 开关：liquidglass_kyant_persistent_probe_2884 (0/1)
-Dock Kyant 开关：liquidglass_kyant_dock_28827 (0/1)
-折射强度：liquidglass_kyant_optical_strength_28827
-模糊半径：liquidglass_kyant_optical_blur_28827
-高光透明度：liquidglass_kyant_optical_highlight_28827
-统一 UI、诊断自动关闭、配置同步、旧 Dock 回退路径均保留原版。
-
-【编译及运行验证状态】
-已完成源码结构检查、几何等价性检查、ZIP 完整性校验。
-Android 编译未通过验证：本环境缺少 Gradle 9.7.1 分发包，尝试构建时无法连接 services.gradle.org。
-请使用 Android Studio 或 GitHub Actions 执行 :liquidglass-module:assembleDebug；不要将源码包中旧 APK 误认为新构建，本包已去除旧 release APK。
-安装前备份 V288.27/288.28 可用 APK；真机需重点测试 Dock 左右圆角是否与旧版固定胶囊完全贴合，大方形快速滑动的壁纸纹理是否稳定，并与小文件夹、竖条、横条对比。
-遇到新问题请发送含 KYANT28829_DOCK_NATIVE_BOUNDS 的 Vector 日志、真机截图或构建失败日志。
-
-【Git 命令】
-cd ~/ColorOS-LiquidGlass-V1.0-Source
-git add .
-git commit -m "V1.9.205.288.29 版本"
+git commit -m "V1.9.205.288.32 版本"
 git push origin main

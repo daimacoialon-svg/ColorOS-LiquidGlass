@@ -132,6 +132,18 @@ object KyantDockLens28827 {
         val geometry = mutableStateOf(initialGeometry)
         private var geometryLogged = false
         val wallpaper = mutableStateOf(reference)
+        // Receive the same one-shot, main-thread reference publication as
+        // FolderIcon. PreDraw below remains as a safety net after reattachment.
+        private val referenceListener28832 = object : KyantLauncherFrameBridge266.ReferenceListener {
+            override fun onReferenceFrameReady(next: Bitmap, version: Long) {
+                if (stopped || !hotseat.isAttachedToWindow || next.isRecycled) return
+                if (wallpaper.value === next) return
+                wallpaper.value = next
+                compose.postInvalidateOnAnimation()
+                frame.postInvalidateOnAnimation()
+                XposedBridge.log("KYANT28832_DOCK_REFERENCE_UPDATED generation=$version sourceId=${System.identityHashCode(next)} size=${next.width}x${next.height}")
+            }
+        }
         val scope = CoroutineScope(AndroidUiDispatcher.Main + SupervisorJob() +
             CoroutineExceptionHandler { _, t ->
                 XposedBridge.log("KYANT28827_DOCK_RECOMPOSER_ERROR ${t.javaClass.simpleName} ${t.message}")
@@ -172,6 +184,10 @@ object KyantDockLens28827 {
             scope.launch { recomposer.runRecomposeAndApplyChanges() }
             hotseat.addOnAttachStateChangeListener(detachListener)
             parent.viewTreeObserver.addOnPreDrawListener(listener)
+            KyantLauncherFrameBridge266.addReferenceListener(referenceListener28832)
+            KyantLauncherFrameBridge266.peekReferenceFrame270()?.let {
+                referenceListener28832.onReferenceFrameReady(it, KyantLauncherFrameBridge266.peekGeneration270())
+            }
             updateGeometry()
         }
         private val transform = Matrix()
@@ -243,6 +259,7 @@ object KyantDockLens28827 {
             if (latest != null && latest !== wallpaper.value) wallpaper.value = latest
         }
         fun stop() {
+            KyantLauncherFrameBridge266.removeReferenceListener(referenceListener28832)
             if (stopped) return
             stopped = true
             try { hotseat.removeOnAttachStateChangeListener(detachListener) } catch (_: Throwable) {}

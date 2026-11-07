@@ -301,6 +301,9 @@ object KyantLauncherLens270 {
             XposedBridge.log("KYANT2885_REFERENCE_NOT_READY one_shot_not_consumed")
             return
         }
+        // V288.32: a folder consumes the same live reference publication as Dock.
+        // Updating this state changes the pixels without rebuilding the optics host.
+        val referenceState28832 = androidx.compose.runtime.mutableStateOf(reference)
         val root = anchor.rootView as? ViewGroup ?: return
         // Place the Compose host as the FIRST child of FolderIcon, before native icon children.
         // This preserves the original draw ordering without a DecorView overlay.
@@ -707,20 +710,22 @@ object KyantLauncherLens270 {
         fun sampleBridgeAt(pos: Offset) {
             val bitmap = bridgeBitmap ?: return
             val target = bridgeCanvas ?: return
+            val activeReference = referenceState28832.value
+            if (activeReference.isRecycled) return
             val sw = android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
             val sh = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
-            val sx = reference.width.toFloat() / sw
-            val sy = reference.height.toFloat() / sh
+            val sx = activeReference.width.toFloat() / sw
+            val sy = activeReference.height.toFloat() / sh
             val cropW = bitmap.width * sx
             val cropH = bitmap.height * sy
             val x = pos.x * sx
             val y = pos.y * sy
             bridgeDst.set(-x * bitmap.width / cropW.coerceAtLeast(.001f),
                 -y * bitmap.height / cropH.coerceAtLeast(.001f),
-                (reference.width - x) * bitmap.width / cropW.coerceAtLeast(.001f),
-                (reference.height - y) * bitmap.height / cropH.coerceAtLeast(.001f))
+                (activeReference.width - x) * bitmap.width / cropW.coerceAtLeast(.001f),
+                (activeReference.height - y) * bitmap.height / cropH.coerceAtLeast(.001f))
             target.drawColor(android.graphics.Color.TRANSPARENT, android.graphics.PorterDuff.Mode.CLEAR)
-            target.drawBitmap(reference, null, bridgeDst, bridgePaint)
+            target.drawBitmap(activeReference, null, bridgeDst, bridgePaint)
             bridgePublishedPosition.set(pos)
             bridgeDrawCount.incrementAndGet()
         }
@@ -878,23 +883,25 @@ object KyantLauncherLens270 {
                 }
                 val screenW = android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
                 val screenH = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
-                val scaleX = reference.width.toFloat() / screenW
-                val scaleY = reference.height.toFloat() / screenH
+                val activeReference = referenceState28832.value
+                if (activeReference.isRecycled) return
+                val scaleX = activeReference.width.toFloat() / screenW
+                val scaleY = activeReference.height.toFloat() / screenH
                 val x = position.x * scaleX
                 val y = position.y * scaleY
                 val sw = width.toFloat() * scaleX
                 val sh = height.toFloat() * scaleY
                 if (sw <= 0f || sh <= 0f) return
                 destination.set(-x * width / sw, -y * height / sh,
-                    (reference.width - x) * width / sw,
-                    (reference.height - y) * height / sh)
+                    (activeReference.width - x) * width / sw,
+                    (activeReference.height - y) * height / sh)
                 val checkpoint = canvas.save()
                 if (displayIsolationMode == 1 || nativeLayerMode in 1..3) {
                     canvas.clipRect(0f, 0f, width.toFloat(), height.toFloat())
                 } else {
                     canvas.clipRect(0f, 0f, width * 0.5f, height.toFloat())
                 }
-                canvas.drawBitmap(reference, null, destination, bitmapPaint)
+                canvas.drawBitmap(activeReference, null, destination, bitmapPaint)
                 canvas.restoreToCount(checkpoint)
                 if (displayIsolationMode != 1 && nativeLayerMode == 0)
                     canvas.drawLine(width * 0.5f, 0f, width * 0.5f, height.toFloat(), dividerPaint)
@@ -929,7 +936,24 @@ object KyantLauncherLens270 {
             rebound28818Restore = null
             reboundLayerGuard28818.set(false)
         }
+        // V288.32: the FolderIcon listens to the SAME source-generation event
+        // as Dock. This callback is always dispatched on the Launcher main thread.
+        val referenceListener28832 = object : KyantLauncherFrameBridge266.ReferenceListener {
+            override fun onReferenceFrameReady(next: Bitmap, version: Long) {
+                if (disposed || !anchor.isAttachedToWindow || next.isRecycled) return
+                if (referenceState28832.value === next) return
+                referenceState28832.value = next
+                // Invalidate the cached native/Compose child, not the whole desktop.
+                nativeSampleView?.postInvalidateOnAnimation()
+                bridgeView?.postInvalidateOnAnimation()
+                compose.postInvalidateOnAnimation()
+                frame.postInvalidateOnAnimation()
+                anchor.postInvalidateOnAnimation()
+                XposedBridge.log("KYANT28832_FOLDER_REFERENCE_UPDATED host=$trace28815Host generation=$version sourceId=${System.identityHashCode(next)} size=${next.width}x${next.height}")
+            }
+        }
         fun dispose(reason: String) {
+            KyantLauncherFrameBridge266.removeReferenceListener(referenceListener28832)
             restoreRebound28818("dispose")
             if (disposed) return
             disposed = true
@@ -998,7 +1022,7 @@ object KyantLauncherLens270 {
             if (nativeLayerMode !in 2..3) nativeSampleView?.let { frame.addView(it,
                 FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)) }
 
-            compose.setContent { LensContent270(reference, sampleWidth.intValue, sampleHeight.intValue,
+            compose.setContent { LensContent270(referenceState28832.value, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode,
                 largeContinuousSource28830, renderAbMode, motionAbMode, legacySyncAbMode, if (nativeLayerMode in 2..3) 3 else displayIsolationMode, nativeLayerMode, bridgeBitmap, bridgeVersion,
                 if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
@@ -1040,6 +1064,11 @@ object KyantLauncherLens270 {
             KyantLauncherLensProbe270.setActiveFor273(anchor, true)
             activeHostCount.incrementAndGet()
             activeCountRegistered = true
+            KyantLauncherFrameBridge266.addReferenceListener(referenceListener28832)
+            // Close the attach/publication race: a newer frame may have arrived.
+            KyantLauncherFrameBridge266.peekReferenceFrame270()?.let {
+                referenceListener28832.onReferenceFrameReady(it, KyantLauncherFrameBridge266.peekGeneration270())
+            }
             XposedBridge.log("KYANT2885_MUTUAL_EXCLUSION active=true layer=below_icons fallback=automatic_on_dispose")
             var lastX = anchorXY[0]
             var lastY = anchorXY[1]
@@ -1059,6 +1088,12 @@ object KyantLauncherLens270 {
                     if (!enabled) {
                         frame.post { dispose("switch_off") }
                         return@OnPreDrawListener true
+                    }
+                    // Fallback, like Dock, if notification is still queued.
+                    KyantLauncherFrameBridge266.peekReferenceFrame270()?.let {
+                        if (it !== referenceState28832.value) {
+                            referenceListener28832.onReferenceFrameReady(it, KyantLauncherFrameBridge266.peekGeneration270())
+                        }
                     }
                     frameChecks++
                     val cadenceNow = SystemClock.elapsedRealtimeNanos()

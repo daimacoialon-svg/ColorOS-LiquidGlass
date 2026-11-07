@@ -4,6 +4,8 @@ import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.os.SystemClock;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import android.view.View;
 import de.robv.android.xposed.XC_MethodHook;
@@ -11,6 +13,8 @@ import de.robv.android.xposed.XposedBridge;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 import java.util.WeakHashMap;
+import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** V266: opt-in, read-only in-process reference/geometry handoff validation.
  *  No bitmap copies, texture uploads, overlays, or changes to original glass rendering.
@@ -21,16 +25,60 @@ public final class KyantLauncherFrameBridge266 {
     private static volatile long generation = 0;
     private static volatile long modified = -1, length = -1;
     private static final WeakHashMap<View, Long> last = new WeakHashMap<>();
+
+    // V288.32: A shared wallpaper-reference publication point for both Kyant hosts.
+    // Weak subscriptions do not retain detached FolderIcon/Dock hosts. Updates are
+    // dispatched on the main thread; Bitmap decoding stays on HookEntry's worker.
+    public interface ReferenceListener {
+        void onReferenceFrameReady(Bitmap bitmap, long generation);
+    }
+    private static final Object listenerLock = new Object();
+    private static final WeakHashMap<ReferenceListener, Boolean> referenceListeners = new WeakHashMap<>();
+    private static final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private static final AtomicBoolean notificationPending = new AtomicBoolean(false);
+
+    public static void addReferenceListener(ReferenceListener listener) {
+        if (listener == null) return;
+        synchronized (listenerLock) { referenceListeners.put(listener, Boolean.TRUE); }
+    }
+    public static void removeReferenceListener(ReferenceListener listener) {
+        if (listener == null) return;
+        synchronized (listenerLock) { referenceListeners.remove(listener); }
+    }
+    public static long peekGeneration270() { return generation; }
+
+    private static void notifyReferenceListeners() {
+        if (!notificationPending.compareAndSet(false, true)) return;
+        mainHandler.post(() -> {
+            // Clear the pending flag BEFORE calling listeners so a concurrent
+            // publication is guaranteed to schedule a follow-up notification.
+            notificationPending.set(false);
+            final Bitmap latest = peekReferenceFrame270();
+            if (latest == null) return;
+            final long version = generation;
+            final ArrayList<ReferenceListener> snapshot;
+            synchronized (listenerLock) { snapshot = new ArrayList<>(referenceListeners.keySet()); }
+            for (ReferenceListener listener : snapshot) {
+                try { listener.onReferenceFrameReady(latest, version); }
+                catch (Throwable error) {
+                    XposedBridge.log("KYANT28832_REFERENCE_LISTENER_ERROR " + error.getClass().getSimpleName());
+                }
+            }
+        });
+    }
     private KyantLauncherFrameBridge266() {}
 
     public static void onReferenceReady(Bitmap bitmap, long mtime, long fileLength) {
         if (bitmap == null || bitmap.isRecycled()) return;
+        boolean changed;
         synchronized (KyantLauncherFrameBridge266.class) {
-            if (mtime != modified || fileLength != length || frame.get() != bitmap) generation++;
+            changed = mtime != modified || fileLength != length || frame.get() != bitmap;
             modified = mtime;
             length = fileLength;
             frame = new WeakReference<>(bitmap);
+            if (changed) generation++;
         }
+        if (changed) notifyReferenceListeners();
     }
 
     /** Read-only handoff. Caller must not recycle or mutate the returned bitmap. */
