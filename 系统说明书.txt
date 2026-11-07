@@ -1,3 +1,23 @@
+ColorOS-LiquidGlass V1.9.205.288.30｜Dock 原生宿主轮廓与大方形文件夹连续采样修正版
+
+本版本源码改动：
+1. 修复 Dock 光学 View 自己占据整个 Hotseat 所致的潜在裁剪越界：新的 Kyant Dock FrameLayout 尺寸直接等于 DockBackground204 原始胶囊尺寸，原生 View outline 使用相同圆角并启用 clipToOutline。Compose 中不再重复应用几何偏移。
+2. 光学 View 在 Hotseat 同级下方，位置=Hotseat 本地位置+原胶囊偏移；pivot=Hotseat pivot-胶囊偏移；继承 Hotseat 缩放和旋转，保留旧 Dock 图标布局与原先稳定的玻璃光学参数。
+3. 提供 KYANT28830_DOCK_HOST_BOUNDS 诊断，包含 Hotseat 和光学宿主尺寸、坐标、圆角裁剪、pivot，便于确认真机最终几何。该变更仍需真机验证。
+4. 大方形文件夹默认尝试整张参考帧的连续浮点变换，避免动态整数源矩形裁剪的纹理采样阶梯变化；不创建额外 Bitmap、不冻结、不降采样。仅大方形文件夹，其他容器保持原路径。
+5. 大方形文件夹 A/B 设置：su -c settings put global liquidglass_kyant_large_square_source_28830 1（默认连续采样）；设置为 0 使用 V288.29 动态裁剪作为对照。修改后重启 Launcher。
+6. 正常运行时不再做 DragView 全树诊断扫描，也不反复分配主机矩阵诊断对象；需要日志诊断时原有 trace 开关仍可开启。
+7. 文件夹/ Dock Kyant UI 开关、自动应用已验证稳定配置、统一光学参数与旧 Dock 回退均保留。
+
+验证：源码已经完成静态检查；需要在本机／GitHub Actions 进行 Android Gradle 编译和 OnePlus 13T 真机测试。没有真机结果前不能声称溢出或抖动已彻底修复。
+
+Termux Git：
+cd ~/ColorOS-LiquidGlass-V1.0-Source
+git add .
+git commit -m "V1.9.205.288.30 版本"
+git push origin main
+
+--- 之前系统说明（留档） ---
 ColorOS-LiquidGlass V1.9.205.288.29｜固定 Dock 几何适配与大方形文件夹采样同步优化
 
 适用：OnePlus 13T / ColorOS 15 / Android 15 / KernelSU / LSPosed Vector。

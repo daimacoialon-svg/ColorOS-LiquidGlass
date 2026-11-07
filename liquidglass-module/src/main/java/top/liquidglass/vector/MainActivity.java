@@ -213,6 +213,57 @@ public final class MainActivity extends Activity {
             });
         },"KyantMaterialRead28827").start();
     }
+    // V288.30: new large-square sampling A/B belongs with the real Kyant
+    // optical controls, but does NOT overwrite the known-good optical preset.
+    // The renderer reads this setting at host creation; restart Launcher to test.
+    private void kyantLargeSquareSwitch28830(){
+        final String key="liquidglass_kyant_large_square_source_28830";
+        final Switch control=new Switch(this);
+        control.setText("大方形文件夹 · 连续壁纸采样（实验）");
+        control.setTextColor(ink);control.setTextSize(14);
+        control.setPadding(0,dp(8),0,dp(8));control.setEnabled(false);
+        current.addView(control);
+        final TextView status=text("读取大文件夹采样模式…",12,false);
+        current.addView(status);
+        new Thread(()->{
+            boolean enabled=true,success=false;
+            try {
+                String value=rootCommand28827("settings get global "+key);
+                // Missing setting means renderer default: enabled.
+                enabled=!"0".equals(value);
+                success=true;
+            }catch(Exception ignored){}
+            final boolean initial=enabled,ok=success;
+            runOnUiThread(()->{
+                if(!ok){status.setText("Root 状态读取失败");return;}
+                control.setChecked(initial);control.setEnabled(true);
+                status.setText(initial?"连续浮点采样 · 重启 Launcher 后生效":"V288.29 原裁剪采样 · 对照模式");
+                control.setOnCheckedChangeListener((v,wanted)->{
+                    control.setEnabled(false);
+                    status.setText("正在写入并校验…");
+                    new Thread(()->{
+                        boolean verified=false;
+                        try {
+                            rootCommand28827("settings put global "+key+(wanted?" 1":" 0"));
+                            verified=(wanted?"1":"0").equals(rootCommand28827("settings get global "+key));
+                        }catch(Exception ignored){}
+                        final boolean saved=verified;
+                        runOnUiThread(()->{
+                            if(!saved){
+                                control.setOnCheckedChangeListener(null);
+                                control.setChecked(!wanted);
+                                control.setEnabled(false);
+                                status.setText("写入失败，请重新进入页面核对");
+                            }else{
+                                control.setEnabled(true);
+                                status.setText(wanted?"已设连续采样 · 重启 Launcher 生效":"已设原裁剪对照 · 重启 Launcher 生效");
+                            }
+                        });
+                    },"KyantLargeSquare28830").start();
+                });
+            });
+        },"KyantLargeSquareRead28830").start();
+    }
     private void kyantSettingsPanel28827(){
         kyantGlobalSwitch28827("桌面文件夹 · Kyant0 光学引擎",KYANT_FOLDER_KEY);
         kyantGlobalSwitch28827("Dock 胶囊 · Kyant0 光学引擎",KYANT_DOCK_KEY);
@@ -221,6 +272,8 @@ public final class MainActivity extends Activity {
         kyantGlobalSlider28827("Kyant 模糊半径 (dp)", "liquidglass_kyant_optical_blur_28827",0,0,20);
         kyantGlobalSlider28827("Kyant 高光透明度 (%)", "liquidglass_kyant_optical_highlight_28827",100,0,100);
         current.addView(text("三项参数直接对应 Kyant lens、blur、Highlight；默认值保留此前文件夹真实光学效果。调整后由 Launcher 监听全局配置并更新。",12,false));
+        kyantLargeSquareSwitch28830();
+        current.addView(text("此项仅作用于大方形文件夹；小文件夹、竖条、横条及 Dock 不受影响。连续采样与旧版裁剪可对照测试，切换后请重启 Launcher。",12,false));
     }
     private void slider(String label,String key,int def,int min,int max){
         TextView caption=text("",13,false);current.addView(caption);

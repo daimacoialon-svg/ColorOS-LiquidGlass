@@ -514,6 +514,17 @@ object KyantLauncherLens270 {
             (try { Settings.Global.getInt(anchor.context.contentResolver,
                 "liquidglass_kyant_large_square_opt_28829", 1) != 0 }
              catch (_: Throwable) { true })
+        // V288.30: large squares expose pixel stepping at the changing
+        // cropped-source Rect boundaries. Keep a stable full reference Bitmap
+        // and apply a floating-point destination transform instead (A/B).
+        // No extra Bitmap copy, no downsampling, no delayed frame.
+        val largeContinuousSource28830 = largeSquare28829 && try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_large_square_source_28830", 1) == 1
+        } catch (_: Throwable) { true }
+        if (largeSquare28829) XposedBridge.log(
+            "KYANT28830_LARGE_SOURCE mode=${if (largeContinuousSource28830) 1 else 0} " +
+            "size=${previewWidth}x${previewHeight} reference=${reference.width}x${reference.height}")
         var largeGeometryDirty28829 = false
         if (largeSquare28829) XposedBridge.log("KYANT28829_LARGE_FOLDER_OPTIMIZED size=${previewWidth}x${previewHeight} screenW=$displayWidth")
         var frameChecks = 0L
@@ -989,7 +1000,7 @@ object KyantLauncherLens270 {
 
             compose.setContent { LensContent270(reference, sampleWidth.intValue, sampleHeight.intValue,
                 displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode,
-                renderAbMode, motionAbMode, legacySyncAbMode, if (nativeLayerMode in 2..3) 3 else displayIsolationMode, nativeLayerMode, bridgeBitmap, bridgeVersion,
+                largeContinuousSource28830, renderAbMode, motionAbMode, legacySyncAbMode, if (nativeLayerMode in 2..3) 3 else displayIsolationMode, nativeLayerMode, bridgeBitmap, bridgeVersion,
                 if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
                 pipelineMode28819, frameSync28822,
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
@@ -1057,7 +1068,8 @@ object KyantLauncherLens270 {
                     // Observe ColorOS drag overlay class without modifying its view hierarchy.
                     // DragView is commonly a separate bitmap snapshot; original FolderIcon
                     // cannot provide real-time sampling while that snapshot is being dragged.
-                    if (frameChecks % 30L == 0L && dragDiagnosticCount < 12L) {
+                    if ((frameTrace28815 || layerTrace28817) &&
+                        frameChecks % 30L == 0L && dragDiagnosticCount < 12L) {
                         try {
                             val group = root as? ViewGroup
                             if (group != null) {
@@ -1323,7 +1335,8 @@ object KyantLauncherLens270 {
                         onsetPrevNs = nowNs28813
                     }
                     val traceNowMs = SystemClock.uptimeMillis()
-                    if (visible && (hostMisplaced ||
+                    if ((frameTrace28815 || layerTrace28817 || matrixTrace28814) &&
+                        visible && (hostMisplaced ||
                         (workspaceMoved && traceNowMs - lastPositionTraceMs >= 180L))) {
                         val hostMatrix = android.graphics.Matrix()
                         frame.transformMatrixToGlobal(hostMatrix)
@@ -1492,7 +1505,8 @@ object KyantLauncherLens270 {
     @Composable private fun LensContent270(
         reference: Bitmap, previewWidth: Int, previewHeight: Int,
         rootWidth: Int, rootHeight: Int, screenPosition: androidx.compose.runtime.State<Offset>,
-        cornerRadiusPx: Float, samplingMode: Int, renderAbMode: Int, motionAbMode: Int,
+        cornerRadiusPx: Float, samplingMode: Int,
+        largeContinuousSource28830: Boolean, renderAbMode: Int, motionAbMode: Int,
         legacySyncAbMode: Int, displayIsolationMode: Int, nativeLayerMode: Int, bridgeBitmap: Bitmap?,
         bridgeVersion: androidx.compose.runtime.State<Int>,
         bridgeSyncMode: Int,
@@ -1612,7 +1626,7 @@ object KyantLauncherLens270 {
                     }
                     if (drawCadenceCount.get() % 240L == 0L)
                         XposedBridge.log("KYANT2889_COMPOSE_CONSUME version=$version mode=$bridgeSyncMode")
-                } else if (renderAbMode != 1 && samplingMode == 1) {
+                } else if (renderAbMode != 1 && (samplingMode == 1 || largeContinuousSource28830)) {
                     val sourceScaleX = size.width / sw.coerceAtLeast(0.001f)
                     val sourceScaleY = size.height / sh.coerceAtLeast(0.001f)
                     wholeDestination.set(-x * sourceScaleX, -y * sourceScaleY,

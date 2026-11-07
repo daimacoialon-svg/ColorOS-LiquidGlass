@@ -5,10 +5,12 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
+import android.graphics.Outline
 import android.os.Looper
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
@@ -58,6 +60,7 @@ import kotlinx.coroutines.launch
 import java.util.WeakHashMap
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.ceil
 
 /** Kyant optical Dock: a background-only sibling BEFORE Hotseat, not an overlay
  *  on top of Launcher icons. No View is added into OEM CellLayout/Hotseat itself.
@@ -96,12 +99,26 @@ object KyantDockLens28827 {
         }
     }
 
-    private class Host(val hotseat: View, val parent: FrameLayout, reference: Bitmap) {
+    private class Host(val hotseat: View, val parent: FrameLayout, reference: Bitmap,
+                       initialGeometry: DockGeometry) {
         val owner = Owner()
+        private var capsuleRadiusPx = initialGeometry.radius
         val frame = FrameLayout(hotseat.context).apply {
             isClickable = false; isFocusable = false
             // The optics must not bleed outside the Hotseat native view bounds.
             clipChildren = true; clipToPadding = true
+            // V288.30: authoritative native clipping, independent of Compose's
+            // graphics layers/backdrop shader. The *host* is the capsule, not
+            // a screen-wide Hotseat layer with an offset Box inside it.
+            outlineProvider = object : ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: Outline) {
+                    outline.setRoundRect(0, 0, view.width.coerceAtLeast(1),
+                        view.height.coerceAtLeast(1),
+                        capsuleRadiusPx.coerceIn(0f,
+                            min(view.width, view.height).coerceAtLeast(1) * .5f))
+                }
+            }
+            clipToOutline = true
             setViewTreeLifecycleOwner(owner)
             setViewTreeSavedStateRegistryOwner(owner)
             setViewTreeViewModelStoreOwner(owner)
@@ -112,7 +129,7 @@ object KyantDockLens28827 {
         // Position denotes the *actual native capsule's* screen origin, not the
         // top-left of a re-centered viewport or an independent optical bounds.
         val position = mutableStateOf(Offset.Zero)
-        val geometry = mutableStateOf(geometryOf(hotseat))
+        val geometry = mutableStateOf(initialGeometry)
         private var geometryLogged = false
         val wallpaper = mutableStateOf(reference)
         val scope = CoroutineScope(AndroidUiDispatcher.Main + SupervisorJob() +
@@ -141,7 +158,9 @@ object KyantDockLens28827 {
             if (index < 0) throw IllegalStateException("Hotseat parent changed")
             frame.addView(compose, FrameLayout.LayoutParams(-1, -1))
             // Placed beneath Hotseat: existing icons keep their touch and z-order.
-            parent.addView(frame, index, FrameLayout.LayoutParams(max(1,hotseat.width),max(1,hotseat.height)))
+            parent.addView(frame, index, FrameLayout.LayoutParams(
+                max(1, ceil(initialGeometry.width.toDouble()).toInt()),
+                max(1, ceil(initialGeometry.height.toDouble()).toInt())))
             compose.setParentCompositionContext(recomposer)
             compose.setContent {
                 val source = wallpaper.value
@@ -162,18 +181,29 @@ object KyantDockLens28827 {
             if (w <= 0 || h <= 0) return
             val native = geometryOf(hotseat) ?: return
             if (geometry.value != native) geometry.value = native
-            val p = frame.layoutParams as FrameLayout.LayoutParams
-            if (p.width != w || p.height != h) {
-                frame.layoutParams = p.apply { width = w; height = h }
+            if (capsuleRadiusPx != native.radius) {
+                capsuleRadiusPx = native.radius
+                frame.invalidateOutline()
             }
-            // Frame and Hotseat are siblings.  Copy the REAL parent-local View
-            // transform instead of converting global pixels back to parent X.
-            // The old conversion double-applied parent scroll/translation on
-            // some ColorOS Hotseat layouts and could extend the right corner.
-            if (frame.x != hotseat.x) frame.x = hotseat.x
-            if (frame.y != hotseat.y) frame.y = hotseat.y
-            if (frame.pivotX != hotseat.pivotX) frame.pivotX = hotseat.pivotX
-            if (frame.pivotY != hotseat.pivotY) frame.pivotY = hotseat.pivotY
+            val capsuleW = max(1, ceil(native.width.toDouble()).toInt())
+            val capsuleH = max(1, ceil(native.height.toDouble()).toInt())
+            val p = frame.layoutParams as FrameLayout.LayoutParams
+            if (p.width != capsuleW || p.height != capsuleH) {
+                frame.layoutParams = p.apply { width = capsuleW; height = capsuleH }
+            }
+            // Geometry invariant: the optical host occupies only the original
+            // DockBackground204 capsule in Hotseat local coordinates.
+            // A sibling with parent-local origin H+(g.x,g.y) and pivot P-g
+            // undergoes exactly the Hotseat transform for every local point.
+            // Copying P without subtracting g previously misaligned transforms.
+            val targetX = hotseat.x + native.x
+            val targetY = hotseat.y + native.y
+            if (frame.x != targetX) frame.x = targetX
+            if (frame.y != targetY) frame.y = targetY
+            val targetPivotX = hotseat.pivotX - native.x
+            val targetPivotY = hotseat.pivotY - native.y
+            if (frame.pivotX != targetPivotX) frame.pivotX = targetPivotX
+            if (frame.pivotY != targetPivotY) frame.pivotY = targetPivotY
             if (frame.scaleX != hotseat.scaleX) frame.scaleX = hotseat.scaleX
             if (frame.scaleY != hotseat.scaleY) frame.scaleY = hotseat.scaleY
             if (frame.rotation != hotseat.rotation) frame.rotation = hotseat.rotation
@@ -194,11 +224,17 @@ object KyantDockLens28827 {
             val next = Offset(screenPoint[0] + rootScreen[0] - rootWindow[0],
                 screenPoint[1] + rootScreen[1] - rootWindow[1])
             if (position.value != next) position.value = next
-            if (!geometryLogged) {
+            if (!geometryLogged && frame.width == capsuleW && frame.height == capsuleH) {
                 geometryLogged = true
-                XposedBridge.log("KYANT28829_DOCK_NATIVE_BOUNDS " +
+                val hostScreen = IntArray(2)
+                frame.getLocationOnScreen(hostScreen)
+                XposedBridge.log("KYANT28830_DOCK_HOST_BOUNDS " +
                     "hotseatSize=${w}x$h hotseatParentXY=${hotseat.x},${hotseat.y} " +
-                    "local=$native screen=$next frameXY=${frame.x},${frame.y}")
+                    "local=$native expectedScreen=$next frameXY=${frame.x},${frame.y} " +
+                    "actualHostScreen=${hostScreen[0]},${hostScreen[1]} " +
+                    "delta=${hostScreen[0] - next.x},${hostScreen[1] - next.y} " +
+                    "hostSize=${capsuleW}x$capsuleH outlineClip=${frame.clipToOutline} " +
+                    "pivot=${frame.pivotX},${frame.pivotY} layer=${frame.layerType}")
             }
             val latest = KyantLauncherFrameBridge266.peekReferenceFrame270()
             if (latest != null && latest !== wallpaper.value) wallpaper.value = latest
@@ -239,7 +275,11 @@ object KyantDockLens28827 {
                 return false
             }
             KyantOptics28827.ensure(hotseat.context)
-            val host = Host(hotseat, parent, source)
+            val nativeGeometry = geometryOf(hotseat) ?: run {
+                XposedBridge.log("KYANT28830_DOCK_NATIVE_GEOMETRY_MISSING")
+                return false
+            }
+            val host = Host(hotseat, parent, source, nativeGeometry)
             return try {
                 host.start()
                 hosts[hotseat] = host
@@ -273,9 +313,10 @@ object KyantDockLens28827 {
         val fullHeight = android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
         val scaleX = reference.width.toFloat()/fullWidth
         val scaleY = reference.height.toFloat()/fullHeight
-        Box(Modifier.offset(x=(g.x/density).dp, y=(g.y/density).dp)
-            .size((opticalW/density).dp,(opticalH/density).dp)
-            .clip(RoundedCornerShape(radiusDp))) {
+        // The outer Android View is exactly the native capsule. Never apply
+        // its x/y offset a second time in Compose. It already has a native
+        // round-rect outline which clips even graphics-layer shader overflow.
+        Box(Modifier.fillMaxSize().clip(RoundedCornerShape(radiusDp))) {
             Canvas(Modifier.fillMaxSize().layerBackdrop(backdrop).graphicsLayer { alpha = 1f }) {
                 // Sampling follows the VISUAL glass edge after clipping;
                 // retaining the old inset here would offset the wallpaper.
