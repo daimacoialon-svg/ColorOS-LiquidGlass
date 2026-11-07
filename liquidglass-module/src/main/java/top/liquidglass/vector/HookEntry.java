@@ -2515,6 +2515,28 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static volatile long REFRACTION_LAST_CHECK;
     private static volatile long REFRACTION_FRAME_MODIFIED = -1L;
     private static volatile long REFRACTION_FRAME_LENGTH = -1L;
+    // V288.49: file mtimes may change repeatedly even when the decoded wallpaper
+    // is identical. Track actual sampled pixels before notifying either optical host.
+    private static volatile long CANONICAL_VISUAL_KEY_28849 = Long.MIN_VALUE;
+    private static volatile int CANONICAL_DEDUP_LOGS_28849 = 0;
+    private static long referenceVisualKey28849(android.graphics.Bitmap bitmap) {
+        if (bitmap == null || bitmap.isRecycled()) return Long.MIN_VALUE;
+        int w=bitmap.getWidth(), h=bitmap.getHeight();
+        java.util.zip.CRC32 crc=new java.util.zip.CRC32();
+        // Deterministic spatial sampling including near-edge regions: no bitmap copy.
+        for (int iy=0;iy<73;iy++) {
+            int y=(int)((long)iy*(h-1)/72);
+            for (int ix=0;ix<49;ix++) {
+                int x=(int)((long)ix*(w-1)/48);
+                int argb=bitmap.getPixel(x,y);
+                crc.update((argb >>> 24)&255);
+                crc.update((argb >>> 16)&255);
+                crc.update((argb >>> 8)&255);
+                crc.update(argb&255);
+            }
+        }
+        return ((long)(w&0xFFFF)<<48) | ((long)(h&0xFFFF)<<32) | (crc.getValue()&0xFFFFFFFFL);
+    }
     private static volatile boolean REFRACTION_LOADING;
     // V288.33: Event-driven reference changes cannot be discarded while the
     // prior Bitmap decode is running. Coalesce them into one follow-up check.
@@ -2594,6 +2616,26 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(REFRACTION_LOGS++<24)log("REFERENCE_REUSE_148 disk_hit="+(next!=null)+" source="+local.getAbsolutePath());
                 final long loadedModified=modified,loadedLength=length;
                 if(next!=null && next.getWidth()>=320 && next.getHeight()>=640) {
+                    // Do not publish a bitmap decoded while the file is still changing.
+                    if(local.length()!=loadedLength || local.lastModified()!=loadedModified) {
+                        log("KYANT28849_CANONICAL_SKIP reason=FILE_CHANGED_DURING_DECODE");
+                        return;
+                    }
+                    long visualKey28849=referenceVisualKey28849(next);
+                    // A canonical file can be rewritten or mirrored with fresh mtimes
+                    // without any visual difference. Avoid a generation increment,
+                    // repeated alignment work and unnecessary Launcher invalidation.
+                    if(!EARLY_PREVIEW_ACTIVE_28847 && REFRACTION_FRAME!=null &&
+                            !REFRACTION_FRAME.isRecycled() &&
+                            visualKey28849==CANONICAL_VISUAL_KEY_28849) {
+                        REFRACTION_FRAME_MODIFIED=loadedModified;
+                        REFRACTION_FRAME_LENGTH=loadedLength;
+                        if(CANONICAL_DEDUP_LOGS_28849++<12)
+                            log("KYANT28849_CANONICAL_VISUAL_DEDUP source="+local.getAbsolutePath()+
+                                " visualKey="+Long.toHexString(visualKey28849)+
+                                " modified="+loadedModified+" length="+loadedLength);
+                        return;
+                    }
                     // An old canonical file may be rechecked during a fresh early preview.
                     // Wait for the screenshot for this new wallpaper to arrive.
                     if (EARLY_PREVIEW_ACTIVE_28847 && loadedModified < EARLY_PREVIEW_SOURCE_TIME_28847) {
@@ -2605,6 +2647,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         // Keep the current optical frame: no second visible flash.
                         REFRACTION_FRAME_MODIFIED = loadedModified;
                         REFRACTION_FRAME_LENGTH = loadedLength;
+                        CANONICAL_VISUAL_KEY_28849 = visualKey28849;
                         EARLY_PREVIEW_ACTIVE_28847 = false;
                         log("KYANT28847_CANONICAL_MATCH no_second_swap=true");
                         return;
@@ -2612,6 +2655,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if (EARLY_PREVIEW_ACTIVE_28847)
                         log("KYANT28847_CANONICAL_REPLACE reason=PIXEL_DIFFERENCE");
                     REFRACTION_FRAME=next;
+                    CANONICAL_VISUAL_KEY_28849 = visualKey28849;
                     EARLY_PREVIEW_ACTIVE_28847 = false;
                     if(REFRACTION_LOGS++<24)log("BOOT_REFRACTION_READY source=launcher_private_wallpaper_reference");
                     REFRACTION_FRAME_MODIFIED=loadedModified;

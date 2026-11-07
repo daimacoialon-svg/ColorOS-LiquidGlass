@@ -20,3 +20,5 @@ su -c settings put global liquidglass_kyant_early_frame_ab_28847 2  # 仅诊断�
 仅处理已校准 1px 宽差的静态壁纸；正式截图仍会接管。不要在动态壁纸上启用。
 
 V1.9.205.288.48：修复提前渲染只依赖新签名诊断的触发缺陷，文件完成事件直接通知渲染；缓存探测和事件合并可重试。新增 KYANT28848_TRIGGER / EARLY_SKIP 日志。A/B 默认关闭，打开需 settings put global liquidglass_kyant_early_frame_ab_28847 1。尚未真机验证。
+
+V1.9.205.288.49：正式壁纸参考帧增加解码后像素内容去重，避免相同图像因文件重写导致重复 generation、重复对齐诊断及无意义重绘。增加文件解码期间变更检查及 KYANT28849_CANONICAL_VISUAL_DEDUP 日志。保留提前壁纸 A/B 模式原有严格几何限制（宽度差2px仍不会发布），未宣称提前同步已解决。
