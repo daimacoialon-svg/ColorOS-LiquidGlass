@@ -2805,27 +2805,54 @@ public final class HookEntry implements IXposedHookLoadPackage {
             EARLY_WAKE_LAST_CHECK_MS_28857 = now;
         }
         try {
+            // V288.58: A literal /data/user/0 path can canonicalize to a
+            // different Android alias (e.g. /data/data). Comparing canonical
+            // file path to *its own absolute spelling* rejects a valid file.
+            // Instead compare canonical parent to canonical expected CE dir,
+            // and inspect the final component with lstat to reject symlinks.
             final java.io.File dir = earlyCeFilesDir28842(app);
             final java.io.File source = new java.io.File(dir, "liquidglass_early_wallpaper_source");
-            // Reject symlinks and paths that escape the known Launcher-owned CE dir.
-            if (!source.getCanonicalPath().equals(source.getAbsolutePath()) ||
-                    !source.getParentFile().getCanonicalPath().equals(dir.getCanonicalPath())) {
-                log("KYANT28857_WAKE_SKIP reason=INVALID_PATH trigger=" + trigger);
+            final java.io.File canonicalDir = dir.getCanonicalFile();
+            final java.io.File canonicalSource = source.getCanonicalFile();
+            if (!source.exists()) {
+                log("KYANT28858_WAKE_SKIP reason=FILE_NOT_FOUND path=" + source.getAbsolutePath() +
+                    " trigger=" + trigger);
                 return false;
             }
+            if (!canonicalDir.equals(canonicalSource.getParentFile()) ||
+                    !"liquidglass_early_wallpaper_source".equals(canonicalSource.getName())) {
+                log("KYANT28858_WAKE_SKIP reason=PATH_MISMATCH expectedDir=" +
+                    canonicalDir.getAbsolutePath() + " actual=" + canonicalSource.getAbsolutePath() +
+                    " trigger=" + trigger);
+                return false;
+            }
+            final android.system.StructStat linkSt = android.system.Os.lstat(source.getAbsolutePath());
+            if (!android.system.OsConstants.S_ISREG(linkSt.st_mode)) {
+                log("KYANT28858_WAKE_SKIP reason=NOT_REGULAR_FILE mode=" +
+                    Integer.toOctalString(linkSt.st_mode & 077777) + " trigger=" + trigger);
+                return false;
+            }
+            // All checks apply to the pinned fixed file; broadcasts never
+            // supply a path or crop. This is a wake hint, not authentication.
             final android.system.StructStat st = android.system.Os.stat(source.getAbsolutePath());
-            if (!android.system.OsConstants.S_ISREG(st.st_mode) ||
-                    st.st_uid != android.os.Process.myUid() ||
-                    (st.st_mode & 0077) != 0 ||
-                    st.st_size < 1024L || st.st_size > 40000000L) {
-                log("KYANT28857_WAKE_SKIP reason=INVALID_OWNER_OR_FILE uid=" + st.st_uid +
-                    " appUid=" + android.os.Process.myUid() + " mode=" +
+            if (st.st_uid != android.os.Process.myUid()) {
+                log("KYANT28858_WAKE_SKIP reason=OWNER_MISMATCH uid=" + st.st_uid +
+                    " launcherUid=" + android.os.Process.myUid() + " trigger=" + trigger);
+                return false;
+            }
+            if ((st.st_mode & 0077) != 0) {
+                log("KYANT28858_WAKE_SKIP reason=PERMISSION_INVALID mode=" +
                     Integer.toOctalString(st.st_mode & 0777) + " trigger=" + trigger);
+                return false;
+            }
+            if (st.st_size < 1024L || st.st_size > 40000000L) {
+                log("KYANT28858_WAKE_SKIP reason=FILE_SIZE_INVALID bytes=" + st.st_size +
+                    " trigger=" + trigger);
                 return false;
             }
             final long ageMs = java.lang.System.currentTimeMillis() - source.lastModified();
             if (ageMs < -5000L || ageMs > 45000L) {
-                log("KYANT28857_WAKE_SKIP reason=STALE_SOURCE ageMs=" + ageMs +
+                log("KYANT28858_WAKE_SKIP reason=SOURCE_STALE ageMs=" + ageMs +
                     " trigger=" + trigger);
                 return false;
             }
@@ -2837,11 +2864,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 }
                 EARLY_WAKE_ACCEPTED_SOURCE_28857 = sig;
             }
-            log("KYANT28857_WAKE_SOURCE_VERIFIED source=" + sig +
+            log("KYANT28858_WAKE_SOURCE_VERIFIED source=" + sig +
                 " ageMs=" + ageMs + " trigger=" + trigger);
             return true;
         } catch (Throwable ex) {
-            log("KYANT28857_WAKE_SKIP reason=VERIFY_ERROR type=" +
+            log("KYANT28858_WAKE_SKIP reason=VERIFY_ERROR type=" +
                 ex.getClass().getSimpleName() + " trigger=" + trigger);
             return false;
         }
@@ -2863,14 +2890,14 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         " identity=" + (uid == -1 ? "UNKNOWN" : "ROOT_OR_SHELL") +
                         " trust=UNTRUSTED_HINT");
                     if (!verifyEarlyWakeSource28857(app, "BROADCAST")) return;
-                    log("KYANT28857_WAKE_ACCEPTED reason=PRIVATE_SOURCE_VERIFIED uid=" + uid +
+                    log("KYANT28858_WAKE_ACCEPTED reason=PRIVATE_SOURCE_VERIFIED uid=" + uid +
                         " elapsedMs=" + android.os.SystemClock.elapsedRealtime());
                     markFreshEarlyEvent28854(app, 0x10000);
                     scheduleEarlyPreview28847(app, "ROOT_WAKE_28857");
                     probeEarlySource28840(app, "ROOT_WAKE_28857");
                 }
             }, filter, android.content.Context.RECEIVER_EXPORTED);
-            log("KYANT28857_WAKE_REGISTERED package=" + app.getPackageName() +
+            log("KYANT28858_WAKE_REGISTERED package=" + app.getPackageName() +
                 " policy=UNTRUSTED_HINT_PRIVATE_FILE_VERIFICATION");
         } catch (Throwable error) {
             EARLY_WAKE_REGISTERED_28856.set(false);
