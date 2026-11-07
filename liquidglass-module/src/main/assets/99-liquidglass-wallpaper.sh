@@ -251,6 +251,41 @@ sync_launcher_reference() {
   fi
   rm -f "$TMP"
 }
+
+# V288.38: early ORIGINAL source diagnostics, deliberately NOT an optical frame.
+# This copy is created once per changed source, off Launcher/render threads.
+# The original image may use a different crop/offset than ColorOS' screenshot.
+EARLY_SRC=/data/system/users/0/wallpaper_orig
+EARLY_DST=$LAUNCHERDIR/liquidglass_early_wallpaper_source
+EARLY_SIG=$LAUNCHERDIR/.liquidglass_early_wallpaper_sig
+publish_early_source_28838() {
+  [ -s "$EARLY_SRC" ] && [ -d /data/user/0/com.android.launcher ] || return 0
+  uid=$(stat -c %u /data/user/0/com.android.launcher 2>/dev/null) || return 0
+  gid=$(stat -c %g /data/user/0/com.android.launcher 2>/dev/null) || return 0
+  case "$uid:$gid" in ''|*[!0-9:]*) return 0;; esac
+  before=$(stat -c '%s:%y' "$EARLY_SRC" 2>/dev/null) || return 0
+  [ "${before%%:*}" -gt 1024 ] 2>/dev/null || return 0
+  [ "$before" != "$(cat "$EARLY_SIG" 2>/dev/null)" ] || return 0
+  # Complete-write event is normally sufficient; this short stability check
+  # also protects against non-atomic vendor writes, with no long polling.
+  sleep 0.08
+  after=$(stat -c '%s:%y' "$EARLY_SRC" 2>/dev/null) || return 0
+  [ "$before" = "$after" ] || return 0
+  [ -d "$LAUNCHERDIR" ] || mkdir -p "$LAUNCHERDIR" || return 0
+  tmp="$LAUNCHERDIR/.liquidglass_early_source.$$"
+  if cp "$EARLY_SRC" "$tmp" 2>/dev/null && [ -s "$tmp" ] && [ "$(stat -c '%s:%y' "$EARLY_SRC" 2>/dev/null)" = "$after" ]; then
+    chown "$uid:$gid" "$tmp" && chmod 600 "$tmp"
+    restorecon "$tmp" 2>/dev/null
+    if mv -f "$tmp" "$EARLY_DST"; then
+      printf '%s' "$after" > "$EARLY_SIG"
+      chown "$uid:$gid" "$EARLY_SIG"; chmod 600 "$EARLY_SIG"
+      restorecon "$EARLY_DST" "$EARLY_SIG" 2>/dev/null
+      read up _ < /proc/uptime
+      echo "KYANT28838_EARLY_SOURCE_READY uptimeSec=$up size=$(stat -c %s "$EARLY_DST" 2>/dev/null)" >> "$LOG"
+    fi
+  fi
+  rm -f "$tmp"
+}
 # V148: Keep a persistent DE copy synchronized with the verified CE reference.
 # Copy only when source identity changes; never remove the previous valid frame
 # on ordinary screen lock/unlock. The temporary file is atomically renamed.
@@ -284,6 +319,14 @@ if [ "$1" = "--event-config" ]; then
   # Compatibility with legacy event callers: publish once, never touch daemon triggers.
   sync_config
   exit $?
+fi
+if [ "$1" = "--event-early-source" ]; then
+  # One worker per event burst. Only w/m events start a copy; c/n are hints.
+  lock=/data/local/tmp/.liquidglass-early-source.lock
+  mkdir "$lock" 2>/dev/null || exit 0
+  trap 'rmdir "$lock" 2>/dev/null' EXIT INT TERM
+  publish_early_source_28838
+  exit 0
 fi
 if [ "$1" = "--event-wallpaper" ]; then
   # Event workers are temporary. A burst of system file events is coalesced
@@ -334,6 +377,7 @@ if [ "$1" = "--event-wallpaper" ]; then
   exit 0
 fi
 sync_config
+publish_early_source_28838
 sync_launcher_reference
 sync_de_reference
 sync_once

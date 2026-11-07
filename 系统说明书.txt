@@ -1,16 +1,16 @@
-ColorOS-LiquidGlass V1.9.205.288.37｜低唤醒壁纸事件修正版
+ColorOS-LiquidGlass V1.9.205.288.38｜提前壁纸来源与裁剪校准诊断版
 
-本版基于 V288.36。保留已经验证正常的 Dock / 文件夹 Kyant 光学、共享参考帧、固定 Dock 胶囊几何和原有配置持久化。
+基于 V288.37，保留 Dock 右侧裁剪修复、文件夹与 Dock Kyant 光学、共享壁纸参考帧和原有配置逻辑。
 
-本版实际改变：
-1. Root 监听器收到 wallpaper_orig / wallpaper / wallpaper_info.xml 事件时仅记录变化提示，不再为每个事件启动持续 2.4 秒的频繁 stat 轮询工作进程。
-2. 只有 wallpaper_screenshot.png 的文件变化才触发短时参考帧发布任务；常驻服务仍保留周期兜底检查，避免漏事件后长期使用旧帧。
-3. 保留参考帧复制的临时文件、校验和原子替换机制；不改变 Launcher 解码或光学 Shader。
-4. 新诊断日志 KYANT28837_SOURCE_HINT / KYANT28837_SCREENSHOT_EVENT / KYANT28837_SCREENSHOT_PUBLISHED 用于比较原始壁纸变化与 ColorOS 截图生成时机。
+新增：
+1. wallpaper_orig 完成写入后，在 Root 后台异步复制一份只读诊断候选到 Launcher 私有目录 liquidglass_early_wallpaper_source，采用双重文件签名和原子替换；仅源文件真实变化时写入。
+2. Launcher 文件监听器收到候选后，后台仅用 BitmapFactory.inJustDecodeBounds 读取原图尺寸，不解码整张原图、不上传 GPU、不修改正在显示的参考帧。
+3. 记录 KYANT28838_EARLY_SOURCE_READY / KYANT28838_EARLY_GEOMETRY，与系统截图更新耗时和尺寸进行比较。
 
-重要：本版是低唤醒修正，不是提前参考帧功能；由于还缺少壁纸裁切的独立校准证据，不会将 wallpaper_orig 强制当做屏幕参考帧。换壁纸仍可能等待系统截图；此限制请勿误认为已修复。
+安全限制：本版仍使用已经验证的 wallpaper_screenshot.png 做正式背景。原始壁纸存在裁剪、偏移和动态壁纸等差异，尚未校准，不会提前直接显示它；本版不能宣称修复更换壁纸后的 1～2 秒等待。
 
-安装：编译 APK 后在模块 UI 运行“检查并更新 Root 辅助脚本”，重启手机让新的常驻服务生效。
-测试：更换壁纸后查看 /data/local/tmp/liquidglass-wallpaper-sync.log 内的 KYANT28837 事件，检查文件夹与 Dock 是否继续同步。
+安装：编译新 APK；模块 UI 更新 Root 辅助脚本并重启手机。
+验证：在设置里更换静态壁纸，停留设置页约 3 秒，执行 su -c "grep KYANT28838 /data/local/tmp/liquidglass-wallpaper-sync.log" 查看 Root 提前复制时间，再导出 Vector 日志中 KYANT28838_EARLY_GEOMETRY，检查原始图与参考帧的宽高是否一致。
 
-构建情况：脚本语法与 ZIP 校验已检查；本环境尚未执行完整 Android Gradle 构建，真机表现待验证。
+性能：诊断候选仅变化时复制一次，并只读宽高元数据，不对滑动帧执行磁盘 I/O。若不需要诊断，可在后续版本关闭该来源订阅；当前会增加一次壁纸更换时的文件复制开销。
+构建：Shell 语法、源码结构与 ZIP 校验完成，Android 编译和真机效果尚未验证。

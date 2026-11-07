@@ -21,7 +21,11 @@ case "$3" in
             # screen-space screenshot. Spawning a 2.4s polling worker for each
             # source write wastes CPU without producing an earlier reference.
             # Keep the source event timestamp for early-frame calibration.
-            echo "KYANT28837_SOURCE_HINT uptimeSec=$uptime_sec file=$3 event=$1" >> /data/local/tmp/liquidglass-wallpaper-sync.log
+            echo "KYANT28838_SOURCE_HINT uptimeSec=$uptime_sec file=$3 event=$1" >> /data/local/tmp/liquidglass-wallpaper-sync.log
+            case "$3:$1" in
+              wallpaper_orig:*w*|wallpaper_orig:*m*)
+                "$SERVICE" --event-early-source >/dev/null 2>&1 & ;;
+            esac
             ;;
         esac ;;
     esac ;;

@@ -2644,6 +2644,30 @@ public final class HookEntry implements IXposedHookLoadPackage {
             }
         }},"LiquidGlass-Wallpaper-Reference").start();
     }
+    // V288.38: decode metadata only (inJustDecodeBounds) for early source.
+    // NEVER publish this uncalibrated image to Kyant's optical render path.
+    private static final java.util.concurrent.atomic.AtomicBoolean EARLY_PROBE_BUSY_28838 =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static void probeEarlySource28838(final android.content.Context app) {
+        if (!EARLY_PROBE_BUSY_28838.compareAndSet(false, true)) return;
+        new Thread(() -> {
+            try {
+                java.io.File candidate = new java.io.File(app.getFilesDir(), "liquidglass_early_wallpaper_source");
+                if (!candidate.isFile() || candidate.length() <= 1024L) return;
+                android.graphics.BitmapFactory.Options opt = new android.graphics.BitmapFactory.Options();
+                opt.inJustDecodeBounds = true;
+                android.graphics.BitmapFactory.decodeFile(candidate.getAbsolutePath(), opt);
+                android.graphics.Bitmap reference = KyantLauncherFrameBridge266.peekReferenceFrame270();
+                android.util.DisplayMetrics dm = app.getResources().getDisplayMetrics();
+                log("KYANT28838_EARLY_GEOMETRY original="+opt.outWidth+"x"+opt.outHeight+
+                    " reference="+(reference==null ? "NONE" : reference.getWidth()+"x"+reference.getHeight())+
+                    " display="+dm.widthPixels+"x"+dm.heightPixels+
+                    " sourceBytes="+candidate.length()+" status=DIAGNOSTIC_ONLY");
+            } catch (Throwable t) {
+                log("KYANT28838_EARLY_PROBE_ERROR " + t.getClass().getSimpleName());
+            } finally { EARLY_PROBE_BUSY_28838.set(false); }
+        }, "LiquidGlass-Early-Geometry").start();
+    }
     // V124: watch the Launcher-owned reference file, not the protected system source.
     // Keep observers strongly referenced; FileObserver callbacks are not on the UI thread.
     private static final java.util.List<android.os.FileObserver> REFERENCE_OBSERVERS_124 =
@@ -2658,6 +2682,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 android.os.FileObserver observer=new android.os.FileObserver(dir,
                     android.os.FileObserver.CLOSE_WRITE | android.os.FileObserver.MOVED_TO){
                     @Override public void onEvent(int event,String name){
+                        if ("liquidglass_early_wallpaper_source".equals(name)) {
+                            probeEarlySource28838(app);
+                            return;
+                        }
                         if(name==null || !"liquidglass_wallpaper_reference.jpg".equals(name))return;
                         // Callback is already delivered off the UI thread by
                         // FileObserver. Avoid the extra UI queueing delay and
@@ -2669,6 +2697,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 };
                 observer.startWatching();
                 REFERENCE_OBSERVERS_124.add(observer);
+                if (dir.equals(app.getFilesDir().getAbsolutePath())) probeEarlySource28838(app);
             }catch(Throwable t){log("WALLPAPER_WATCH_FAILED_124 "+t.getClass().getSimpleName());}
         }
     }
