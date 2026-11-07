@@ -2651,6 +2651,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static final java.util.concurrent.atomic.AtomicBoolean EARLY_PROBE_PENDING_28840 =
         new java.util.concurrent.atomic.AtomicBoolean(false);
     private static volatile String EARLY_PROBE_LAST_SIGNATURE_28840 = "";
+    // V288.43: keep the most recent SUCCESSFUL metadata result in memory.
+    // Diagnostics remain useful after the original Logcat message is rotated away.
+    private static volatile int EARLY_VALID_WIDTH_28843 = -1;
+    private static volatile int EARLY_VALID_HEIGHT_28843 = -1;
+    private static volatile String EARLY_VALID_REFERENCE_28843 = "NONE";
+    private static volatile String EARLY_VALID_DISPLAY_28843 = "NONE";
     private static volatile boolean EARLY_WATCH_READY_28840 = false;
     // V288.42: Android exposes createDeviceProtectedStorageContext(), but NOT
     // createCredentialProtectedStorageContext(). Derive the matching CE files
@@ -2700,7 +2706,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     return;
                 }
                 if (signature.equals(EARLY_PROBE_LAST_SIGNATURE_28840)) {
-                    log("KYANT28840_EARLY_PROBE_UNCHANGED reason=" + reason + " signature=" + signature);
+                    log("KYANT28843_EARLY_CACHED_GEOMETRY reason=" + reason +
+                        " original=" + EARLY_VALID_WIDTH_28843 + "x" + EARLY_VALID_HEIGHT_28843 +
+                        " reference=" + EARLY_VALID_REFERENCE_28843 +
+                        " display=" + EARLY_VALID_DISPLAY_28843 +
+                        " signature=" + signature + " status=DIAGNOSTIC_ONLY");
                     return;
                 }
                 android.graphics.BitmapFactory.Options opt = new android.graphics.BitmapFactory.Options();
@@ -2716,13 +2726,25 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     log("KYANT28840_EARLY_FILE_CHANGED_DURING_READ reason=" + reason);
                     return;
                 }
-                EARLY_PROBE_LAST_SIGNATURE_28840 = signature;
                 android.graphics.Bitmap reference = KyantLauncherFrameBridge266.peekReferenceFrame270();
                 android.util.DisplayMetrics dm = app.getResources().getDisplayMetrics();
+                String referenceDimensions = reference == null ? "NONE" : reference.getWidth() + "x" + reference.getHeight();
+                String displayDimensions = dm.widthPixels + "x" + dm.heightPixels;
+                EARLY_VALID_WIDTH_28843 = opt.outWidth;
+                EARLY_VALID_HEIGHT_28843 = opt.outHeight;
+                EARLY_VALID_REFERENCE_28843 = referenceDimensions;
+                EARLY_VALID_DISPLAY_28843 = displayDimensions;
+                // Mark consumed ONLY after file validation and geometry decode succeeded.
+                EARLY_PROBE_LAST_SIGNATURE_28840 = signature;
                 log("KYANT28838_EARLY_GEOMETRY original=" + opt.outWidth + "x" + opt.outHeight +
-                    " reference=" + (reference == null ? "NONE" : reference.getWidth() + "x" + reference.getHeight()) +
-                    " display=" + dm.widthPixels + "x" + dm.heightPixels +
+                    " reference=" + referenceDimensions +
+                    " display=" + displayDimensions +
                     " sourceBytes=" + size + " status=DIAGNOSTIC_ONLY");
+                log("KYANT28843_EARLY_CACHED_GEOMETRY reason=" + reason +
+                    " original=" + opt.outWidth + "x" + opt.outHeight +
+                    " reference=" + referenceDimensions +
+                    " display=" + displayDimensions +
+                    " signature=" + signature + " status=DIAGNOSTIC_ONLY");
                 log("KYANT28840_EARLY_PROBE_OK reason=" + reason + " signature=" + signature +
                     " elapsedRealtimeMs=" + android.os.SystemClock.elapsedRealtime());
             } catch (Throwable t) {

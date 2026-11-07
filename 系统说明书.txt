@@ -1,6 +1,12 @@
-ColorOS-LiquidGlass V1.9.205.288.42｜Launcher CE 目录 API 编译修正版
+ColorOS-LiquidGlass V1.9.205.288.43｜Launcher CE 目录 API 编译修正版
 
 修复 HookEntry.java 中不存在的 Context.createCredentialProtectedStorageContext() API 引用（原 V288.41 的 2671、2738、2766 行）。
 改用公开 API 获取 DE 文件路径，并在 DE 默认存储场景下映射到同一用户、同一包名的 CE 文件目录，供提前壁纸诊断读取与监听。保持已验证的 Dock 几何、Kyant 光学效果及 Root 壁纸发布链路不变。
 
 本版本只做源码级修复，完整 Gradle 构建与真机验证需通过 GitHub Actions 执行。
+
+V1.9.205.288.43｜提前来源几何缓存诊断：
+1. 只有源文件稳定且 BitmapFactory 读取尺寸成功后才保存本次签名。
+2. 缓存原始壁纸、正式参考帧、显示尺寸；后续相同文件检查输出 KYANT28843_EARLY_CACHED_GEOMETRY。
+3. 不变更光学渲染、Dock、文件夹、Root 发布行为；未启用提前原图光学采样。
+4. 先通过 GitHub Actions 构建，真机验证后再考虑原图裁剪校准。
