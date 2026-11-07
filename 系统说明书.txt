@@ -1,12 +1,11 @@
-ColorOS-LiquidGlass V1.9.205.288.43｜Launcher CE 目录 API 编译修正版
+ColorOS-LiquidGlass V1.9.205.288.44｜壁纸原图与正式参考帧像素对齐诊断
 
-修复 HookEntry.java 中不存在的 Context.createCredentialProtectedStorageContext() API 引用（原 V288.41 的 2671、2738、2766 行）。
-改用公开 API 获取 DE 文件路径，并在 DE 默认存储场景下映射到同一用户、同一包名的 CE 文件目录，供提前壁纸诊断读取与监听。保持已验证的 Dock 几何、Kyant 光学效果及 Root 壁纸发布链路不变。
-
-本版本只做源码级修复，完整 Gradle 构建与真机验证需通过 GitHub Actions 执行。
-
-V1.9.205.288.43｜提前来源几何缓存诊断：
-1. 只有源文件稳定且 BitmapFactory 读取尺寸成功后才保存本次签名。
-2. 缓存原始壁纸、正式参考帧、显示尺寸；后续相同文件检查输出 KYANT28843_EARLY_CACHED_GEOMETRY。
-3. 不变更光学渲染、Dock、文件夹、Root 发布行为；未启用提前原图光学采样。
-4. 先通过 GitHub Actions 构建，真机验证后再考虑原图裁剪校准。
+本版基于 V288.43 的稳定功能，仅新增 WallpaperAlignmentProbe28844。
+1. 原图/正式参考帧均存在、修改时间相差 0～45 秒时，在后台解码半分辨率副本、比较稀疏采样网格。
+2. 对小范围水平/垂直平移的粗略拟合输出 KYANT28844_ALIGN_RESULT（bestDxOriginalPx、bestDyOriginalPx、mae、secondMae）。
+3. 如果文件不完整、来源不同代或正在替换，输出 KYANT28844_ALIGN_SKIP，不以未经匹配的图片推断坐标。
+4. 诊断不能证明子像素对齐，也未验证比例缩放、动态壁纸、显示特效等；不直接应用任何采样补偿。
+5. Dock 圆角裁剪、文件夹 Kyant 折射、配置键及 Root 发布脚本完全保持 V288.43 行为。
+6. 编译：GitHub Actions 执行 ./gradlew --no-daemon :liquidglass-module:assembleDebug；真机测试需额外验证。
+7. 日志：su -c 'logcat -d -v threadtime | grep KYANT28844'
+8. 当日志一直是 UNPAIRED_AGE，说明当前原始文件和正式截图的修改时间不构成可信配对；应先核对发布版本，再决定是否继续像素校准。

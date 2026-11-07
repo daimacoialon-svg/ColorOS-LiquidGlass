@@ -2600,6 +2600,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     REFRACTION_FRAME_LENGTH=loadedLength;
                     KyantReferenceBridge264.onReferenceReady(app, next, loadedModified, loadedLength);
                     KyantLauncherFrameBridge266.onReferenceReady(next, loadedModified, loadedLength);
+                    // V288.44: event-only, background pixel alignment diagnostic.
+                    WallpaperAlignmentProbe28844.schedule(app, "REFERENCE_PUBLISHED");
                     log("KYANT28834_REFERENCE_PUBLISHED elapsedRealtimeMs="+
                         android.os.SystemClock.elapsedRealtime()+
                         " decodeElapsedMs="+(android.os.SystemClock.elapsedRealtime()-started28833)+
@@ -2745,6 +2747,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     " reference=" + referenceDimensions +
                     " display=" + displayDimensions +
                     " signature=" + signature + " status=DIAGNOSTIC_ONLY");
+                WallpaperAlignmentProbe28844.schedule(app, "EARLY_SOURCE_VALIDATED");
                 log("KYANT28840_EARLY_PROBE_OK reason=" + reason + " signature=" + signature +
                     " elapsedRealtimeMs=" + android.os.SystemClock.elapsedRealtime());
             } catch (Throwable t) {
