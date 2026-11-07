@@ -949,6 +949,96 @@ object KyantLauncherLens270 {
         // V288.72: actual native source is already float RectF + FILTER_BITMAP_FLAG.
         // Diagnostic only. Restrict "settling" to a contiguous, visible, live
         // movement run; an idle redraw after seconds MUST NOT count as a frame gap.
+        // V288.73: application-side PreDraw / native draw correlation.
+        // Diagnostic only: no image re-sampling, View invalidation or layer change.
+        val frameTrace28873 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_frame_trace_28873", 0) == 1
+        } catch (_: Throwable) { false }
+        var tracePreSerial28873 = 0L
+        var tracePreNs28873 = 0L
+        var tracePrePosition28873 = Offset(Float.NaN, Float.NaN)
+        var traceDrawSerial28873 = 0L
+        var traceLastDrawNs28873 = 0L
+        var traceLastDrawX28873 = Float.NaN
+        var traceLastDrawDx28873 = 0f
+        var traceRecords28873 = 0
+        val traceMatrix28873 = Matrix()
+        val tracePoint28873 = FloatArray(2)
+        val traceRootOnScreen28873 = IntArray(2)
+        val traceRootInWindow28873 = IntArray(2)
+        fun traceGlobalOrigin28873(view: View): Float {
+            traceMatrix28873.reset()
+            view.transformMatrixToGlobal(traceMatrix28873)
+            tracePoint28873[0] = 0f
+            tracePoint28873[1] = 0f
+            traceMatrix28873.mapPoints(tracePoint28873)
+            root.getLocationOnScreen(traceRootOnScreen28873)
+            root.getLocationInWindow(traceRootInWindow28873)
+            return tracePoint28873[0] + traceRootOnScreen28873[0] - traceRootInWindow28873[0]
+        }
+        fun traceNativeFrame28873(path: String, carrier: View, position: Offset, generation: Long) {
+            if (!frameTrace28873 || disposed || traceRecords28873 >= 180) return
+            val now = SystemClock.elapsedRealtimeNanos()
+            traceDrawSerial28873++
+            val dx = if (traceLastDrawX28873.isFinite())
+                position.x - traceLastDrawX28873 else 0f
+            val drawGapMs = if (traceLastDrawNs28873 > 0L)
+                (now - traceLastDrawNs28873) / 1_000_000f else -1f
+            val preAgeMs = if (tracePreNs28873 > 0L)
+                (now - tracePreNs28873) / 1_000_000f else -1f
+            val preDx = if (tracePrePosition28873.x.isFinite())
+                position.x - tracePrePosition28873.x else Float.NaN
+            val nearRest = traceLastDrawX28873.isFinite() &&
+                kotlin.math.abs(dx) <= 3f && kotlin.math.abs(dx) >= 0.001f
+            // This is a displacement heuristic, not a claim about OEM touch state.
+            val phase = if (nearRest) "SMALL_STEP"
+                else if (kotlin.math.abs(dx) > 3f) "MOVING" else "STILL_OR_FIRST"
+            val logThis = (nearRest && traceDrawSerial28873 % 2L == 0L) ||
+                (traceDrawSerial28873 % 8L == 0L) ||
+                (dx * traceLastDrawDx28873 < -0.25f)
+            traceLastDrawNs28873 = now
+            traceLastDrawX28873 = position.x
+            traceLastDrawDx28873 = dx
+            if (!logThis) return
+            try {
+                val carrierX = traceGlobalOrigin28873(carrier)
+                val hostX = traceGlobalOrigin28873(frame)
+                // Find the nearest OEM workspace ancestor without relying on class names alone.
+                var p: View? = anchor.parent as? View
+                var workspace: View? = null
+                var depth = 0
+                while (p != null && depth++ < 18) {
+                    if (p.javaClass.name.contains("Workspace", ignoreCase = true)) {
+                        workspace = p; break
+                    }
+                    p = p.parent as? View
+                }
+                val scrollX = workspace?.scrollX ?: Int.MIN_VALUE
+                val workspaceTx = workspace?.translationX ?: Float.NaN
+                val parentTx = (anchor.parent as? View)?.translationX ?: Float.NaN
+                val hostResidual = position.x - hostX
+                val carrierResidual = position.x - carrierX
+                XposedBridge.log("KYANT28873_NATIVE_FRAME host=${System.identityHashCode(anchor)} " +
+                    "path=$path draw=$traceDrawSerial28873 predraw=$tracePreSerial28873 " +
+                    "phase=$phase tsNs=$now preTsNs=$tracePreNs28873 " +
+                    "preAgeMs=$preAgeMs drawGapMs=$drawGapMs " +
+                    "sampleX=${position.x} preX=${tracePrePosition28873.x} " +
+                    "samplePreDelta=$preDx dx=$dx " +
+                    "carrierX=$carrierX hostX=$hostX " +
+                    "sampleCarrierDelta=$carrierResidual sampleHostDelta=$hostResidual " +
+                    "workspaceScrollX=$scrollX workspaceTx=$workspaceTx parentTx=$parentTx " +
+                    "bridgeGen=$generation")
+                traceRecords28873++
+            } catch (t: Throwable) {
+                XposedBridge.log("KYANT28873_TRACE_ERROR host=${System.identityHashCode(anchor)} " +
+                    "error=${t.javaClass.simpleName}")
+                traceRecords28873++
+            }
+        }
+        if (frameTrace28873) XposedBridge.log(
+            "KYANT28873_HOST host=${System.identityHashCode(anchor)} carrier=$nativeCarrierAb28869 " +
+            "mode=$nativeSettleAb28870 diagnosticOnly=true maxRecords=180")
         val settleProbe28872 = try {
             Settings.Global.getInt(anchor.context.contentResolver,
                 "liquidglass_kyant_settle_probe_28872", 0) == 1
@@ -1101,6 +1191,8 @@ object KyantLauncherLens270 {
                 // V288.22 mode 1: Compose draw itself samples the reference frame.
                 // Do not publish an independent native Bitmap frame first.
                 if (frameSync28822 != 1 || nativeCarrierAb28869 == 1) sampleBridgeAt(pos)
+                if (nativeCarrierAb28869 == 1) traceNativeFrame28873(
+                    "NATIVE_BITMAP_BRIDGE", this, pos, bridgeDrawCount.get())
                 releaseTrace28820("NATIVE_SAMPLE", pos, "draw=${count + 1L} bridgeW=${bridgeBitmap?.width} bridgeH=${bridgeBitmap?.height}")
                 // Mode 3: sample into exactly the same bridge Bitmap as mode 2,
                 // but render it in the native View's own Canvas (no Compose handoff).
@@ -1279,6 +1371,8 @@ object KyantLauncherLens270 {
                 if (nativeCarrierAb28869 == 2) recordNativeSettle28872(
                     "NATIVE_VIEW_DIRECT", position, activeReference, drawCount + 1L,
                     width, height)
+                if (nativeCarrierAb28869 == 2) traceNativeFrame28873(
+                    "NATIVE_VIEW_DIRECT", this, position, drawCount + 1L)
                 if (nativeCarrierAb28869 != 2 && displayIsolationMode != 1 && nativeLayerMode == 0)
                     canvas.drawLine(width * 0.5f, 0f, width * 0.5f, height.toFloat(), dividerPaint)
                 val now = SystemClock.elapsedRealtimeNanos()
@@ -1549,6 +1643,11 @@ object KyantLauncherLens270 {
                     val actualSample = glassScreenPosition(lastBounds)
                     nativePredrawPosition28824 = actualSample
                     nativePredrawSerial28824++
+                    if (frameTrace28873) {
+                        tracePreSerial28873++
+                        tracePreNs28873 = SystemClock.elapsedRealtimeNanos()
+                        tracePrePosition28873 = actualSample
+                    }
                     releaseTrace28820("PREDRAW", actualSample,
                         "committedX=${samplePosition.value.x} committedY=${samplePosition.value.y} frameX=${frame.x} frameTx=${frame.translationX}")
                     // V288.14: compare sample, anchor and host in the same PreDraw.

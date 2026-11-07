@@ -1,3 +1,32 @@
+ColorOS-LiquidGlass V1.9.205.288.73｜原生背景同绘制周期时序诊断版
+
+基于 V1.9.205.288.72。仅新增可选的帧级应用层诊断，不更改已有 Kyant 光学、壁纸参考帧发布、原生背景采样和重绘调度。
+
+本版开关：
+  settings put global liquidglass_kyant_frame_trace_28873 1
+  settings put global liquidglass_kyant_native_carrier_ab_28869 1
+  settings put global liquidglass_kyant_native_settle_ab_28870 0
+  settings put global liquidglass_kyant_settle_probe_28872 0
+每次切换模式须重载 Launcher 以重新创建 Host。
+
+日志：
+  logcat -d -v threadtime | grep -E "KYANT28873_HOST|KYANT28873_NATIVE_FRAME|KYANT28873_TRACE_ERROR" | tail -100
+每个 Host 最多输出 180 条；不会在每一帧无条件打印。
+
+KYANT28873_NATIVE_FRAME 指标：
+  predraw、draw：同一 Host 的回调序号；tsNs/preTsNs 及 preAgeMs：两个应用层回调的相对时间。
+  sampleX：原生背景绘制实际采用的源坐标；preX：最近一次 PreDraw 样本坐标。
+  carrierX、hostX：承载 View 与 Frame 的当前全局原点；sampleCarrierDelta、sampleHostDelta 是它们与 sampleX 的差值。
+  workspaceScrollX/workspaceTx/parentTx：父容器滚动/平移观测量。
+  phase=SMALL_STEP：仅代表相邻背景绘制 X 位移在 0.001~3px，并不证明 OEM 动画阶段。
+  bridgeGen：模式 1 是已写入原生位图代际，模式 2 为原生绘制计数。
+
+提示：这些是 Android View / Canvas 回调数据，不是 SurfaceFlinger 最终屏幕显示帧，不能仅凭时间差宣称存在屏幕级错误。
+诊断关闭：settings put global liquidglass_kyant_frame_trace_28873 0（重新加载 Launcher）。
+
+本版未执行完整 Android Gradle 构建；需要 GitHub Actions 编译验证。
+
+===== 历史说明 =====
 ColorOS-LiquidGlass V1.9.205.288.46｜壁纸全分辨率对齐去重与等价映射诊断
 
 基于 V1.9.205.288.45，保留原有 Dock 胶囊、文件夹与 Kyant 光学效果、正式参考帧。
