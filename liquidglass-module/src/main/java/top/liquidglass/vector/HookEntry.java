@@ -2644,61 +2644,123 @@ public final class HookEntry implements IXposedHookLoadPackage {
             }
         }},"LiquidGlass-Wallpaper-Reference").start();
     }
-    // V288.38: decode metadata only (inJustDecodeBounds) for early source.
-    // NEVER publish this uncalibrated image to Kyant's optical render path.
+    // V288.40: diagnostic-only early-source receiver. No bitmap allocation or
+    // rendering-path changes; the canonical screenshot remains authoritative.
     private static final java.util.concurrent.atomic.AtomicBoolean EARLY_PROBE_BUSY_28838 =
         new java.util.concurrent.atomic.AtomicBoolean(false);
-    private static void probeEarlySource28838(final android.content.Context app) {
-        if (!EARLY_PROBE_BUSY_28838.compareAndSet(false, true)) return;
+    private static final java.util.concurrent.atomic.AtomicBoolean EARLY_PROBE_PENDING_28840 =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static volatile String EARLY_PROBE_LAST_SIGNATURE_28840 = "";
+    private static volatile boolean EARLY_WATCH_READY_28840 = false;
+    private static void probeEarlySource28838(final android.content.Context context) {
+        probeEarlySource28840(context, "LEGACY");
+    }
+    private static void probeEarlySource28840(final android.content.Context context, final String reason) {
+        if (context == null) return;
+        if (!EARLY_PROBE_BUSY_28838.compareAndSet(false, true)) {
+            EARLY_PROBE_PENDING_28840.set(true);
+            log("KYANT28840_EARLY_PROBE_BUSY reason=" + reason + " pending=true");
+            return;
+        }
         new Thread(() -> {
             try {
+                android.content.Context app = context.getApplicationContext();
                 java.io.File candidate = new java.io.File(app.getFilesDir(), "liquidglass_early_wallpaper_source");
-                if (!candidate.isFile() || candidate.length() <= 1024L) return;
+                boolean exists = candidate.isFile();
+                long size = exists ? candidate.length() : 0L;
+                long modified = exists ? candidate.lastModified() : 0L;
+                String signature = size + ":" + modified;
+                if (!exists || size <= 1024L) {
+                    log("KYANT28840_EARLY_PROBE_SKIP reason=" + reason +
+                        " exists=" + exists + " bytes=" + size + " modified=" + modified);
+                    return;
+                }
+                if (signature.equals(EARLY_PROBE_LAST_SIGNATURE_28840)) {
+                    log("KYANT28840_EARLY_PROBE_UNCHANGED reason=" + reason + " signature=" + signature);
+                    return;
+                }
                 android.graphics.BitmapFactory.Options opt = new android.graphics.BitmapFactory.Options();
                 opt.inJustDecodeBounds = true;
                 android.graphics.BitmapFactory.decodeFile(candidate.getAbsolutePath(), opt);
+                if (opt.outWidth <= 0 || opt.outHeight <= 0) {
+                    log("KYANT28840_EARLY_DECODE_INVALID reason=" + reason + " bytes=" + size +
+                        " width=" + opt.outWidth + " height=" + opt.outHeight);
+                    return;
+                }
+                // Do not mistake a replacement in progress for a complete reference.
+                if (candidate.length() != size || candidate.lastModified() != modified) {
+                    log("KYANT28840_EARLY_FILE_CHANGED_DURING_READ reason=" + reason);
+                    return;
+                }
+                EARLY_PROBE_LAST_SIGNATURE_28840 = signature;
                 android.graphics.Bitmap reference = KyantLauncherFrameBridge266.peekReferenceFrame270();
                 android.util.DisplayMetrics dm = app.getResources().getDisplayMetrics();
-                log("KYANT28838_EARLY_GEOMETRY original="+opt.outWidth+"x"+opt.outHeight+
-                    " reference="+(reference==null ? "NONE" : reference.getWidth()+"x"+reference.getHeight())+
-                    " display="+dm.widthPixels+"x"+dm.heightPixels+
-                    " sourceBytes="+candidate.length()+" status=DIAGNOSTIC_ONLY");
+                log("KYANT28838_EARLY_GEOMETRY original=" + opt.outWidth + "x" + opt.outHeight +
+                    " reference=" + (reference == null ? "NONE" : reference.getWidth() + "x" + reference.getHeight()) +
+                    " display=" + dm.widthPixels + "x" + dm.heightPixels +
+                    " sourceBytes=" + size + " status=DIAGNOSTIC_ONLY");
+                log("KYANT28840_EARLY_PROBE_OK reason=" + reason + " signature=" + signature +
+                    " elapsedRealtimeMs=" + android.os.SystemClock.elapsedRealtime());
             } catch (Throwable t) {
-                log("KYANT28838_EARLY_PROBE_ERROR " + t.getClass().getSimpleName());
-            } finally { EARLY_PROBE_BUSY_28838.set(false); }
+                log("KYANT28840_EARLY_PROBE_ERROR reason=" + reason +
+                    " type=" + t.getClass().getSimpleName() +
+                    " detail=" + String.valueOf(t.getMessage()));
+            } finally {
+                EARLY_PROBE_BUSY_28838.set(false);
+                if (EARLY_PROBE_PENDING_28840.getAndSet(false))
+                    probeEarlySource28840(context, "COALESCED_EVENT");
+            }
         }, "LiquidGlass-Early-Geometry").start();
     }
-    // V124: watch the Launcher-owned reference file, not the protected system source.
-    // Keep observers strongly referenced; FileObserver callbacks are not on the UI thread.
+    // Keep observers strongly referenced; FileObserver callbacks are off the UI thread.
     private static final java.util.List<android.os.FileObserver> REFERENCE_OBSERVERS_124 =
         new java.util.ArrayList<android.os.FileObserver>();
-    private static void watchReferenceChanges124(final android.content.Context app,
-                                                   final android.os.Handler handler) {
-        if(!REFERENCE_OBSERVERS_124.isEmpty())return;
-        String[] dirs={app.getFilesDir().getAbsolutePath(),
+    private static synchronized void watchReferenceChanges124(final android.content.Context app,
+                                                    final android.os.Handler handler) {
+        if (!REFERENCE_OBSERVERS_124.isEmpty()) {
+            log("KYANT28840_WATCH_ALREADY_READY count=" + REFERENCE_OBSERVERS_124.size());
+            probeEarlySource28840(app, "WATCH_ALREADY_READY");
+            return;
+        }
+        String[] dirs = {app.getFilesDir().getAbsolutePath(),
             app.createDeviceProtectedStorageContext().getFilesDir().getAbsolutePath()};
-        for(final String dir:dirs){
+        for (final String dir : dirs) {
             try {
-                android.os.FileObserver observer=new android.os.FileObserver(dir,
-                    android.os.FileObserver.CLOSE_WRITE | android.os.FileObserver.MOVED_TO){
-                    @Override public void onEvent(int event,String name){
+                android.os.FileObserver observer = new android.os.FileObserver(dir,
+                    android.os.FileObserver.CLOSE_WRITE | android.os.FileObserver.MOVED_TO |
+                    android.os.FileObserver.CREATE){
+                    @Override public void onEvent(int event, String name) {
+                        if (name == null) return;
                         if ("liquidglass_early_wallpaper_source".equals(name)) {
-                            probeEarlySource28838(app);
+                            log("KYANT28840_EARLY_FILE_EVENT type=" + event + " dir=" + dir +
+                                " elapsedRealtimeMs=" + android.os.SystemClock.elapsedRealtime());
+                            // Root publishes via atomic rename; CLOSE_WRITE handles direct writes.
+                            // A CREATE event might be incomplete, hence validation in the worker.
+                            probeEarlySource28840(app, "FILE_EVENT_" + event);
                             return;
                         }
-                        if(name==null || !"liquidglass_wallpaper_reference.jpg".equals(name))return;
-                        // Callback is already delivered off the UI thread by
-                        // FileObserver. Avoid the extra UI queueing delay and
-                        // immediately decode after the producer's atomic rename.
-                        log("KYANT28834_REFERENCE_FILE_EVENT type="+event+
-                            " elapsedRealtimeMs="+android.os.SystemClock.elapsedRealtime());
-                        scheduleReferenceLoad28833(app,null,true);
+                        if (!"liquidglass_wallpaper_reference.jpg".equals(name)) return;
+                        if ((event & (android.os.FileObserver.CLOSE_WRITE | android.os.FileObserver.MOVED_TO)) == 0) return;
+                        log("KYANT28834_REFERENCE_FILE_EVENT type=" + event +
+                            " elapsedRealtimeMs=" + android.os.SystemClock.elapsedRealtime());
+                        scheduleReferenceLoad28833(app, null, true);
                     }
                 };
                 observer.startWatching();
                 REFERENCE_OBSERVERS_124.add(observer);
-                if (dir.equals(app.getFilesDir().getAbsolutePath())) probeEarlySource28838(app);
-            }catch(Throwable t){log("WALLPAPER_WATCH_FAILED_124 "+t.getClass().getSimpleName());}
+                log("KYANT28840_WATCH_READY dir=" + dir + " mask=CLOSE_WRITE|MOVED_TO|CREATE");
+                if (dir.equals(app.getFilesDir().getAbsolutePath())) {
+                    EARLY_WATCH_READY_28840 = true;
+                    probeEarlySource28840(app, "WATCH_START");
+                }
+            } catch (Throwable t) {
+                log("KYANT28840_WATCH_FAILED dir=" + dir + " error=" + t.getClass().getSimpleName() +
+                    " detail=" + String.valueOf(t.getMessage()));
+                log("WALLPAPER_WATCH_FAILED_124 " + t.getClass().getSimpleName());
+            }
+        }
+        if (!EARLY_WATCH_READY_28840) {
+            log("KYANT28840_EARLY_WATCH_MISSING fallback=BROADCAST_AND_FOREGROUND");
         }
     }
     // Keep each icon's shader and pre-draw observer in a weak map. No disk IO on UI thread.
@@ -8006,6 +8068,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                 // A broadcast cannot make ColorOS produce the
                                 // screenshot; check whether Root has published it.
                                 scheduleReferenceLoad28833(app,null,true);
+                                probeEarlySource28840(app, "WALLPAPER_BROADCAST");
                             }
                         },wallpaper28833);
                         log("KYANT28833_WALLPAPER_LISTENER_READY");
@@ -8215,6 +8278,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     log("KYANT28834_LAUNCHER_FOREGROUND elapsedRealtimeMs="+
                         now28834+" trigger="+trigger);
                     scheduleReferenceLoad28833(a.getApplicationContext(),null,true);
+                    // One metadata-only check on foreground recovery, not per frame.
+                    probeEarlySource28840(a.getApplicationContext(), "LAUNCHER_FOREGROUND");
                 }
             }
             scheduleDock200(a,trigger);
