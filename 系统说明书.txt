@@ -36,3 +36,5 @@ V1.9.205.288.54：修复提前参考帧通过裁剪校准后遇到 CANONICAL_NEW
 V1.9.205.288.55：壁纸提前帧生命周期时间线与内容归属确认版。新增 KYANT28855_EVENT_CAPTURE、DISPATCH、WORKER_START、CROP_READY、CONTENT_RELATION、CANONICAL_TRANSITION、GENERATION_DECISION 日志，记录 Root 提前文件事件在 Launcher 的接收时间、异步工作线程启动延迟、壁纸裁剪完成时间、正式参考帧视觉指纹变化与提前帧同图平均误差；判断结果区分 CURRENT_MATCH（无二次发布）、KEEP_CANONICAL（不确定代际）与 EARLY_PUBLISHED（校准和代际保护通过）。不绕过 CANONICAL_NEWER_UNVERIFIED，也不对尚未校准的新静态壁纸提前发布。保持 Dock/文件夹原有光学渲染、正式参考帧与去重逻辑。
 测试：su -c 'logcat -d -v threadtime | grep KYANT28855 | tail -100'
 Gradle 全量编译与真机效果尚待确认。
+
+V1.9.205.288.56：Root 提前原图原子发布完成后发送 package-scoped 唤醒广播；Launcher 动态注册接收器并校验发送 UID，仅 root/shell 可触发，随后仍执行原有逐图裁剪批准和代际校验。FileObserver 在几何探测之前捕获新事件基线；前台缓存重复尝试按原图元数据和正式帧视觉代际去重，避免同图反复解码。若 OEM 限制后台广播，保留现有文件观察器与前台补偿路径。测试：logcat grep KYANT28856，并检查 /data/local/tmp/liquidglass-wallpaper-sync.log 中的 KYANT28856_ROOT_WAKE_SENT。尚未证明后台广播能唤醒冻结 Launcher。

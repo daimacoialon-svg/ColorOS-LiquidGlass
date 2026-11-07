@@ -2770,6 +2770,52 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static volatile long EARLY_EVENT_FILE_ELAPSED_28855 = -1L;
     private static volatile long EARLY_EVENT_CANONICAL_VISUAL_28855 = Long.MIN_VALUE;
     private static volatile long EARLY_EVENT_SOURCE_MTIME_28855 = -1L;
+    // V288.56: Root's explicit one-shot wake signal complements FileObserver
+    // while Launcher is cached. Do not infer timely FileObserver delivery from
+    // a later foreground probe. All signals still use the guarded preview path.
+    private static final String EARLY_WAKE_ACTION_28856 =
+        "top.liquidglass.vector.action.EARLY_SOURCE_READY_28856";
+    private static final java.util.concurrent.atomic.AtomicBoolean EARLY_WAKE_REGISTERED_28856 =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static volatile String EARLY_LAST_FINISHED_KEY_28856 = "";
+    private static volatile String EARLY_RUNNING_KEY_28856 = "";
+    private static String previewAttemptKey28856(android.content.Context app) {
+        java.io.File source = new java.io.File(earlyCeFilesDir28842(app),
+            "liquidglass_early_wallpaper_source");
+        return source.length() + ":" + source.lastModified() + "|" +
+            Long.toHexString(CANONICAL_VISUAL_KEY_28849);
+    }
+    private static void installEarlyWakeReceiver28856(final android.content.Context app) {
+        if (!EARLY_WAKE_REGISTERED_28856.compareAndSet(false, true)) return;
+        try {
+            android.content.IntentFilter filter = new android.content.IntentFilter(EARLY_WAKE_ACTION_28856);
+            app.registerReceiver(new android.content.BroadcastReceiver() {
+                @Override public void onReceive(android.content.Context context, android.content.Intent intent) {
+                    // Root / shell are the only authorized senders. Do not accept
+                    // third-party spoofed signals into Launcher; Root also publishes
+                    // the actual image to a private app-owned directory.
+                    int uid = android.os.Build.VERSION.SDK_INT >= 34 ? getSentFromUid() : -1;
+                    if (uid != 0 && uid != 2000) {
+                        log("KYANT28856_WAKE_REJECT uid=" + uid);
+                        return;
+                    }
+                    long at = android.os.SystemClock.elapsedRealtime();
+                    log("KYANT28856_WAKE_RECEIVED uid=" + uid + " elapsedMs=" + at +
+                        " source=" + intent.getStringExtra("source_sig"));
+                    markFreshEarlyEvent28854(app, 0x10000);
+                    scheduleEarlyPreview28847(app, "ROOT_WAKE_28856");
+                    // Geometry diagnostic may run independently, after the preview
+                    // has captured its event baseline.
+                    probeEarlySource28840(app, "ROOT_WAKE_28856");
+                }
+            }, filter, android.content.Context.RECEIVER_EXPORTED);
+            log("KYANT28856_WAKE_REGISTERED package=" + app.getPackageName());
+        } catch (Throwable error) {
+            EARLY_WAKE_REGISTERED_28856.set(false);
+            log("KYANT28856_WAKE_REGISTER_FAILED type=" + error.getClass().getSimpleName());
+        }
+    }
+
     private static long eventAge28855() {
         long t = EARLY_EVENT_FILE_ELAPSED_28855;
         return t < 0L ? -1L : android.os.SystemClock.elapsedRealtime() - t;
@@ -2833,6 +2879,16 @@ public final class HookEntry implements IXposedHookLoadPackage {
         if (mode != 0) log("KYANT28855_DISPATCH trigger=" + trigger +
             " eventAgeMs=" + eventAge28855() + " elapsedMs=" +
             android.os.SystemClock.elapsedRealtime() + " busy=" + EARLY_RENDER_BUSY_28847.get());
+        if (mode != 0 && (trigger.startsWith("CACHED_PROBE_") ||
+                trigger.startsWith("VALIDATED_PROBE_"))) {
+            final String attemptKey28856 = previewAttemptKey28856(app);
+            if (attemptKey28856.equals(EARLY_LAST_FINISHED_KEY_28856) ||
+                attemptKey28856.equals(EARLY_RUNNING_KEY_28856)) {
+                log("KYANT28856_ATTEMPT_DEDUP trigger=" + trigger +
+                    " key=" + attemptKey28856);
+                return;
+            }
+        }
         if (mode == 0) {
             // A/B can be disabled without replacing the normal reference loader.
             if (EARLY_PREVIEW_ACTIVE_28847) scheduleReferenceLoad28833(app, null, true);
@@ -2844,6 +2900,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
             return;
         }
         final long dispatchTime28855 = android.os.SystemClock.elapsedRealtime();
+        final String attemptKey28856 = previewAttemptKey28856(app);
+        EARLY_RUNNING_KEY_28856 = attemptKey28856;
         new Thread(() -> {
             android.graphics.Bitmap output = null;
             final long workerStart28855 = android.os.SystemClock.elapsedRealtime();
@@ -3006,6 +3064,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
             } catch (Throwable ex) {
                 log("KYANT28847_EARLY_ERROR type="+ex.getClass().getSimpleName());
             } finally {
+                EARLY_LAST_FINISHED_KEY_28856 = attemptKey28856;
+                EARLY_RUNNING_KEY_28856 = "";
                 EARLY_RENDER_BUSY_28847.set(false);
                 if (EARLY_RENDER_PENDING_28848.getAndSet(false))
                     scheduleEarlyPreview28847(app, "COALESCED_RENDER_28848");
@@ -3166,13 +3226,17 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             log("KYANT28840_EARLY_FILE_EVENT type=" + event + " dir=" + dir +
                                 " elapsedRealtimeMs=" + android.os.SystemClock.elapsedRealtime());
                             // Root publishes via atomic rename; CLOSE_WRITE handles direct writes.
-                            // A CREATE event might be incomplete, hence validation in the worker.
-                            probeEarlySource28840(app, "FILE_EVENT_" + event);
+                            // Capture event content generation BEFORE any async
+                            // probe can launch the preview. Otherwise the baseline
+                            // races with a cached geometry probe.
                             if ((event & (android.os.FileObserver.CLOSE_WRITE |
                                     android.os.FileObserver.MOVED_TO)) != 0) {
                                 markFreshEarlyEvent28854(app, event);
-                                scheduleEarlyPreview28847(app, "EARLY_FILE_EVENT_28848_" + event);
+                                log("KYANT28856_FILE_EVENT_DIRECT event=" + event);
+                                scheduleEarlyPreview28847(app, "EARLY_FILE_EVENT_28856_" + event);
                             }
+                            // CREATE may still be incomplete; let probe validate.
+                            probeEarlySource28840(app, "FILE_EVENT_" + event);
                             return;
                         }
                         if (!"liquidglass_wallpaper_reference.jpg".equals(name)) return;
@@ -8488,6 +8552,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         },directFilter128,android.content.Context.RECEIVER_EXPORTED);
                         log("CONFIG_194 stage=HINT_RECEIVER_READY authority=GLOBAL_SNAPSHOT");
                     }catch(Throwable t){log("CONFIG_194 stage=HINT_RECEIVER_FAILED reason="+t.getClass().getSimpleName());}
+                    installEarlyWakeReceiver28856(app);
                     watchReferenceChanges124(app,handler);
                     // V288.33: read-only wallpaper-change notification for
                     // tracing. It does not decode an incomplete system wallpaper

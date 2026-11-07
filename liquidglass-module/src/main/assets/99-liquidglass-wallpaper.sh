@@ -282,6 +282,19 @@ publish_early_source_28838() {
       restorecon "$EARLY_DST" "$EARLY_SIG" 2>/dev/null
       read up _ < /proc/uptime
       echo "KYANT28838_EARLY_SOURCE_READY uptimeSec=$up size=$(stat -c %s "$EARLY_DST" 2>/dev/null)" >> "$LOG"
+      # V288.56: one explicit event wakeup after the atomic rename.
+      # A cached Launcher may not receive its FileObserver until foreground;
+      # a package-scoped broadcast can deliver the hint earlier. It is only a
+      # hint: the Launcher itself verifies sender, source, crop and generation.
+      # Never block the Root source worker on ActivityManager IPC.
+      (
+        am broadcast --user 0 --receiver-foreground -a top.liquidglass.vector.action.EARLY_SOURCE_READY_28856 \
+          -p com.android.launcher --es source_sig "$(stat -c '%s:%Y' "$EARLY_DST" 2>/dev/null)" \
+          >/dev/null 2>&1
+        result=$?
+        read wake_up _ < /proc/uptime
+        echo "KYANT28856_ROOT_WAKE_SENT uptimeSec=$wake_up result=$result" >> "$LOG"
+      ) &
     fi
   fi
   rm -f "$tmp"
