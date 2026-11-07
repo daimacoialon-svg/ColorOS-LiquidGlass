@@ -323,6 +323,27 @@ object KyantLauncherLens270 {
         // V288.67: diagnostics only. Measure the actual wallpaper UV inputs in
         // the Compose source draw and the gaps between visible motion draws.
         // Disabled by default, never changes the shader, reference or invalidation.
+        // V288.68: isolate only the optical lens displacement. This does not
+        // change source bitmap, sampling origin, blur, highlight or host geometry.
+        val zeroLensAb28868 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_zero_lens_ab_28868", 0).coerceIn(0, 1)
+        } catch (_: Throwable) { 0 }
+        val continuousMotionProbe28868 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_continuous_motion_probe_28868", 0) == 1
+        } catch (_: Throwable) { false }
+        if (zeroLensAb28868 == 1 || continuousMotionProbe28868) XposedBridge.log(
+            "KYANT28868_HOST host=${System.identityHashCode(anchor)} zeroLens=$zeroLensAb28868 " +
+            "motionProbe=$continuousMotionProbe28868")
+        // A pair of (last observed moving PreDraw nanoTime, active run start nanoTime).
+        // Run starts are reset by stationary or long-gapped PreDraw observations.
+        val continuousRun28868 = java.util.concurrent.atomic.AtomicReference(Pair(0L, 0L))
+        var lastMovingPredrawNs28868 = 0L
+        var currentRunStartNs28868 = 0L
+        var continuousBreaks28868 = 0L
+        var maxMovingPredrawGapNs28868 = 0L
+        var continuousWindowNs28868 = SystemClock.elapsedRealtimeNanos()
         val uvProbe28867 = try {
             Settings.Global.getInt(anchor.context.contentResolver,
                 "liquidglass_kyant_uv_motion_probe_28867", 0) == 1
@@ -1164,6 +1185,7 @@ object KyantLauncherLens270 {
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
                 { glassScreenPosition(lastBounds) },
                 sourceMatrixAb28866, { composeViewScreenPosition28866() },
+                zeroLensAb28868, continuousMotionProbe28868, continuousRun28868,
                 uvProbe28867, { frame.visibility == View.VISIBLE &&
                     frame.isShown && frame.width > 0 && frame.height > 0 &&
                     glassScreenPosition(lastBounds).let { pos ->
@@ -1355,6 +1377,39 @@ object KyantLauncherLens270 {
                     }
                     val moved = xy[0] != lastX || xy[1] != lastY ||
                         sampleDelta > (1f / 64f)
+                    if (continuousMotionProbe28868) {
+                        // Use the SAME visibility and screen-intersection constraints
+                        // as the source. Offscreen and stationary periods terminate a run.
+                        val visibleNow68 = frame.visibility == View.VISIBLE && anchor.isShown &&
+                            frame.width > 0 && frame.height > 0 &&
+                            actualSample.x + previewWidth > 0f && actualSample.y + previewHeight > 0f &&
+                            actualSample.x < displayWidth && actualSample.y < displayHeight
+                        if (moved && visibleNow68) {
+                            if (lastMovingPredrawNs28868 > 0L) {
+                                val dt68 = cadenceNow - lastMovingPredrawNs28868
+                                maxMovingPredrawGapNs28868 = maxOf(maxMovingPredrawGapNs28868, dt68)
+                                if (dt68 > 100_000_000L || currentRunStartNs28868 == 0L) {
+                                    currentRunStartNs28868 = cadenceNow
+                                    continuousBreaks28868++
+                                }
+                            } else currentRunStartNs28868 = cadenceNow
+                            lastMovingPredrawNs28868 = cadenceNow
+                            continuousRun28868.set(Pair(cadenceNow, currentRunStartNs28868))
+                        } else {
+                            lastMovingPredrawNs28868 = 0L
+                            currentRunStartNs28868 = 0L
+                            continuousRun28868.set(Pair(0L, 0L))
+                        }
+                        if (cadenceNow - continuousWindowNs28868 >= 1_000_000_000L) {
+                            if (continuousBreaks28868 > 0L) XposedBridge.log(
+                                "KYANT28868_PREDRAW_RUN host=${System.identityHashCode(anchor)} " +
+                                "runBreaks=$continuousBreaks28868 " +
+                                "maxMovingPredrawGapMs=${maxMovingPredrawGapNs28868 / 1_000_000f}")
+                            continuousWindowNs28868 = cadenceNow
+                            continuousBreaks28868 = 0L
+                            maxMovingPredrawGapNs28868 = 0L
+                        }
+                    }
                     if (moved) {
                         positionChanges++
                         // Native invalidation only. No Compose snapshot writes in draw.
@@ -1850,6 +1905,8 @@ object KyantLauncherLens270 {
         predrawMatrixSnapshot: java.util.concurrent.atomic.AtomicReference<Pair<Offset, Long>>,
         currentNativePosition: () -> Offset,
         sourceMatrixAb28866: Int, currentComposeViewPosition28866: () -> Offset,
+        zeroLensAb28868: Int, continuousMotionProbe28868: Boolean,
+        continuousRun28868: java.util.concurrent.atomic.AtomicReference<Pair<Long, Long>>,
         uvProbe28867: Boolean, visibleSource28867: () -> Boolean,
         recordSourceMatrix28866: (Offset, Offset) -> Unit,
         lifecycleProbe28864: Boolean, drawProbe28865: Boolean,
@@ -1887,6 +1944,13 @@ object KyantLauncherLens270 {
         val uvStats28867 = androidx.compose.runtime.remember { floatArrayOf(0f, 0f, 0f, 0f, 0f) }
         val uvCounts28867 = androidx.compose.runtime.remember { longArrayOf(0L, 0L, 0L, 0L, 0L, 0L) }
         val uvTimes28867 = androidx.compose.runtime.remember { longArrayOf(0L, 0L) }
+        // Per-Host, draw-thread only. Reset window and active-run context separately.
+        val continuousCounts28868 = androidx.compose.runtime.remember { LongArray(5) }
+        // qualified draws, intervals >16.7, >33.3, >50, excluded transitions
+        val continuousValues28868 = androidx.compose.runtime.remember { FloatArray(3) }
+        // max draw gap, max position step, largest PreDraw-to-draw age
+        val continuousTimes28868 = androidx.compose.runtime.remember { longArrayOf(0L, 0L, 0L) }
+        // window start, prior qualified source draw time, prior run start
 
         // Clip the WHOLE optical pipeline, including wallpaper source and highlight,
         // not just the Kyant lens shape. Prevent pixels escaping rounded corners.
@@ -1994,6 +2058,52 @@ object KyantLauncherLens270 {
                 val y = rootScreenY * scaleY
                 val sw = previewWidth * scaleX
                 val sh = previewHeight * scaleY
+                if (continuousMotionProbe28868) {
+                    val now68 = SystemClock.elapsedRealtimeNanos()
+                    if (continuousTimes28868[0] == 0L) continuousTimes28868[0] = now68
+                    val run68 = continuousRun28868.get()
+                    val visible68 = try { visibleSource28867() } catch (_: Throwable) { false }
+                    val predrawAge68 = if (run68.first > 0L) now68 - run68.first else Long.MAX_VALUE
+                    // A qualified source draw belongs to a visible, continuously
+                    // moving run lasting >=80ms and with a recent native PreDraw.
+                    val qualified68 = visible68 && run68.second > 0L &&
+                        now68 - run68.second >= 80_000_000L &&
+                        predrawAge68 in 0L..33_000_000L
+                    if (qualified68) {
+                        continuousCounts28868[0]++
+                        continuousValues28868[2] = maxOf(continuousValues28868[2], predrawAge68 / 1_000_000f)
+                        if (continuousTimes28868[1] > 0L && continuousTimes28868[2] == run68.second) {
+                            val gap68 = (now68 - continuousTimes28868[1]) / 1_000_000f
+                            continuousValues28868[0] = maxOf(continuousValues28868[0], gap68)
+                            if (gap68 > 16.7f) continuousCounts28868[1]++
+                            if (gap68 > 33.3f) continuousCounts28868[2]++
+                            if (gap68 > 50f) continuousCounts28868[3]++
+                        } else continuousCounts28868[4]++
+                        continuousTimes28868[1] = now68
+                        continuousTimes28868[2] = run68.second
+                    } else {
+                        // Never bridge an idle/offscreen/drag-snapshot interval.
+                        continuousTimes28868[1] = 0L
+                        continuousTimes28868[2] = 0L
+                        continuousCounts28868[4]++
+                    }
+                    if (now68 - continuousTimes28868[0] >= 1_000_000_000L) {
+                        if (continuousCounts28868[0] > 0L) XposedBridge.log(
+                            "KYANT28868_CONTINUOUS_MOTION path=" + when {
+                                bridgeBitmap != null -> "BRIDGE"
+                                renderAbMode != 1 && (samplingMode == 1 || largeContinuousSource28830) -> "FULL_FRAME"
+                                else -> "SOURCE_CROP"
+                            } + " qualifiedDraws=${continuousCounts28868[0]} " +
+                            "over16=${continuousCounts28868[1]} over33=${continuousCounts28868[2]} " +
+                            "over50=${continuousCounts28868[3]} excluded=${continuousCounts28868[4]} " +
+                            "maxQualifiedGapMs=${continuousValues28868[0]} " +
+                            "maxPredrawAgeMs=${continuousValues28868[2]} " +
+                            "zeroLens=$zeroLensAb28868")
+                        continuousCounts28868.fill(0L)
+                        continuousValues28868.fill(0f)
+                        continuousTimes28868[0] = now68
+                    }
+                }
                 if (uvProbe28867) {
                     val now67 = SystemClock.elapsedRealtimeNanos()
                     if (uvTimes28867[0] == 0L) uvTimes28867[0] = now67
@@ -2211,7 +2321,7 @@ object KyantLauncherLens270 {
                 effects = {
                     val m = size.minDimension
                     blur(optics28827.blur.dp.toPx())
-                    if (motionAbMode != 2 && optics28827.strength > 0) {
+                    if (motionAbMode != 2 && zeroLensAb28868 == 0 && optics28827.strength > 0) {
                         val amount28827 = optics28827.strength / 100f
                         lens(refractionHeight = .1f * m * amount28827,
                             refractionAmount = .2f * m * amount28827,

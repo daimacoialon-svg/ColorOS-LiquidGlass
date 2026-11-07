@@ -115,3 +115,12 @@ V1.9.205.288.67｜Kyant 运动期间壁纸 UV 输入连续性诊断
 maxUvResidualPx 只检验 Kotlin 绘制坐标换算的连续性，不代表 GPU 最终输出差异；
 movingGapOver33 和 maxMovingGapMs 仅统计可见源图绘制之间，且位置发生变化的间隔。
 默认关闭，不改变 Root 壁纸同步、Dock、Kyant Shader、源图发布及其他旧实验设置。
+
+
+V1.9.205.288.68｜光学位移隔离与连续移动源绘制诊断
+以 V288.67 为稳定来源，默认两个功能均关闭。仅对 Kyant 文件夹光学 drawBackdrop 的 lens() 施加隔离，不触碰壁纸、模糊、高光、Dock 和 Root 发布机制。
+测试 A：settings put global liquidglass_kyant_zero_lens_ab_28868 0 或 1（1=跳过透镜位移，恢复设0）；重启 Launcher。
+测试 B：settings put global liquidglass_kyant_continuous_motion_probe_28868 1（关闭设0）；重启 Launcher。
+日志：KYANT28868_HOST（真实 Host 设置）、KYANT28868_CONTINUOUS_MOTION（可见且连续移动 >=80ms 的绘制样本）、KYANT28868_PREDRAW_RUN（连续运动被打断统计）。
+maxQualifiedGapMs 是满足诊断前提的相邻绘制最大间隔，不代表 SurfaceFlinger 最终屏幕帧；如果 PreDraw 发生卡顿并中断连续运动，将另由 PREDRAW_RUN 表示。
+本版严禁将零折射位移模式当作长期视觉修复：仅作短时 A/B，完成后恢复 0。
