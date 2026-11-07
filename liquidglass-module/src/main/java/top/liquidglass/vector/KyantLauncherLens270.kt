@@ -946,76 +946,123 @@ object KyantLauncherLens270 {
                 "version=$nowVersion publishes=${bridgeDrawCount.get()} bitmapSig=$fingerprint $details")
         }
         releaseTracePulse28820 = { stage, pos, details -> releaseTrace28820(stage, pos, details) }
-        // V288.71: reuse one low-cost monitor per folder Host for native mode 1/2.
-        // Only report visible near-rest motion; do not mistake offscreen or idle
-        // intervals for synchronization defects.
-        var probe71StartNs = SystemClock.elapsedRealtimeNanos()
-        var probe71PrevNs = 0L
-        var probe71PrevX = Float.NaN
-        var probe71PrevRef = 0
-        var probe71Samples = 0L
-        var probe71NearRest = 0L
-        var probe71PixelTransitions = 0L
-        var probe71ReferenceSwitches = 0L
-        var probe71LongNearRestGaps = 0L
-        var probe71MaxSmallStep = 0f
-        var probe71MaxNearRestGapMs = 0f
-        var probe71MaxIntegerDiscontinuity = 0f
-        fun recordNativeSettle28871(path: String, pos: Offset, reference: Bitmap, generation: Long) {
-            if (!settleProbe28871) return
+        // V288.72: actual native source is already float RectF + FILTER_BITMAP_FLAG.
+        // Diagnostic only. Restrict "settling" to a contiguous, visible, live
+        // movement run; an idle redraw after seconds MUST NOT count as a frame gap.
+        val settleProbe28872 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_settle_probe_28872", 0) == 1
+        } catch (_: Throwable) { false }
+        var settle72WindowNs = SystemClock.elapsedRealtimeNanos()
+        var settle72PreviousNs = 0L
+        var settle72PreviousX = Float.NaN
+        var settle72PreviousY = Float.NaN
+        var settle72PreviousRefId = 0
+        var settle72Samples = 0
+        var settle72Contiguous = 0
+        var settle72TinySteps = 0
+        var settle72PixelCrossings = 0
+        var settle72Over16 = 0
+        var settle72Over33 = 0
+        var settle72RunBreaks = 0
+        var settle72ReferenceSwitches = 0
+        var settle72MaxContinuousGapMs = 0f
+        var settle72MaxPositionStep = 0f
+        var settle72MaxTargetDrift = 0f
+        var settle72MaxPreDrawGap = 0f
+        fun recordNativeSettle28872(path: String, pos: Offset, reference: Bitmap, generation: Long,
+                                      sampledWidth: Int, sampledHeight: Int) {
+            if (!settleProbe28872) return
             val now = SystemClock.elapsedRealtimeNanos()
             val onScreen = pos.x + previewWidth > 0f && pos.x < displayWidth &&
                 pos.y + previewHeight > 0f && pos.y < displayHeight &&
                 frame.visibility == View.VISIBLE && frame.isShown
-            val refId = System.identityHashCode(reference)
             if (onScreen) {
-                probe71Samples++
-                if (probe71PrevRef != 0 && probe71PrevRef != refId) probe71ReferenceSwitches++
-                if (probe71PrevX.isFinite()) {
-                    val dx = pos.x - probe71PrevX
-                    val magnitude = kotlin.math.abs(dx)
-                    // Near-rest motion is identified geometrically, independent
-                    // of whether a touch-up or automatic page snap occurred.
-                    if (magnitude > 0.0001f && magnitude <= 3f) {
-                        probe71NearRest++
-                        probe71MaxSmallStep = maxOf(probe71MaxSmallStep, magnitude)
-                        val integerDelta = kotlin.math.abs(kotlin.math.floor(pos.x) - kotlin.math.floor(probe71PrevX))
-                        if (integerDelta >= 1f) probe71PixelTransitions++
-                        probe71MaxIntegerDiscontinuity = maxOf(probe71MaxIntegerDiscontinuity,
-                            kotlin.math.abs(integerDelta - magnitude))
-                        if (probe71PrevNs != 0L) {
-                            val gapMs = (now - probe71PrevNs).toFloat() / 1_000_000f
-                            probe71MaxNearRestGapMs = maxOf(probe71MaxNearRestGapMs, gapMs)
-                            if (gapMs > 33.3f) probe71LongNearRestGaps++
-                        }
+                settle72Samples++
+                val refId = System.identityHashCode(reference)
+                if (settle72PreviousRefId != 0 && settle72PreviousRefId != refId)
+                    settle72ReferenceSwitches++
+                settle72PreviousRefId = refId
+                val sx = reference.width.toFloat() /
+                    android.content.res.Resources.getSystem().displayMetrics.widthPixels.coerceAtLeast(1)
+                val sy = reference.height.toFloat() /
+                    android.content.res.Resources.getSystem().displayMetrics.heightPixels.coerceAtLeast(1)
+                // Both producer paths use drawBitmap(reference, null, RectF, FILTER_BITMAP_FLAG).
+                // Verify actual destination mapping (float arithmetic) matches screen origin.
+                if (sampledWidth > 0 && sampledHeight > 0) {
+                    val x = pos.x * sx
+                    val y = pos.y * sy
+                    val sw = sampledWidth * sx
+                    val sh = sampledHeight * sy
+                    if (sw > 0f && sh > 0f) {
+                        val destLeft = -x * sampledWidth / sw
+                        val destTop = -y * sampledHeight / sh
+                        val effectiveX = -destLeft * sw / sampledWidth / sx
+                        val effectiveY = -destTop * sh / sampledHeight / sy
+                        settle72MaxTargetDrift = maxOf(settle72MaxTargetDrift,
+                            maxOf(kotlin.math.abs(effectiveX - pos.x),
+                                  kotlin.math.abs(effectiveY - pos.y)))
                     }
                 }
-                probe71PrevX = pos.x
-                probe71PrevNs = now
-                probe71PrevRef = refId
+                val pd = predrawMatrixSnapshot.get()
+                if (pd.second > 0L && now - pd.second in 0L..16_000_000L)
+                    settle72MaxPreDrawGap = maxOf(settle72MaxPreDrawGap,
+                        maxOf(kotlin.math.abs(pd.first.x - pos.x),
+                              kotlin.math.abs(pd.first.y - pos.y)))
+                if (settle72PreviousNs > 0L && settle72PreviousX.isFinite()) {
+                    val gapMs = (now - settle72PreviousNs) / 1_000_000f
+                    val dx = pos.x - settle72PreviousX
+                    val dy = pos.y - settle72PreviousY
+                    val step = maxOf(kotlin.math.abs(dx), kotlin.math.abs(dy))
+                    // 8..25ms qualified draw cadence; 25..50ms still counts but is
+                    // not considered a tiny-step steady run. >50ms breaks the run.
+                    if (gapMs in 0.5f..50f && step > 0.001f && step < 150f) {
+                        settle72Contiguous++
+                        settle72MaxContinuousGapMs = maxOf(settle72MaxContinuousGapMs, gapMs)
+                        settle72MaxPositionStep = maxOf(settle72MaxPositionStep, step)
+                        if (gapMs > 16.67f) settle72Over16++
+                        if (gapMs > 33.3f) settle72Over33++
+                        if (step <= 3f) {
+                            settle72TinySteps++
+                            if (kotlin.math.floor(pos.x) != kotlin.math.floor(settle72PreviousX) ||
+                                kotlin.math.floor(pos.y) != kotlin.math.floor(settle72PreviousY))
+                                settle72PixelCrossings++
+                        }
+                    } else if (gapMs > 50f) settle72RunBreaks++
+                }
+                settle72PreviousNs = now
+                settle72PreviousX = pos.x
+                settle72PreviousY = pos.y
             } else {
-                // A new visible run must not inherit a stale offscreen position.
-                probe71PrevX = Float.NaN
-                probe71PrevNs = 0L
-                probe71PrevRef = 0
+                settle72PreviousNs = 0L
+                settle72PreviousX = Float.NaN
+                settle72PreviousY = Float.NaN
+                settle72PreviousRefId = 0
             }
-            if (now - probe71StartNs >= 1_000_000_000L) {
-                if (probe71Samples > 0) XposedBridge.log(
-                    "KYANT28871_NATIVE_SETTLE host=${System.identityHashCode(anchor)} " +
-                    "path=$path samples=$probe71Samples nearRest=$probe71NearRest " +
-                    "pixelTransitions=$probe71PixelTransitions " +
-                    "maxIntegerResidualPx=$probe71MaxIntegerDiscontinuity " +
-                    "maxSmallStepPx=$probe71MaxSmallStep " +
-                    "over33NearRest=$probe71LongNearRestGaps " +
-                    "maxNearRestGapMs=$probe71MaxNearRestGapMs " +
-                    "referenceSwitches=$probe71ReferenceSwitches " +
-                    "gen=$generation x=${pos.x}")
-                probe71Samples=0L; probe71NearRest=0L; probe71PixelTransitions=0L
-                probe71ReferenceSwitches=0L; probe71LongNearRestGaps=0L
-                probe71MaxSmallStep=0f; probe71MaxNearRestGapMs=0f
-                probe71MaxIntegerDiscontinuity=0f; probe71StartNs=now
+            if (now - settle72WindowNs >= 1_000_000_000L) {
+                if (settle72Samples > 0) XposedBridge.log(
+                    "KYANT28872_SETTLE_SAMPLING host=${System.identityHashCode(anchor)} " +
+                    "path=$path draws=$settle72Samples continuous=$settle72Contiguous " +
+                    "tinySteps=$settle72TinySteps pixelCrossings=$settle72PixelCrossings " +
+                    "over16=$settle72Over16 over33=$settle72Over33 runBreaks=$settle72RunBreaks " +
+                    "maxContinuousGapMs=$settle72MaxContinuousGapMs " +
+                    "maxPositionStepPx=$settle72MaxPositionStep " +
+                    "maxTargetDriftPx=$settle72MaxTargetDrift " +
+                    "maxPredrawGapPx=$settle72MaxPreDrawGap " +
+                    "referenceSwitches=$settle72ReferenceSwitches " +
+                    "filter=true floatDst=true gen=$generation x=${pos.x}")
+                settle72WindowNs = now
+                settle72Samples=0;settle72Contiguous=0;settle72TinySteps=0
+                settle72PixelCrossings=0;settle72Over16=0;settle72Over33=0
+                settle72RunBreaks=0;settle72ReferenceSwitches=0
+                settle72MaxContinuousGapMs=0f;settle72MaxPositionStep=0f
+                settle72MaxTargetDrift=0f;settle72MaxPreDrawGap=0f
             }
         }
+        if (settleProbe28872) XposedBridge.log(
+            "KYANT28872_SETTLE_HOST host=${System.identityHashCode(anchor)} " +
+            "carrier=$nativeCarrierAb28869 filter=true floatDst=true " +
+            "reference=${referenceState28832.value.width}x${referenceState28832.value.height}")
         val bridgePaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val bridgeDst = RectF()
         val bridgeCanvas = bridgeBitmap?.let { Canvas(it) }
@@ -1040,7 +1087,8 @@ object KyantLauncherLens270 {
             target.drawBitmap(activeReference, null, bridgeDst, bridgePaint)
             bridgePublishedPosition.set(pos)
             val gen = bridgeDrawCount.incrementAndGet()
-            recordNativeSettle28871("NATIVE_BITMAP_BRIDGE", pos, activeReference, gen)
+            recordNativeSettle28872("NATIVE_BITMAP_BRIDGE", pos, activeReference, gen,
+                bitmap.width, bitmap.height)
         }
         val bridgeView = if (bridgeBitmap != null) object : View(anchor.context) {
             private var count = 0L
@@ -1228,8 +1276,9 @@ object KyantLauncherLens270 {
                 }
                 canvas.drawBitmap(activeReference, null, destination, bitmapPaint)
                 canvas.restoreToCount(checkpoint)
-                if (nativeCarrierAb28869 == 2) recordNativeSettle28871(
-                    "NATIVE_VIEW_DIRECT", position, activeReference, drawCount + 1L)
+                if (nativeCarrierAb28869 == 2) recordNativeSettle28872(
+                    "NATIVE_VIEW_DIRECT", position, activeReference, drawCount + 1L,
+                    width, height)
                 if (nativeCarrierAb28869 != 2 && displayIsolationMode != 1 && nativeLayerMode == 0)
                     canvas.drawLine(width * 0.5f, 0f, width * 0.5f, height.toFloat(), dividerPaint)
                 val now = SystemClock.elapsedRealtimeNanos()

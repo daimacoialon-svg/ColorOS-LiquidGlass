@@ -156,3 +156,13 @@ V1.9.205.288.71｜原生背景归位阶段采样与位图代际诊断
 - Mode1 的 gen 是原生背景生成次数，Mode2 的 gen 是原生绘制次数；两者不能直接横向比较。
 - 这是诊断版，没有改变原生背景的采样、位图发布、刷新频率或归位速度，不保证消除抖动。
 - 测试后 `settings put global liquidglass_kyant_settle_probe_28871 0` 并重启 Launcher。
+
+
+V1.9.205.288.72｜归位连续绘制与真实浮点目标矩形诊断
+- 保留 V288.60 即时壁纸同步、V288.69.1 原生背景模式1/2、完整 Kyant 光学效果。
+- 源码核对：这两条原生路径均使用 src=null 的完整参考 Bitmap、浮点 RectF 目标矩形、Paint.FILTER_BITMAP_FLAG；不存在明显的整数裁剪原点。
+- 开启：settings put global liquidglass_kyant_settle_probe_28872 1；关闭为0（默认）；重新加载 Launcher 生效。先关闭旧 settle_probe_28871。
+- 日志：KYANT28872_SETTLE_HOST、KYANT28872_SETTLE_SAMPLING。continuous 仅表示同一可见 Host 的相邻绘制间隔 0.5~50ms 且位置变化；超 50ms 被标记 runBreaks，不计连续绘制 gap。
+- maxTargetDriftPx 验证浮点目标矩形的数学映射精度；pixelCrossings 是正常整数像素边界穿越，不代表实际视觉错误；referenceSwitches 统计参考位图对象替换。
+- 此诊断不能测量 SurfaceFlinger 最终显示时序、像素混合真实结果，也不能凭日志单独证明闪动根因。
+- 本版不改变绘制方式，不增添无效的浮点开关，不更改 Shader，不每帧输出日志。
