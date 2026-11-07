@@ -2749,6 +2749,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
     // V288.47: opt-in early wallpaper handoff. No UI-frame polling or Root calls.
     // Modes: 0 canonical screenshot, 1 guarded early preview, 2 dry-run.
     private static final String EARLY_MODE_KEY_28847 = "liquidglass_kyant_early_frame_ab_28847";
+    // V288.59 experimental device geometry policy. Separate explicit opt-in:
+    // never infer permission to use an uncalibrated wallpaper from mode=1 alone.
+    // This is only a *hypothesis* for the exact tested screen geometry.
+    private static final String DEVICE_CROP_AB_KEY_28859 =
+        "liquidglass_kyant_device_crop_ab_28859";
+    private static final long DEVICE_CROP_MAX_EVENT_AGE_MS_28859 = 3000L;
+
     private static final java.util.concurrent.atomic.AtomicBoolean EARLY_RENDER_BUSY_28847 =
         new java.util.concurrent.atomic.AtomicBoolean(false);
     private static volatile String EARLY_LAST_PUBLISHED_28847 = "";
@@ -3045,10 +3052,39 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         " trigger="+trigger);
                     return;
                 }
-                if (approval28853==null) {
-                    log("KYANT28853_EARLY_SKIP reason=NO_SOURCE_SPECIFIC_CALIBRATION geometry="+
-                        opts.outWidth+"x"+opts.outHeight+" widthDelta="+widthDelta28853+
-                        " trigger="+trigger);
+                // New wallpaper can be used only via a separately opted-in
+                // device geometry A/B hypothesis. Explicit source approval wins.
+                // A fresh matching FileObserver/Root event is mandatory; a later
+                // LAUNCHER_FOREGROUND check alone cannot authorize this fallback.
+                final int devicePolicy28859 = android.provider.Settings.Global.getInt(
+                    app.getContentResolver(), DEVICE_CROP_AB_KEY_28859, 0);
+                final long eventAge28859 = eventAge28855();
+                final boolean eventMatches28859;
+                synchronized (EARLY_EVENT_LOCK_28854) {
+                    eventMatches28859 = signature.equals(EARLY_EVENT_SIGNATURE_28854);
+                }
+                final boolean freshSource28859 = eventMatches28859 &&
+                    eventAge28859>=0L && eventAge28859<=DEVICE_CROP_MAX_EVENT_AGE_MS_28859;
+                final boolean deviceEligible28859 = approval28853==null &&
+                    mode==1 && devicePolicy28859==1 && freshSource28859 &&
+                    w==1216 && h==2640 && opts.outHeight==2640 &&
+                    widthDelta28853>=0 && widthDelta28853<=2;
+                // Only two dimensions have been seen in real tests. For +2px,
+                // centered crop is an UNVERIFIED experimental hypothesis.
+                final int left28859 = approval28853!=null ? left28853 :
+                    (widthDelta28853==2 ? 1 : 0);
+                log("KYANT28859_DEVICE_CROP_GATE source="+signature+
+                    " policy="+devicePolicy28859+
+                    " sourceApproved="+(approval28853!=null)+
+                    " fallbackEligible="+deviceEligible28859+
+                    " widthDelta="+widthDelta28853+
+                    " left="+left28859+
+                    " eventAgeMs="+eventAge28859+
+                    " eventMatches="+eventMatches28859+
+                    " trigger="+trigger);
+                if (approval28853==null && !deviceEligible28859) {
+                    log("KYANT28859_EARLY_SKIP reason=NO_APPROVAL_OR_FRESH_DEVICE_EVENT"+
+                        " widthDelta="+widthDelta28853+" trigger="+trigger);
                     return;
                 }
                 opts.inJustDecodeBounds = false;
@@ -3056,7 +3092,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 android.graphics.Bitmap decoded = android.graphics.BitmapFactory.decodeFile(early.getAbsolutePath(), opts);
                 if (decoded == null) return;
                 try {
-                    output = android.graphics.Bitmap.createBitmap(decoded, left28853, 0, w, h);
+                    output = android.graphics.Bitmap.createBitmap(decoded, left28859, 0, w, h);
                 } finally {
                     // createBitmap can share pixels with the source. Never recycle the source
                     // while the cropped bitmap might still reference them.
@@ -3146,6 +3182,11 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     " eventAgeMs="+eventAge28855()+" workerElapsedMs="+
                     (android.os.SystemClock.elapsedRealtime()-workerStart28855)+
                     " trigger="+trigger);
+                log("KYANT28859_PUBLICATION_PROFILE source="+signature+
+                    " sourceApproved="+(approval28853!=null)+
+                    " deviceHypothesis="+deviceEligible28859+
+                    " widthDelta="+widthDelta28853+" left="+left28859+
+                    " eventAgeMs="+eventAge28859);
                 log("KYANT28847_EARLY_PUBLISHED source="+signature+" generation="+
                     KyantLauncherFrameBridge266.peekGeneration270()+" trigger="+trigger);
                 new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> invalidateGlassViews());

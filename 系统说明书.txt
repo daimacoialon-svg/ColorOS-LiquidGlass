@@ -42,3 +42,5 @@ V1.9.205.288.56：Root 提前原图原子发布完成后发送 package-scoped �
 V1.9.205.288.57：修复 Android 15/ColorOS 广播 getSentFromUid()=-1 被直接拒绝。广播仅视为不可信唤醒提示；Launcher 只在私有 CE 目录中的提前壁纸为非符号链接、归属 Launcher UID、权限不可被其他用户访问、文件大小合理且更新足够新时接受。增加同源签名去重及节流；即使接收通过也继续沿用裁剪校准与正式帧代际安全闸门。不信任广播 extras。真机日志 grep KYANT28857；旧 FileObserver 及稳定模式0不变。
 
 V1.9.205.288.58：修复 Android CE 路径可能存在的别名规范化误判。现在比较原图的规范化父目录和预期 CE 目录；通过 lstat 拒绝符号链接，保留 Launcher UID、600 文件权限、文件年龄与重复通知保护。广播仅作为不可信唤醒提示，不采用传入路径；新增 FILE_NOT_FOUND、PATH_MISMATCH、NOT_REGULAR_FILE、OWNER_MISMATCH、PERMISSION_INVALID、FILE_SIZE_INVALID、SOURCE_STALE 详细日志。真机检查 KYANT28858。
+
+V1.9.205.288.59｜多壁纸设备级裁剪 A/B 实验：原有 28847 模式1 与每图批准机制保持不变。新增独立开关 settings put global liquidglass_kyant_device_crop_ab_28859 1（默认0），仅在已确认的 1216×2640 屏幕、静态壁纸原图高度2640且宽度差0～2px、有同一原图最近3秒文件事件时，允许尚未逐图批准的原图按设备裁剪假设尝试提前发布：宽差0/1 左裁剪，宽差2 居中裁剪（未经真机校准的实验假设）。仍检查正式帧内容代际，不得用旧源覆盖新正式帧；正式截图继续接管。日志 KYANT28859_DEVICE_CROP_GATE / KYANT28859_PUBLICATION_PROFILE。此功能为受控实验，不保证任意新壁纸视觉对齐；不适时立即 settings put global liquidglass_kyant_device_crop_ab_28859 0 或同时关 28847 模式。Root 广播及原有 FileObserver 保持不变。
