@@ -1,4 +1,7 @@
 #!/system/bin/sh
+# V1.9.205.288.35: watch directory child CREATE / MODIFY / MOVED_TO / CLOSE_WRITE;
+# previous :wm missed ColorOS in-place screenshot changes on some builds.
+# Keep all wallpaper event work outside Launcher render frames.
 # V1.9.205.288.34: observe wallpaper source completion as an early wake-up;
 # publish ONLY the verified screen-space screenshot. Do not replace it with an
 # uncropped wallpaper source that would shift optical sampling UVs.
@@ -53,15 +56,23 @@ sed 's/.*) //' "/proc/$$/stat" 2>/dev/null | awk '{print $20}' > "$LOCK/starttim
 cleanup_all() { cleanup; rm -rf "$LOCK"; }
 trap cleanup_all EXIT INT TERM
 fi
-# inotifyd launches this script for filesystem events in the watched directory.
- # Watch source directory for close-write / moved-to / create events.
-# If inotifyd is absent or fails, the 5-minute fallback remains active.
-if [ -z "$1" ] && command -v inotifyd >/dev/null 2>&1; then
-  # Observe the directory rather than only the screenshot filename. ColorOS
-  # may update wallpaper/wallpaper_orig before wallpaper_screenshot.png exists.
-  inotifyd /data/adb/service.d/99-liquidglass-wallpaper-notify.sh /data/system/users/0:wm >/dev/null 2>&1 &
+# inotifyd calls the helper as EVENTS WATCHED_PATH [CHILD_NAME].
+# On watched directories: m = moved into dir, n = created in dir,
+# c = modified child. The previous :wm lacked n/c and missed in-place writes.
+# w also covers close-write where provided by this device's toybox.
+start_wallpaper_watcher28835() {
+  command -v inotifyd >/dev/null 2>&1 || return
+  [ -d /data/system/users/0 ] || return
+  if [ -n "$WATCHER_PID" ] && kill -0 "$WATCHER_PID" 2>/dev/null; then
+    watcher_state=$(sed 's/.*) //' "/proc/$WATCHER_PID/stat" 2>/dev/null | cut -d ' ' -f1)
+    [ "$watcher_state" != Z ] && [ "$watcher_state" != X ] && return
+  fi
+  inotifyd /data/adb/service.d/99-liquidglass-wallpaper-notify.sh /data/system/users/0:wmnc >/dev/null 2>&1 &
   WATCHER_PID=$!
-fi
+  read watcher_up _ < /proc/uptime
+  echo "KYANT28835_WATCHER_START uptimeSec=$watcher_up pid=$WATCHER_PID mask=wmnc" >> "$LOG"
+}
+[ -z "$1" ] && start_wallpaper_watcher28835
 # V123: watch the app's private preferences directory. Android SharedPreferences
 # commonly persists via rename from glass.xml.bak, so monitor the directory.
 # This watcher only signals; the existing root loop publishes the snapshot.
@@ -285,7 +296,7 @@ if [ "$1" = "--event-wallpaper" ]; then
   event_name=$2
   source_before=$(stat -c '%s:%y' "$SRC" 2>/dev/null)
   published_before=$(cat "$LAUNCHERSIG" 2>/dev/null)
-  echo "KYANT28834_EVENT_BEGIN uptimeSec=$event_up file=$event_name screenshotSig=$source_before publishedSig=$published_before" >> "$LOG"
+  echo "KYANT28835_EVENT_BEGIN uptimeSec=$event_up file=$event_name screenshotSig=$source_before publishedSig=$published_before" >> "$LOG"
   # Screenshot close/move already signals a finished source. A change to the
   # underlying wallpaper/crop can precede screenshot production: watch for it
   # for up to 2.4 seconds, with small stat-only checks (no bitmap decoding).
@@ -305,7 +316,7 @@ if [ "$1" = "--event-wallpaper" ]; then
       published=$(cat "$LAUNCHERSIG" 2>/dev/null)
       if [ "$current" = "$published" ] && [ -s "$LAUNCHERDST" ]; then
         read publish_up _ < /proc/uptime
-        echo "KYANT28834_SCREENSHOT_PUBLISHED uptimeSec=$publish_up event=$event_name retry=$n sig=$current" >> "$LOG"
+        echo "KYANT28835_SCREENSHOT_PUBLISHED uptimeSec=$publish_up event=$event_name retry=$n sig=$current" >> "$LOG"
         published_ok=1
         break
       fi
@@ -314,7 +325,7 @@ if [ "$1" = "--event-wallpaper" ]; then
   done
   if [ "$published_ok" -eq 0 ]; then
     read end_up _ < /proc/uptime
-    echo "KYANT28834_SCREENSHOT_WAIT_LIMIT uptimeSec=$end_up event=$event_name source=$(stat -c '%s:%y' "$SRC" 2>/dev/null)" >> "$LOG"
+    echo "KYANT28835_SCREENSHOT_WAIT_LIMIT uptimeSec=$end_up event=$event_name source=$(stat -c '%s:%y' "$SRC" 2>/dev/null)" >> "$LOG"
   fi
   # The normal service is a fallback if ColorOS produces the screenshot later.
   touch "$TRIGGER"
@@ -330,7 +341,10 @@ BOOT_TICKS=0
 while true; do
   if [ "$BOOT_TICKS" -lt 180 ]; then sleep 1; else sleep 2; fi
   # V194: restart a failed/missing preference watcher; APP may mount CE late.
-  if [ $((BOOT_TICKS % 10)) -eq 0 ]; then start_config_watcher194; fi
+  if [ $((BOOT_TICKS % 10)) -eq 0 ]; then
+    start_config_watcher194
+    start_wallpaper_watcher28835
+  fi
   # V123: event-first config publication. Fallback is deliberately infrequent
   # (roughly 5 minutes after boot) and never blocks wallpaper synchronization.
   if [ -e "$CONFIG_TRIGGER" ]; then

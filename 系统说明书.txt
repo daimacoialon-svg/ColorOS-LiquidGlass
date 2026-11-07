@@ -1,3 +1,33 @@
+V1.9.205.288.35｜ColorOS 壁纸文件事件覆盖修正与同步链路诊断版
+
+【本次修复】
+1. 修复 Root inotifyd 监听仅采用 :wm 的事件覆盖不足。增加目录中文件修改 c、创建 n、移入 m 和关闭写入 w 事件，覆盖 ColorOS 原地更新 wallpaper_screenshot.png 的情形。
+2. 通知脚本接受 c/n/m/w 事件，收到消息后在后台对截图源执行短时稳定性确认，再原子同步至 Launcher CE 与 DE 参考帧，不在 Launcher 绘制线程额外采样、解码或轮询。
+3. Root 常驻服务每十秒检查一次文件监听器是否存在，必要时重新启动；不会增加平时桌面滑动的图像处理工作量。
+4. Root 时间日志由 KYANT28835_* 记录：WATCHER_START、SOURCE_EVENT、EVENT_BEGIN、SCREENSHOT_PUBLISHED、SCREENSHOT_WAIT_LIMIT；结合 Launcher 现有 KYANT28834_REFERENCE_FILE_EVENT、REFERENCE_PUBLISHED 与 KYANT28832_FOLDER_REFERENCE_UPDATED、DOCK_REFERENCE_UPDATED，可区分系统截图产生、Root 文件复制、Launcher 解码及 Compose 刷新阶段。
+5. 保留 V288.31 已真机验证解决的 Dock 右侧裁剪、V288.32 的文件夹与 Dock 统一参考帧、V288.34 的 Launcher 前台立即加载，以及原有 Kyant 光学算法和 UI 参数。大文件夹快速滑动抖动仍是独立待处理问题。
+
+【重要限制】
+事件覆盖修复能消除漏监听导致的兜底轮询延迟，但若 ColorOS 本身直到 Launcher 返回桌面才生成 wallpaper_screenshot.png，则不能在截图生成之前得到准确的屏幕空间采样帧。不要直接拿原始 wallpaper / wallpaper_orig 冒充已经裁切的屏幕参考帧，否则可能产生光学错位。该限制需要 Root 日志确认。
+
+【部署】
+1. 更新项目并通过 GitHub Actions 编译 / 安装 APK。
+2. 打开模块 UI 点击「检查并更新 Root 辅助脚本」。
+3. 重启手机，让 Root 常驻监听进程加载新的 :wmnc 事件掩码。
+4. 再次更换壁纸，并分别测量“壁纸设置完成→桌面返回”“桌面返回→Dock/文件夹采样更新”的时间。
+5. 如仍延迟：su -c 'grep -E "KYANT28835|launcher reference synced|DE reference synced" /data/local/tmp/liquidglass-wallpaper-sync.log' > /sdcard/Download/kyant_root_28835.txt
+   su -c 'logcat -d -v threadtime | grep -E "KYANT28834_REFERENCE_|KYANT28832_(FOLDER|DOCK)_REFERENCE"' > /sdcard/Download/kyant_launcher_28835.txt
+   这两份日志用于分辨延迟是在截图文件本身、Root 同步器还是 Launcher。
+
+【开发验证】
+Shell 语法、静态事件覆盖、打包可在交付环境核验；Android 完整 Gradle 编译、OnePlus 13T 真机即刻同步尚未验证。
+
+【Termux Git】
+cd ~/ColorOS-LiquidGlass-V1.0-Source
+git add .
+git commit -m "V1.9.205.288.35 版本"
+git push origin main
+
 V1.9.205.288.34｜壁纸源事件预唤醒与前台即时采样版
 
 基于 V1.9.205.288.32 的共享参考帧机制，优化壁纸更新触发时序。
