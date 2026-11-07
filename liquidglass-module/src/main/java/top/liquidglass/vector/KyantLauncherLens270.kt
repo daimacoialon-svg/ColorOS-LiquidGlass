@@ -336,11 +336,11 @@ object KyantLauncherLens270 {
         var probeLastParentSerial28864 = 0L
         var probeLastSourceTotal28864 = 0L
         var probeLastNoSource28864 = 0L
-        if (lifecycleProbe28864) XposedBridge.log(
-            "KYANT28864_LIFECYCLE_HOST host=${System.identityHashCode(anchor)} enabled=true pipeline=$pipelineMode28819")
         val pipelineMode28819 = try {
             Settings.Global.getInt(anchor.context.contentResolver, PIPELINE_AB_28819_KEY, -1).coerceIn(-1, 3)
         } catch (_: Throwable) { -1 }
+        if (lifecycleProbe28864) XposedBridge.log(
+            "KYANT28864_LIFECYCLE_HOST host=${System.identityHashCode(anchor)} enabled=true pipeline=$pipelineMode28819")
         val frameSync28822 = if (pipelineMode28819 == 2) try {
             Settings.Global.getInt(anchor.context.contentResolver, FRAME_SYNC_AB_28822_KEY, 0).coerceIn(0, 1)
         } catch (_: Throwable) { 0 } else 0
