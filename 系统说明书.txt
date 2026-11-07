@@ -32,3 +32,7 @@ V1.9.205.288.52：全分辨率校准状态机日志增强。逐内容对结果�
 V1.9.205.288.53：统一原始壁纸相对正式参考帧宽度差 0px、1px、2px 的逐原图校准：分别比较 1、2、3 种整数裁剪起点；高度必须相同；最佳平均像素误差不超过4.0，宽差1/2时最佳与次优至少相差0.35，宽差0时不错误要求次优。授权记录继续绑定原始图片完整字节CRC、源尺寸和目标尺寸；Launcher提前发布入口对三个宽差采用同一授权读取与检查，没有授权时继续使用正式参考帧。新增 KYANT28853_CROP_CALIBRATION / CALIBRATION_APPROVED / CROP_GATE / EARLY_SKIP 日志。本版不允许未经校准的首次任意壁纸抢先显示，也不修改Kyant Shader、Dock几何或文件夹折射。
 
 V1.9.205.288.54：修复提前参考帧通过裁剪校准后遇到 CANONICAL_NEWER 被文件时间戳误阻断。提前原图 CLOSE_WRITE/MOVED_TO 文件事件时捕获正式参考帧内容指纹和原图文件签名；如果正式帧的修改时间较新，只有同一原图文件事件在30秒内、正式内容指纹仍等于事件时基线、裁剪已获源文件专属批准时才允许提前发布；前台缓存检查不能绕过。若当前正式帧已与提前裁剪图像近似相同，则不额外发布，避免二次闪动。新增 KYANT28854_EARLY_EVENT_BASELINE / CANONICAL_MTIME_BYPASS / EARLY_SKIP 诊断。不改变未校准原图的保守回退，静态壁纸首次更换仍不保证零延迟；保留 Dock/文件夹现有光学效果。
+
+V1.9.205.288.55：壁纸提前帧生命周期时间线与内容归属确认版。新增 KYANT28855_EVENT_CAPTURE、DISPATCH、WORKER_START、CROP_READY、CONTENT_RELATION、CANONICAL_TRANSITION、GENERATION_DECISION 日志，记录 Root 提前文件事件在 Launcher 的接收时间、异步工作线程启动延迟、壁纸裁剪完成时间、正式参考帧视觉指纹变化与提前帧同图平均误差；判断结果区分 CURRENT_MATCH（无二次发布）、KEEP_CANONICAL（不确定代际）与 EARLY_PUBLISHED（校准和代际保护通过）。不绕过 CANONICAL_NEWER_UNVERIFIED，也不对尚未校准的新静态壁纸提前发布。保持 Dock/文件夹原有光学渲染、正式参考帧与去重逻辑。
+测试：su -c 'logcat -d -v threadtime | grep KYANT28855 | tail -100'
+Gradle 全量编译与真机效果尚待确认。

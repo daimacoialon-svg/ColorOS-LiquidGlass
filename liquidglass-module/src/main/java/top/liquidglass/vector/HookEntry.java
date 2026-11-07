@@ -2663,8 +2663,19 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     if (EARLY_PREVIEW_ACTIVE_28847)
                         log("KYANT28847_CANONICAL_REPLACE reason=PIXEL_DIFFERENCE");
                     REFRACTION_FRAME=next;
+                    final long previousCanonicalVisual28855 = CANONICAL_VISUAL_KEY_28849;
                     CANONICAL_VISUAL_KEY_28849 = visualKey28849;
                     EARLY_PREVIEW_ACTIVE_28847 = false;
+                    if (EARLY_EVENT_FILE_ELAPSED_28855 >= 0L &&
+                            EARLY_EVENT_SOURCE_MTIME_28855 >= 0L) {
+                        log("KYANT28855_CANONICAL_TRANSITION previousVisual="+
+                            Long.toHexString(previousCanonicalVisual28855)+
+                            " currentVisual="+Long.toHexString(visualKey28849)+
+                            " changed="+(previousCanonicalVisual28855!=visualKey28849)+
+                            " eventAgeMs="+eventAge28855()+
+                            " referenceMtime="+loadedModified+
+                            " sourceMtime="+EARLY_EVENT_SOURCE_MTIME_28855);
+                    }
                     if(REFRACTION_LOGS++<24)log("BOOT_REFRACTION_READY source=launcher_private_wallpaper_reference");
                     REFRACTION_FRAME_MODIFIED=loadedModified;
                     REFRACTION_FRAME_LENGTH=loadedLength;
@@ -2753,6 +2764,34 @@ public final class HookEntry implements IXposedHookLoadPackage {
     private static volatile String EARLY_EVENT_SIGNATURE_28854 = "";
     private static volatile long EARLY_EVENT_BASELINE_VISUAL_28854 = Long.MIN_VALUE;
     private static volatile long EARLY_EVENT_ELAPSED_28854 = -1L;
+    // V288.55: monotonic timestamps observe the lifecycle without changing
+    // publication, shader or generation policies. A stale cached probe is NOT
+    // evidence that early-source FileObserver delivery was timely.
+    private static volatile long EARLY_EVENT_FILE_ELAPSED_28855 = -1L;
+    private static volatile long EARLY_EVENT_CANONICAL_VISUAL_28855 = Long.MIN_VALUE;
+    private static volatile long EARLY_EVENT_SOURCE_MTIME_28855 = -1L;
+    private static long eventAge28855() {
+        long t = EARLY_EVENT_FILE_ELAPSED_28855;
+        return t < 0L ? -1L : android.os.SystemClock.elapsedRealtime() - t;
+    }
+    private static double earlyCanonicalMae28855(android.graphics.Bitmap early,
+                                                  android.graphics.Bitmap formal) {
+        if (early == null || formal == null || early.isRecycled() || formal.isRecycled() ||
+            early.getWidth() != formal.getWidth() || early.getHeight() != formal.getHeight())
+            return -1.0;
+        double total = 0.0;
+        int count = 0;
+        for (int y=9; y<early.getHeight()-9; y+=31) {
+            for (int x=9; x<early.getWidth()-9; x+=29) {
+                int a=early.getPixel(x,y), b=formal.getPixel(x,y);
+                total += (Math.abs(((a>>16)&255)-((b>>16)&255))+
+                    Math.abs(((a>>8)&255)-((b>>8)&255))+
+                    Math.abs((a&255)-(b&255)))/3.0;
+                count++;
+            }
+        }
+        return count>100 ? total/count : -1.0;
+    }
     private static void markFreshEarlyEvent28854(final android.content.Context app,
                                                    final int event) {
         try {
@@ -2767,6 +2806,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     EARLY_EVENT_SIGNATURE_28854 = signature;
                     EARLY_EVENT_BASELINE_VISUAL_28854 = CANONICAL_VISUAL_KEY_28849;
                     EARLY_EVENT_ELAPSED_28854 = android.os.SystemClock.elapsedRealtime();
+                    EARLY_EVENT_FILE_ELAPSED_28855 = EARLY_EVENT_ELAPSED_28854;
+                    EARLY_EVENT_CANONICAL_VISUAL_28855 = CANONICAL_VISUAL_KEY_28849;
+                    EARLY_EVENT_SOURCE_MTIME_28855 = source.lastModified();
+                    log("KYANT28855_EVENT_CAPTURE source=" + signature +
+                        " event=" + event + " elapsedMs=" + EARLY_EVENT_ELAPSED_28854 +
+                        " baselineVisual=" + Long.toHexString(EARLY_EVENT_CANONICAL_VISUAL_28855) +
+                        " canonicalMtime=" + REFRACTION_FRAME_MODIFIED);
                     log("KYANT28854_EARLY_EVENT_BASELINE source=" + signature +
                         " canonicalVisual=" + Long.toHexString(EARLY_EVENT_BASELINE_VISUAL_28854) +
                         " event=" + event + " status=CAPTURED");
@@ -2784,6 +2830,9 @@ public final class HookEntry implements IXposedHookLoadPackage {
             return;
         }
         log("KYANT28848_TRIGGER trigger=" + trigger + " mode=" + mode);
+        if (mode != 0) log("KYANT28855_DISPATCH trigger=" + trigger +
+            " eventAgeMs=" + eventAge28855() + " elapsedMs=" +
+            android.os.SystemClock.elapsedRealtime() + " busy=" + EARLY_RENDER_BUSY_28847.get());
         if (mode == 0) {
             // A/B can be disabled without replacing the normal reference loader.
             if (EARLY_PREVIEW_ACTIVE_28847) scheduleReferenceLoad28833(app, null, true);
@@ -2794,8 +2843,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
             log("KYANT28848_RENDER_PENDING trigger=" + trigger);
             return;
         }
+        final long dispatchTime28855 = android.os.SystemClock.elapsedRealtime();
         new Thread(() -> {
             android.graphics.Bitmap output = null;
+            final long workerStart28855 = android.os.SystemClock.elapsedRealtime();
+            log("KYANT28855_WORKER_START trigger=" + trigger +
+                " eventAgeMs=" + eventAge28855() +
+                " dispatchLagMs=" + (workerStart28855 - dispatchTime28855));
             try {
                 // Only static system wallpaper. Dynamic wallpaper remains on V288.46.
                 android.app.WallpaperManager wm = android.app.WallpaperManager.getInstance(app);
@@ -2860,14 +2914,28 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     // createBitmap can share pixels with the source. Never recycle the source
                     // while the cropped bitmap might still reference them.
                 }
+                log("KYANT28855_CROP_READY source=" + signature +
+                    " trigger=" + trigger + " eventAgeMs=" + eventAge28855() +
+                    " workerElapsedMs=" + (android.os.SystemClock.elapsedRealtime()-workerStart28855) +
+                    " canonicalVisual=" + Long.toHexString(CANONICAL_VISUAL_KEY_28849));
                 if (early.length() != size || early.lastModified() != mtime) {
                     log("KYANT28847_EARLY_SKIP reason=CHANGED_DURING_DECODE"); return;
                 }
                 // V288.54: first compare pixels. A newly rewritten canonical
                 // file with the *same wallpaper* needs no second visual handoff.
                 final android.graphics.Bitmap canonicalNow28854 = REFRACTION_FRAME;
+                final double canonicalMae28855 = earlyCanonicalMae28855(output, canonicalNow28854);
+                log("KYANT28855_CONTENT_RELATION source=" + signature +
+                    " mae=" + String.format(java.util.Locale.US, "%.3f", canonicalMae28855) +
+                    " sameWallpaperCandidate=" + (canonicalMae28855>=0.0 && canonicalMae28855<=3.0) +
+                    " eventBaselineVisual=" + Long.toHexString(EARLY_EVENT_CANONICAL_VISUAL_28855) +
+                    " currentVisual=" + Long.toHexString(CANONICAL_VISUAL_KEY_28849) +
+                    " eventAgeMs=" + eventAge28855());
                 if (canonicalNow28854 != null &&
-                        earlyMatchesCanonical28847(output, canonicalNow28854)) {
+                        canonicalMae28855 >= 0.0 && canonicalMae28855 <= 3.0) {
+                    log("KYANT28855_GENERATION_DECISION result=CURRENT_MATCH"+
+                        " canonicalMae="+String.format(java.util.Locale.US,"%.3f",canonicalMae28855)+
+                        " eventAgeMs="+eventAge28855()+" trigger="+trigger);
                     log("KYANT28854_EARLY_SKIP reason=CANONICAL_ALREADY_MATCHES source="+
                         signature+" canonicalVisual="+Long.toHexString(CANONICAL_VISUAL_KEY_28849));
                     return;
@@ -2891,6 +2959,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             CANONICAL_VISUAL_KEY_28849 == baseline28854;
                     }
                     if (!verifiedEvent28854) {
+                        log("KYANT28855_GENERATION_DECISION result=KEEP_CANONICAL"+
+                            " reason=NEWER_OR_CHANGED"+
+                            " source="+signature+" eventAgeMs="+eventAge28854+
+                            " baselineChanged="+(baseline28854!=CANONICAL_VISUAL_KEY_28849)+
+                            " canonicalMae="+String.format(java.util.Locale.US,"%.3f",canonicalMae28855)+
+                            " trigger="+trigger);
                         log("KYANT28854_EARLY_SKIP reason=CANONICAL_NEWER_UNVERIFIED"+
                             " source="+signature+
                             " canonicalMtime="+REFRACTION_FRAME_MODIFIED+
@@ -2921,6 +2995,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 EARLY_PREVIEW_SOURCE_TIME_28847 = mtime;
                 KyantReferenceBridge264.onReferenceReady(app, output, -1L, -1L);
                 KyantLauncherFrameBridge266.onReferenceReady(output, -1L, -1L);
+                log("KYANT28855_GENERATION_DECISION result=EARLY_PUBLISHED"+
+                    " eventAgeMs="+eventAge28855()+" workerElapsedMs="+
+                    (android.os.SystemClock.elapsedRealtime()-workerStart28855)+
+                    " trigger="+trigger);
                 log("KYANT28847_EARLY_PUBLISHED source="+signature+" generation="+
                     KyantLauncherFrameBridge266.peekGeneration270()+" trigger="+trigger);
                 new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> invalidateGlassViews());
