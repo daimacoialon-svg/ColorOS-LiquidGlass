@@ -2652,6 +2652,20 @@ public final class HookEntry implements IXposedHookLoadPackage {
         new java.util.concurrent.atomic.AtomicBoolean(false);
     private static volatile String EARLY_PROBE_LAST_SIGNATURE_28840 = "";
     private static volatile boolean EARLY_WATCH_READY_28840 = false;
+    // V288.42: Android exposes createDeviceProtectedStorageContext(), but NOT
+    // createCredentialProtectedStorageContext(). Derive the matching CE files
+    // directory from the system-provided DE path for the same user/package.
+    // Root writes the early source into /data/user/<user>/<package>/files.
+    private static java.io.File earlyCeFilesDir28842(final android.content.Context app) {
+        java.io.File defaultFiles = app.getFilesDir();
+        if (!app.isDeviceProtectedStorage()) return defaultFiles;
+        java.io.File deFiles = app.createDeviceProtectedStorageContext().getFilesDir();
+        String dePath = deFiles.getAbsolutePath();
+        if (dePath.contains("/user_de/"))
+            return new java.io.File(dePath.replace("/user_de/", "/user/"));
+        // Unusual OEM layout: do not make up a filesystem location.
+        return defaultFiles;
+    }
     private static void probeEarlySource28838(final android.content.Context context) {
         probeEarlySource28840(context, "LEGACY");
     }
@@ -2668,13 +2682,13 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 // V288.41: Root publishes into the credential-encrypted Launcher
                 // directory. OEM launchers may default to device-protected storage,
                 // so app.getFilesDir() is not necessarily the same directory.
-                android.content.Context ce = app.createCredentialProtectedStorageContext();
-                java.io.File candidate = new java.io.File(ce.getFilesDir(), "liquidglass_early_wallpaper_source");
+                java.io.File ceFiles = earlyCeFilesDir28842(app);
+                java.io.File candidate = new java.io.File(ceFiles, "liquidglass_early_wallpaper_source");
                 boolean exists = candidate.isFile();
                 log("KYANT28841_EARLY_RESOLVE reason=" + reason +
                     " package=" + app.getPackageName() +
                     " defaultDir=" + app.getFilesDir().getAbsolutePath() +
-                    " ceDir=" + ce.getFilesDir().getAbsolutePath() +
+                    " ceDir=" + ceFiles.getAbsolutePath() +
                     " path=" + candidate.getAbsolutePath() +
                     " exists=" + exists);
                 long size = exists ? candidate.length() : 0L;
@@ -2735,7 +2749,8 @@ public final class HookEntry implements IXposedHookLoadPackage {
         // Watch the actual CE path written by the Root worker, as well as DE.
         // Deduplicate because on some OEM processes the default context is CE.
         java.util.LinkedHashSet<String> watchDirs28841 = new java.util.LinkedHashSet<>();
-        watchDirs28841.add(app.createCredentialProtectedStorageContext().getFilesDir().getAbsolutePath());
+        final String ceWatchDir28842 = earlyCeFilesDir28842(app).getAbsolutePath();
+        watchDirs28841.add(ceWatchDir28842);
         watchDirs28841.add(app.createDeviceProtectedStorageContext().getFilesDir().getAbsolutePath());
         String[] dirs = watchDirs28841.toArray(new String[0]);
         for (final String dir : dirs) {
@@ -2763,7 +2778,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 observer.startWatching();
                 REFERENCE_OBSERVERS_124.add(observer);
                 log("KYANT28840_WATCH_READY dir=" + dir + " mask=CLOSE_WRITE|MOVED_TO|CREATE");
-                if (dir.equals(app.createCredentialProtectedStorageContext().getFilesDir().getAbsolutePath())) {
+                if (dir.equals(ceWatchDir28842)) {
                     EARLY_WATCH_READY_28840 = true;
                     probeEarlySource28840(app, "WATCH_START_CE");
                 }
