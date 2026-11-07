@@ -25,6 +25,17 @@ final class WallpaperAlignmentProbe28844 {
     private static volatile String lastCompleted = "";
     // Content-based dedup: timestamps can change when the very same screenshot is republished.
     private static volatile String lastCompletedContent = "";
+    // V288.52: a terminal verdict belongs to the exact content pair.
+    // Do not conflate "already compared" with "crop approved".
+    private static volatile String lastVerdict28852 = "PENDING";
+    private static volatile String lastVerdictReason28852 = "NOT_ATTEMPTED";
+    private static volatile String activePair28852 = "";
+    private static volatile String lastAttemptPair28852 = "";
+    private static volatile long attempts28852 = 0;
+    private static String verdictDetail28852() {
+        return " verdict="+lastVerdict28852+" detail="+lastVerdictReason28852+
+            " attempts="+attempts28852;
+    }
     private static final long MAX_PAIR_AGE_MS = 45000L;
     // Prevent per-draw metadata reuse from creating new calibration threads.
     // Source metadata is included: a new early original re-arms the check.
@@ -90,9 +101,13 @@ final class WallpaperAlignmentProbe28844 {
         }
         return error/(nx*ny);
     }
-    private static void calibrateTwoPixelCrop28850(Context app, Bitmap a, Bitmap b,
+    private static String calibrateTwoPixelCrop28850(Context app, Bitmap a, Bitmap b,
                                                      String sourceKey, String pair) {
-        if(a.getWidth()!=b.getWidth()+2 || a.getHeight()!=b.getHeight()) return;
+        if(a.getWidth()!=b.getWidth()+2 || a.getHeight()!=b.getHeight()) {
+            Log.i(TAG,"KYANT28852_CALIBRATION_REJECT reason=UNSUPPORTED_GEOMETRY early="+
+                a.getWidth()+"x"+a.getHeight()+" reference="+b.getWidth()+"x"+b.getHeight());
+            return "REJECTED:UNSUPPORTED_GEOMETRY";
+        }
         double[] errors=new double[3];
         int bestX=-1; double best=Double.POSITIVE_INFINITY, runner=Double.POSITIVE_INFINITY;
         for(int x=0;x<=2;x++) {
@@ -115,7 +130,7 @@ final class WallpaperAlignmentProbe28844 {
             Log.i(TAG,"KYANT28851_CALIBRATION_REJECT reason=LOW_CONFIDENCE best="+
                 String.format(Locale.US,"%.3f",best)+" margin="+
                 String.format(Locale.US,"%.3f",margin)+" source="+sourceKey);
-            return;
+            return "REJECTED:LOW_CONFIDENCE";
         }
         Log.i(TAG,"KYANT28851_CALIBRATION_APPROVED source="+sourceKey+
             " left="+bestX+" mae="+String.format(Locale.US,"%.3f",best));
@@ -123,6 +138,7 @@ final class WallpaperAlignmentProbe28844 {
             .putString("sourceKey",sourceKey)
             .putInt("sourceWidth",a.getWidth()).putInt("screenWidth",b.getWidth())
             .putInt("height",b.getHeight()).putInt("left",bestX).apply();
+        return "APPROVED:LEFT_"+bestX;
     }
 
     // Two full-resolution 1217x2640 ARGB_8888 images require about 25 MiB.
@@ -135,7 +151,13 @@ final class WallpaperAlignmentProbe28844 {
         if (!busy.compareAndSet(false, true)) { pending = true; return; }
         new Thread(() -> {
             try { compare(app, reason); }
-            catch (Throwable e) { Log.w(TAG, "KYANT28845_ALIGN_ERROR type=" + e.getClass().getSimpleName()); }
+            catch (Throwable e) {
+                lastVerdict28852="RETRYABLE_ERROR";
+                lastVerdictReason28852="EXCEPTION_"+e.getClass().getSimpleName();
+                Log.w(TAG, "KYANT28852_CALIBRATION_STATE state=RETRYABLE_ERROR reason="+
+                    lastVerdictReason28852+" pair="+activePair28852);
+                Log.w(TAG, "KYANT28845_ALIGN_ERROR type=" + e.getClass().getSimpleName());
+            }
             finally {
                 busy.set(false);
                 if (pending) { pending = false; schedule(app, "COALESCED"); }
@@ -222,6 +244,7 @@ final class WallpaperAlignmentProbe28844 {
         File early=new File(dir,"liquidglass_early_wallpaper_source");
         File reference=new File(dir,"liquidglass_wallpaper_reference.jpg");
         if(!early.isFile() || !reference.isFile() || early.length()<=1024 || reference.length()<=1024) {
+            Log.i(TAG,"KYANT28852_CALIBRATION_STATE state=RETRYABLE_ERROR reason=MISSING_SOURCE");
             Log.i(TAG,"KYANT28845_ALIGN_SKIP reason=MISSING_SOURCE"); return;
         }
         long em=early.lastModified(),rm=reference.lastModified(),es=early.length(),rs=reference.length();
@@ -236,12 +259,14 @@ final class WallpaperAlignmentProbe28844 {
         }
         String pair=es+":"+em+"|"+rs+":"+rm;
         if(pair.equals(lastCompleted)) {
-            Log.i(TAG,"KYANT28851_CALIBRATION_DEDUP kind=METADATA pair="+pair); return;
+            Log.i(TAG,"KYANT28852_CALIBRATION_DEDUP kind=METADATA pair="+pair+
+                verdictDetail28852()); return;
         }
         String contentPair;
         try {
             contentPair=es+":"+contentCrc(early)+"|"+rs+":"+contentCrc(reference);
         } catch (java.io.IOException e) {
+            Log.i(TAG,"KYANT28852_CALIBRATION_STATE state=RETRYABLE_ERROR reason=HASH_IO_ERROR");
             Log.i(TAG,"KYANT28846_ALIGN_SKIP reason=HASH_IO_ERROR"); return;
         }
         if (early.length()!=es || reference.length()!=rs ||
@@ -250,13 +275,26 @@ final class WallpaperAlignmentProbe28844 {
         }
         if (contentPair.equals(lastCompletedContent)) {
             lastCompleted=pair;
-            Log.i(TAG,"KYANT28851_CALIBRATION_DEDUP kind=CONTENT contentPair="+contentPair+
-                " timePair="+pair);
+            Log.i(TAG,"KYANT28852_CALIBRATION_DEDUP kind=CONTENT contentPair="+contentPair+
+                " timePair="+pair+verdictDetail28852());
             return;
         }
+        // This is a new content pair. Every attempt must reach one observable
+        // terminal outcome before it becomes eligible for content dedup.
+        activePair28852=contentPair;
+        lastAttemptPair28852=pair;
+        lastVerdict28852="RUNNING";
+        lastVerdictReason28852="PIXEL_COMPARE";
+        attempts28852++;
+        Log.i(TAG,"KYANT28852_CALIBRATION_STATE state=RUNNING contentPair="+
+            contentPair+" timePair="+pair+" attempt="+attempts28852);
         int[] ad=dimensions(early),bd=dimensions(reference);
         if(ad[0]<1 || ad[1]<1 || bd[0]<1 || bd[1]<1 ||
            (long)ad[0]*ad[1]+(long)bd[0]*bd[1]>MAX_TOTAL_PIXELS) {
+            lastVerdict28852="RETRYABLE_ERROR";
+            lastVerdictReason28852="INVALID_OR_LARGE_DIMENSIONS";
+            Log.i(TAG,"KYANT28852_CALIBRATION_STATE state=RETRYABLE_ERROR reason="+
+                lastVerdictReason28852+" pair="+contentPair);
             Log.i(TAG,"KYANT28845_ALIGN_SKIP reason=INVALID_OR_LARGE_DIMENSIONS"); return;
         }
         Bitmap a=null,b=null;
@@ -266,8 +304,14 @@ final class WallpaperAlignmentProbe28844 {
             options.inSampleSize=1;
             a=BitmapFactory.decodeFile(early.getAbsolutePath(),options);
             b=BitmapFactory.decodeFile(reference.getAbsolutePath(),options);
-            if(a==null || b==null) { Log.i(TAG,"KYANT28845_ALIGN_SKIP reason=DECODE_FAILED");return; }
+            if(a==null || b==null) {
+                lastVerdict28852="RETRYABLE_ERROR";lastVerdictReason28852="DECODE_FAILED";
+                Log.i(TAG,"KYANT28852_CALIBRATION_STATE state=RETRYABLE_ERROR reason=DECODE_FAILED pair="+contentPair);
+                Log.i(TAG,"KYANT28845_ALIGN_SKIP reason=DECODE_FAILED");return;
+            }
             if(early.length()!=es || reference.length()!=rs || early.lastModified()!=em || reference.lastModified()!=rm) {
+                lastVerdict28852="RETRYABLE_ERROR";lastVerdictReason28852="FILE_CHANGED";
+                Log.i(TAG,"KYANT28852_CALIBRATION_STATE state=RETRYABLE_ERROR reason=FILE_CHANGED pair="+contentPair);
                 Log.i(TAG,"KYANT28845_ALIGN_SKIP reason=FILE_CHANGED");return;
             }
             // V288.51: source-specific calibration is based on strict pixel
@@ -277,7 +321,8 @@ final class WallpaperAlignmentProbe28844 {
                 " timeVerified="+closeInTime+" deltaMs="+delay+
                 " source="+a.getWidth()+"x"+a.getHeight()+
                 " reference="+b.getWidth()+"x"+b.getHeight()+" pair="+pair);
-            calibrateTwoPixelCrop28850(app,a,b,contentPair.substring(0,contentPair.indexOf('|')),pair);
+            String calibrationVerdict28852=calibrateTwoPixelCrop28850(
+                app,a,b,contentPair.substring(0,contentPair.indexOf('|')),pair);
             double best=Double.POSITIVE_INFINITY, runner=Double.POSITIVE_INFINITY;
             int bestModel=0,bestDx=0,bestDy=0;
             String bestMapping="";
@@ -298,6 +343,14 @@ final class WallpaperAlignmentProbe28844 {
             // A file time window cannot prove both files belong to one wallpaper update.
             // Do not automatically publish a candidate just because the MAE looks good.
             String[] models={"LEFT_CROP","CENTER_CROP","RIGHT_CROP","STRETCH"};
+            // Persist the terminal verdict in memory only after an actual
+            // comparison; retryable I/O/decode failures never occupy dedup.
+            String[] verdictParts28852=calibrationVerdict28852.split(":",2);
+            lastVerdict28852=verdictParts28852[0];
+            lastVerdictReason28852=verdictParts28852.length>1 ? verdictParts28852[1] : "COMPLETE";
+            Log.i(TAG,"KYANT28852_CALIBRATION_STATE state="+lastVerdict28852+
+                " reason="+lastVerdictReason28852+" pair="+contentPair+
+                " attempt="+attempts28852);
             lastCompleted=pair;
             lastCompletedContent=contentPair;
             Log.i(TAG,"KYANT28846_FULL_RES_ALIGN reason="+reason+
