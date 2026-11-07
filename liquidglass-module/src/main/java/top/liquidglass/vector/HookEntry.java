@@ -2746,6 +2746,36 @@ public final class HookEntry implements IXposedHookLoadPackage {
         new java.util.concurrent.atomic.AtomicBoolean(false);
     private static volatile boolean EARLY_PREVIEW_ACTIVE_28847 = false;
     private static volatile long EARLY_PREVIEW_SOURCE_TIME_28847 = -1L;
+    // V288.54: a fresh, completed Root early-file event captures the visible
+    // canonical *content* generation. File mtimes alone are not generations:
+    // ColorOS may rewrite identical screenshots with later timestamps.
+    private static final Object EARLY_EVENT_LOCK_28854 = new Object();
+    private static volatile String EARLY_EVENT_SIGNATURE_28854 = "";
+    private static volatile long EARLY_EVENT_BASELINE_VISUAL_28854 = Long.MIN_VALUE;
+    private static volatile long EARLY_EVENT_ELAPSED_28854 = -1L;
+    private static void markFreshEarlyEvent28854(final android.content.Context app,
+                                                   final int event) {
+        try {
+            final java.io.File source = new java.io.File(earlyCeFilesDir28842(app),
+                "liquidglass_early_wallpaper_source");
+            if (!source.isFile() || source.length() <= 1024L) return;
+            final String signature = source.length() + ":" + source.lastModified();
+            synchronized (EARLY_EVENT_LOCK_28854) {
+                // A duplicate CLOSE_WRITE / MOVED_TO for the same file must
+                // never reset the baseline after canonical content has changed.
+                if (!signature.equals(EARLY_EVENT_SIGNATURE_28854)) {
+                    EARLY_EVENT_SIGNATURE_28854 = signature;
+                    EARLY_EVENT_BASELINE_VISUAL_28854 = CANONICAL_VISUAL_KEY_28849;
+                    EARLY_EVENT_ELAPSED_28854 = android.os.SystemClock.elapsedRealtime();
+                    log("KYANT28854_EARLY_EVENT_BASELINE source=" + signature +
+                        " canonicalVisual=" + Long.toHexString(EARLY_EVENT_BASELINE_VISUAL_28854) +
+                        " event=" + event + " status=CAPTURED");
+                }
+            }
+        } catch (Throwable t) {
+            log("KYANT28854_EARLY_EVENT_ERROR type=" + t.getClass().getSimpleName());
+        }
+    }
     private static void scheduleEarlyPreview28847(final android.content.Context app, final String trigger) {
         final int mode;
         try { mode = android.provider.Settings.Global.getInt(app.getContentResolver(), EARLY_MODE_KEY_28847, 0); }
@@ -2833,9 +2863,46 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if (early.length() != size || early.lastModified() != mtime) {
                     log("KYANT28847_EARLY_SKIP reason=CHANGED_DURING_DECODE"); return;
                 }
-                // Do not replace a formal reference that arrived after this source.
+                // V288.54: first compare pixels. A newly rewritten canonical
+                // file with the *same wallpaper* needs no second visual handoff.
+                final android.graphics.Bitmap canonicalNow28854 = REFRACTION_FRAME;
+                if (canonicalNow28854 != null &&
+                        earlyMatchesCanonical28847(output, canonicalNow28854)) {
+                    log("KYANT28854_EARLY_SKIP reason=CANONICAL_ALREADY_MATCHES source="+
+                        signature+" canonicalVisual="+Long.toHexString(CANONICAL_VISUAL_KEY_28849));
+                    return;
+                }
+                // If canonical mtime is newer, only permit a verified recent
+                // Root event for this EXACT early-file metadata, and only if
+                // canonical content still matches the baseline at that event.
+                // A foreground cached probe is never enough to override it.
                 if (REFRACTION_FRAME_MODIFIED >= mtime && !EARLY_PREVIEW_ACTIVE_28847) {
-                    log("KYANT28847_EARLY_SKIP reason=CANONICAL_NEWER"); return;
+                    final long now28854 = android.os.SystemClock.elapsedRealtime();
+                    final boolean verifiedEvent28854;
+                    final long baseline28854;
+                    final long eventAge28854;
+                    synchronized (EARLY_EVENT_LOCK_28854) {
+                        baseline28854 = EARLY_EVENT_BASELINE_VISUAL_28854;
+                        eventAge28854 = EARLY_EVENT_ELAPSED_28854 < 0L ? -1L :
+                            now28854 - EARLY_EVENT_ELAPSED_28854;
+                        verifiedEvent28854 = signature.equals(EARLY_EVENT_SIGNATURE_28854) &&
+                            eventAge28854 >= 0L && eventAge28854 <= 30000L &&
+                            baseline28854 != Long.MIN_VALUE &&
+                            CANONICAL_VISUAL_KEY_28849 == baseline28854;
+                    }
+                    if (!verifiedEvent28854) {
+                        log("KYANT28854_EARLY_SKIP reason=CANONICAL_NEWER_UNVERIFIED"+
+                            " source="+signature+
+                            " canonicalMtime="+REFRACTION_FRAME_MODIFIED+
+                            " earlyMtime="+mtime+
+                            " eventAgeMs="+eventAge28854+
+                            " baselineVisual="+Long.toHexString(baseline28854)+
+                            " currentVisual="+Long.toHexString(CANONICAL_VISUAL_KEY_28849));
+                        return;
+                    }
+                    log("KYANT28854_CANONICAL_MTIME_BYPASS reason=FRESH_EVENT_CONTENT_UNCHANGED"+
+                        " source="+signature+" eventAgeMs="+eventAge28854+
+                        " visual="+Long.toHexString(baseline28854));
                 }
                 if (!glassEnabled || (customBlurMode != 1 && !REFRACTION_ENABLED)) {
                     log("KYANT28848_EARLY_SKIP reason=GLASS_NOT_READY glassEnabled=" + glassEnabled +
@@ -3024,8 +3091,10 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             // A CREATE event might be incomplete, hence validation in the worker.
                             probeEarlySource28840(app, "FILE_EVENT_" + event);
                             if ((event & (android.os.FileObserver.CLOSE_WRITE |
-                                    android.os.FileObserver.MOVED_TO)) != 0)
+                                    android.os.FileObserver.MOVED_TO)) != 0) {
+                                markFreshEarlyEvent28854(app, event);
                                 scheduleEarlyPreview28847(app, "EARLY_FILE_EVENT_28848_" + event);
+                            }
                             return;
                         }
                         if (!"liquidglass_wallpaper_reference.jpg".equals(name)) return;
