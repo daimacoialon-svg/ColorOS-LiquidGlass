@@ -282,6 +282,22 @@ publish_early_source_28838() {
       restorecon "$EARLY_DST" "$EARLY_SIG" 2>/dev/null
       read up _ < /proc/uptime
       echo "KYANT28838_EARLY_SOURCE_READY uptimeSec=$up size=$(stat -c %s "$EARLY_DST" 2>/dev/null)" >> "$LOG"
+      # V288.60: persist only a short-lived Root publication hint. It carries
+      # a source file signature (not an untrusted path) and is atomically
+      # renamed in the same CE directory; Launcher verifies its owner, age,
+      # permissions and exact image signature before restoring event age.
+      marker="$LAUNCHERDIR/.liquidglass_early_event_28860"
+      marker_tmp="$LAUNCHERDIR/.liquidglass_early_event_28860.$$"
+      if printf '%s\n' "$(stat -c '%s:%Y' "$EARLY_DST" 2>/dev/null)" > "$marker_tmp"; then
+        chown "$uid:$gid" "$marker_tmp" && chmod 600 "$marker_tmp"
+        restorecon "$marker_tmp" 2>/dev/null
+        if mv -f "$marker_tmp" "$marker"; then
+          restorecon "$marker" 2>/dev/null
+          read marker_up _ < /proc/uptime
+          echo "KYANT28860_EVENT_MARKER_READY uptimeSec=$marker_up source=$(stat -c '%s:%Y' "$EARLY_DST" 2>/dev/null)" >> "$LOG"
+        fi
+      fi
+      rm -f "$marker_tmp"
       # V288.56: one explicit event wakeup after the atomic rename.
       # A cached Launcher may not receive its FileObserver until foreground;
       # a package-scoped broadcast can deliver the hint earlier. It is only a

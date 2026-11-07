@@ -2897,6 +2897,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         " identity=" + (uid == -1 ? "UNKNOWN" : "ROOT_OR_SHELL") +
                         " trust=UNTRUSTED_HINT");
                     if (!verifyEarlyWakeSource28857(app, "BROADCAST")) return;
+                    recoverEarlyEvent28860(app, "ROOT_BROADCAST");
                     log("KYANT28858_WAKE_ACCEPTED reason=PRIVATE_SOURCE_VERIFIED uid=" + uid +
                         " elapsedMs=" + android.os.SystemClock.elapsedRealtime());
                     markFreshEarlyEvent28854(app, 0x10000);
@@ -2906,9 +2907,87 @@ public final class HookEntry implements IXposedHookLoadPackage {
             }, filter, android.content.Context.RECEIVER_EXPORTED);
             log("KYANT28858_WAKE_REGISTERED package=" + app.getPackageName() +
                 " policy=UNTRUSTED_HINT_PRIVATE_FILE_VERIFICATION");
+            recoverEarlyEvent28860(app, "RECEIVER_REGISTERED");
         } catch (Throwable error) {
             EARLY_WAKE_REGISTERED_28856.set(false);
             log("KYANT28857_WAKE_REGISTER_FAILED type=" + error.getClass().getSimpleName());
+        }
+    }
+
+    // V288.60: recover a short-lived Root publication event after Launcher
+    // process restart or missed FileObserver delivery. The marker is only a
+    // hint, never an authorization to publish or override canonical content.
+    // The marker contains size:mtimeSeconds for the *fixed* CE source file;
+    // neither a broadcast path nor a broadcast signature is trusted.
+    private static final String EARLY_EVENT_MARKER_28860 =
+        ".liquidglass_early_event_28860";
+    private static final long EARLY_RECOVERY_MAX_AGE_MS_28860 = 3000L;
+    private static void recoverEarlyEvent28860(final android.content.Context app,
+                                                final String reason) {
+        try {
+            final java.io.File dir = earlyCeFilesDir28842(app);
+            final java.io.File source = new java.io.File(dir,
+                "liquidglass_early_wallpaper_source");
+            final java.io.File marker = new java.io.File(dir, EARLY_EVENT_MARKER_28860);
+            if (!source.isFile() || !marker.isFile()) {
+                log("KYANT28860_RECOVERY_SKIP reason=FILE_MISSING trigger="+reason); return;
+            }
+            final android.system.StructStat mst = android.system.Os.lstat(marker.getAbsolutePath());
+            if (!android.system.OsConstants.S_ISREG(mst.st_mode) ||
+                mst.st_uid != android.os.Process.myUid() || (mst.st_mode & 0077) != 0 ||
+                marker.length() < 3L || marker.length() > 100L ||
+                !marker.getCanonicalFile().getParentFile().equals(dir.getCanonicalFile())) {
+                log("KYANT28860_RECOVERY_SKIP reason=MARKER_UNTRUSTED trigger="+reason); return;
+            }
+            final android.system.StructStat st = android.system.Os.lstat(source.getAbsolutePath());
+            if (!android.system.OsConstants.S_ISREG(st.st_mode) ||
+                st.st_uid != android.os.Process.myUid() || (st.st_mode & 0077) != 0 ||
+                st.st_size < 1024L || st.st_size > 40000000L) {
+                log("KYANT28860_RECOVERY_SKIP reason=SOURCE_UNTRUSTED trigger="+reason); return;
+            }
+            final long nowWall = java.lang.System.currentTimeMillis();
+            final long sourceAge = nowWall - source.lastModified();
+            final long markerAge = nowWall - marker.lastModified();
+            if (sourceAge < -1500L || markerAge < -1500L ||
+                    sourceAge > EARLY_RECOVERY_MAX_AGE_MS_28860 ||
+                    markerAge > EARLY_RECOVERY_MAX_AGE_MS_28860 ||
+                    Math.abs(source.lastModified()-marker.lastModified()) > 2500L) {
+                log("KYANT28860_RECOVERY_SKIP reason=STALE sourceAgeMs="+sourceAge+
+                    " markerAgeMs="+markerAge+" trigger="+reason);
+                return;
+            }
+            final String recorded;
+            try (java.io.BufferedReader reader = new java.io.BufferedReader(
+                    new java.io.FileReader(marker))) {
+                recorded = reader.readLine();
+            }
+            final String expected = source.length()+":"+(source.lastModified()/1000L);
+            if (!expected.equals(recorded)) {
+                log("KYANT28860_RECOVERY_SKIP reason=SIGNATURE_MISMATCH expected="+expected+
+                    " trigger="+reason); return;
+            }
+            final String sourceSig = source.length()+":"+source.lastModified();
+            final long nowElapsed = android.os.SystemClock.elapsedRealtime();
+            final long recoveredElapsed = nowElapsed - Math.max(0L,sourceAge);
+            synchronized (EARLY_EVENT_LOCK_28854) {
+                if (sourceSig.equals(EARLY_EVENT_SIGNATURE_28854)) return;
+                EARLY_EVENT_SIGNATURE_28854 = sourceSig;
+                EARLY_EVENT_BASELINE_VISUAL_28854 = CANONICAL_VISUAL_KEY_28849;
+                EARLY_EVENT_ELAPSED_28854 = recoveredElapsed;
+                EARLY_EVENT_FILE_ELAPSED_28855 = recoveredElapsed;
+                EARLY_EVENT_CANONICAL_VISUAL_28855 = CANONICAL_VISUAL_KEY_28849;
+                EARLY_EVENT_SOURCE_MTIME_28855 = source.lastModified();
+            }
+            log("KYANT28860_EVENT_RECOVERED source="+sourceSig+
+                " sourceAgeMs="+sourceAge+" markerAgeMs="+markerAge+
+                " eventAgeMs="+eventAge28855()+" trigger="+reason+
+                " baselineVisual="+Long.toHexString(CANONICAL_VISUAL_KEY_28849));
+            // This is a recent, fixed-path, owner-verified source, but preview
+            // still needs mode, per-source or device crop, and generation gates.
+            scheduleEarlyPreview28847(app, "RECOVERED_EVENT_28860_"+reason);
+        } catch (Throwable error) {
+            log("KYANT28860_RECOVERY_SKIP reason=EXCEPTION type="+
+                error.getClass().getSimpleName()+" trigger="+reason);
         }
     }
 
@@ -3367,6 +3446,12 @@ public final class HookEntry implements IXposedHookLoadPackage {
                             }
                             // CREATE may still be incomplete; let probe validate.
                             probeEarlySource28840(app, "FILE_EVENT_" + event);
+                            return;
+                        }
+                        if (EARLY_EVENT_MARKER_28860.equals(name)) {
+                            if ((event & android.os.FileObserver.MOVED_TO) != 0) {
+                                recoverEarlyEvent28860(app, "MARKER_MOVED_TO");
+                            }
                             return;
                         }
                         if (!"liquidglass_wallpaper_reference.jpg".equals(name)) return;
@@ -8699,6 +8784,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                                 // A broadcast cannot make ColorOS produce the
                                 // screenshot; check whether Root has published it.
                                 scheduleReferenceLoad28833(app,null,true);
+                                recoverEarlyEvent28860(app, "WALLPAPER_BROADCAST");
                                 probeEarlySource28840(app, "WALLPAPER_BROADCAST");
                             }
                         },wallpaper28833);
