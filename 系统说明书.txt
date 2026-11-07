@@ -12,3 +12,9 @@ ColorOS-LiquidGlass V1.9.205.288.46｜壁纸全分辨率对齐去重与等价映
 真机：su -c 'logcat -d -v threadtime | grep KYANT28846'
 
 仍需 GitHub Actions 编译与真机检查；大文件夹抖动、正式提前渲染尚未在本版修复。
+
+V1.9.205.288.47：提前参考帧 A/B 实验（默认关闭）。
+Termux：su -c settings put global liquidglass_kyant_early_frame_ab_28847 0  # 稳定正式参考帧
+su -c settings put global liquidglass_kyant_early_frame_ab_28847 1  # 静态壁纸早期左裁剪预览（实验）
+su -c settings put global liquidglass_kyant_early_frame_ab_28847 2  # 仅诊断，不替换显示
+仅处理已校准 1px 宽差的静态壁纸；正式截图仍会接管。不要在动态壁纸上启用。

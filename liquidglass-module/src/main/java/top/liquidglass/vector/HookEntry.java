@@ -2594,7 +2594,25 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(REFRACTION_LOGS++<24)log("REFERENCE_REUSE_148 disk_hit="+(next!=null)+" source="+local.getAbsolutePath());
                 final long loadedModified=modified,loadedLength=length;
                 if(next!=null && next.getWidth()>=320 && next.getHeight()>=640) {
+                    // An old canonical file may be rechecked during a fresh early preview.
+                    // Wait for the screenshot for this new wallpaper to arrive.
+                    if (EARLY_PREVIEW_ACTIVE_28847 && loadedModified < EARLY_PREVIEW_SOURCE_TIME_28847) {
+                        log("KYANT28847_CANONICAL_SKIP reason=OLDER_THAN_PREVIEW");
+                        return;
+                    }
+                    if (EARLY_PREVIEW_ACTIVE_28847 &&
+                            earlyMatchesCanonical28847(REFRACTION_FRAME, next)) {
+                        // Keep the current optical frame: no second visible flash.
+                        REFRACTION_FRAME_MODIFIED = loadedModified;
+                        REFRACTION_FRAME_LENGTH = loadedLength;
+                        EARLY_PREVIEW_ACTIVE_28847 = false;
+                        log("KYANT28847_CANONICAL_MATCH no_second_swap=true");
+                        return;
+                    }
+                    if (EARLY_PREVIEW_ACTIVE_28847)
+                        log("KYANT28847_CANONICAL_REPLACE reason=PIXEL_DIFFERENCE");
                     REFRACTION_FRAME=next;
+                    EARLY_PREVIEW_ACTIVE_28847 = false;
                     if(REFRACTION_LOGS++<24)log("BOOT_REFRACTION_READY source=launcher_private_wallpaper_reference");
                     REFRACTION_FRAME_MODIFIED=loadedModified;
                     REFRACTION_FRAME_LENGTH=loadedLength;
@@ -2645,6 +2663,114 @@ public final class HookEntry implements IXposedHookLoadPackage {
                 if(retry) scheduleReferenceLoad28833(app, null, true);
             }
         }},"LiquidGlass-Wallpaper-Reference").start();
+    }
+    // Sparse one-shot comparison when the authoritative screenshot arrives.
+    // Returning true avoids a visually redundant second handoff.
+    private static boolean earlyMatchesCanonical28847(android.graphics.Bitmap early,
+                                                         android.graphics.Bitmap formal) {
+        if (early == null || formal == null || early.isRecycled() || formal.isRecycled()
+            || early.getWidth() != formal.getWidth() || early.getHeight() != formal.getHeight()) return false;
+        double difference = 0;
+        int count = 0;
+        for (int y=9; y<early.getHeight()-9; y+=31) {
+            for (int x=9; x<early.getWidth()-9; x+=29) {
+                int a=early.getPixel(x,y), b=formal.getPixel(x,y);
+                difference += (Math.abs(((a>>16)&255)-((b>>16)&255))+
+                    Math.abs(((a>>8)&255)-((b>>8)&255))+
+                    Math.abs((a&255)-(b&255)))/3.0;
+                count++;
+            }
+        }
+        return count>100 && difference/count<=3.0;
+    }
+    // V288.47: opt-in early wallpaper handoff. No UI-frame polling or Root calls.
+    // Modes: 0 canonical screenshot, 1 guarded early preview, 2 dry-run.
+    private static final String EARLY_MODE_KEY_28847 = "liquidglass_kyant_early_frame_ab_28847";
+    private static final java.util.concurrent.atomic.AtomicBoolean EARLY_RENDER_BUSY_28847 =
+        new java.util.concurrent.atomic.AtomicBoolean(false);
+    private static volatile String EARLY_LAST_PUBLISHED_28847 = "";
+    private static volatile boolean EARLY_PREVIEW_ACTIVE_28847 = false;
+    private static volatile long EARLY_PREVIEW_SOURCE_TIME_28847 = -1L;
+    private static void scheduleEarlyPreview28847(final android.content.Context app, final String trigger) {
+        final int mode;
+        try { mode = android.provider.Settings.Global.getInt(app.getContentResolver(), EARLY_MODE_KEY_28847, 0); }
+        catch (Throwable ignored) { return; }
+        if (mode == 0) {
+            // A/B can be disabled without replacing the normal reference loader.
+            if (EARLY_PREVIEW_ACTIVE_28847) scheduleReferenceLoad28833(app, null, true);
+            return;
+        }
+        if (!EARLY_RENDER_BUSY_28847.compareAndSet(false, true)) return;
+        new Thread(() -> {
+            android.graphics.Bitmap output = null;
+            try {
+                // Only static system wallpaper. Dynamic wallpaper remains on V288.46.
+                android.app.WallpaperManager wm = android.app.WallpaperManager.getInstance(app);
+                if (wm.getWallpaperInfo() != null) {
+                    log("KYANT28847_EARLY_SKIP reason=LIVE_WALLPAPER"); return;
+                }
+                java.io.File early = new java.io.File(earlyCeFilesDir28842(app),
+                    "liquidglass_early_wallpaper_source");
+                if (!early.isFile() || early.length() < 1024) return;
+                final long size = early.length(), mtime = early.lastModified();
+                final String signature = size + ":" + mtime;
+                if (signature.equals(EARLY_LAST_PUBLISHED_28847)) return;
+                android.util.DisplayMetrics dm = app.getResources().getDisplayMetrics();
+                final int w = dm.widthPixels, h = dm.heightPixels;
+                android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+                opts.inJustDecodeBounds = true;
+                android.graphics.BitmapFactory.decodeFile(early.getAbsolutePath(), opts);
+                // Restrict the optical handoff to the exact geometry already measured
+                // on this device. Anything else stays on the authoritative screenshot.
+                if (w < 320 || h < 640 || opts.outWidth != w + 1 || opts.outHeight != h) {
+                    log("KYANT28847_EARLY_SKIP reason=UNVERIFIED_GEOMETRY early="+
+                        opts.outWidth+"x"+opts.outHeight+" screen="+w+"x"+h);
+                    return;
+                }
+                if (mode == 2) {
+                    log("KYANT28847_EARLY_DRY_RUN geometry=LEFT_CROP size="+w+"x"+h+
+                        " source="+signature+" trigger="+trigger); return;
+                }
+                opts.inJustDecodeBounds = false;
+                opts.inPreferredConfig = android.graphics.Bitmap.Config.ARGB_8888;
+                android.graphics.Bitmap decoded = android.graphics.BitmapFactory.decodeFile(early.getAbsolutePath(), opts);
+                if (decoded == null) return;
+                try {
+                    output = android.graphics.Bitmap.createBitmap(decoded, 0, 0, w, h);
+                } finally {
+                    // createBitmap can share pixels with the source. Never recycle the source
+                    // while the cropped bitmap might still reference them.
+                }
+                if (early.length() != size || early.lastModified() != mtime) {
+                    log("KYANT28847_EARLY_SKIP reason=CHANGED_DURING_DECODE"); return;
+                }
+                // Do not replace a formal reference that arrived after this source.
+                if (REFRACTION_FRAME_MODIFIED >= mtime && !EARLY_PREVIEW_ACTIVE_28847) {
+                    log("KYANT28847_EARLY_SKIP reason=CANONICAL_NEWER"); return;
+                }
+                if (!glassEnabled || (customBlurMode != 1 && !REFRACTION_ENABLED)) return;
+                if (android.provider.Settings.Global.getInt(app.getContentResolver(),
+                        EARLY_MODE_KEY_28847, 0) != 1) return;
+                REFRACTION_FRAME = output;
+                // Sentinel forces the next canonical screenshot publication to win,
+                // even when its filesystem metadata matches a previously loaded file.
+                REFRACTION_FRAME_MODIFIED = -1L;
+                REFRACTION_FRAME_LENGTH = -1L;
+                EARLY_LAST_PUBLISHED_28847 = signature;
+                EARLY_PREVIEW_ACTIVE_28847 = true;
+                EARLY_PREVIEW_SOURCE_TIME_28847 = mtime;
+                KyantReferenceBridge264.onReferenceReady(app, output, -1L, -1L);
+                KyantLauncherFrameBridge266.onReferenceReady(output, -1L, -1L);
+                log("KYANT28847_EARLY_PUBLISHED source="+signature+" generation="+
+                    KyantLauncherFrameBridge266.peekGeneration270()+" trigger="+trigger);
+                new android.os.Handler(android.os.Looper.getMainLooper()).post(() -> invalidateGlassViews());
+                output = null; // Ownership is now shared with the existing reference hosts.
+            } catch (Throwable ex) {
+                log("KYANT28847_EARLY_ERROR type="+ex.getClass().getSimpleName());
+            } finally {
+                EARLY_RENDER_BUSY_28847.set(false);
+            }
+        }, "LiquidGlass-EarlyPreview28847").start();
     }
     // V288.40: diagnostic-only early-source receiver. No bitmap allocation or
     // rendering-path changes; the canonical screenshot remains authoritative.
@@ -2707,6 +2833,15 @@ public final class HookEntry implements IXposedHookLoadPackage {
                         " exists=" + exists + " bytes=" + size + " modified=" + modified);
                     return;
                 }
+                // Revert to canonical on the next foreground/event check if the
+                // user disabled the experiment; no Launcher restart required.
+                if (EARLY_PREVIEW_ACTIVE_28847) {
+                    try {
+                        if (android.provider.Settings.Global.getInt(app.getContentResolver(),
+                                EARLY_MODE_KEY_28847, 0) != 1)
+                            scheduleReferenceLoad28833(app, null, true);
+                    } catch (Throwable ignored) { }
+                }
                 if (signature.equals(EARLY_PROBE_LAST_SIGNATURE_28840)) {
                     log("KYANT28843_EARLY_CACHED_GEOMETRY reason=" + reason +
                         " original=" + EARLY_VALID_WIDTH_28843 + "x" + EARLY_VALID_HEIGHT_28843 +
@@ -2748,6 +2883,7 @@ public final class HookEntry implements IXposedHookLoadPackage {
                     " display=" + displayDimensions +
                     " signature=" + signature + " status=DIAGNOSTIC_ONLY");
                 WallpaperAlignmentProbe28844.schedule(app, "EARLY_SOURCE_VALIDATED");
+                if (reason.startsWith("FILE_EVENT_")) scheduleEarlyPreview28847(app, reason);
                 log("KYANT28840_EARLY_PROBE_OK reason=" + reason + " signature=" + signature +
                     " elapsedRealtimeMs=" + android.os.SystemClock.elapsedRealtime());
             } catch (Throwable t) {
