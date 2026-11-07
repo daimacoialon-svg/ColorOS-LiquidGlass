@@ -93,3 +93,8 @@ V1.9.205.288.64｜Kyant/原生绘制生命周期对照
 V1.9.205.288.64.1｜Kotlin 声明顺序修复
 - 将 KYANT28864_LIFECYCLE_HOST 日志移到 pipelineMode28819 定义后，修复 compileDebugKotlin 未解析引用。
 - 保留 V288.64 全部生命周期诊断逻辑，保留 V288.60 壁纸即时同步基线。
+
+V1.9.205.288.65｜Kyant 原生移动触发源图层重绘 A/B
+默认 0 不改变 V288.64.1。设置 liquidglass_kyant_native_draw_sync_ab_28865=1 后，只有可见、布局匹配且原生位置变化超过 0.5px 才向 Compose 发出下一帧无效化请求，保留 Kyant Shader、壁纸参考帧发布及 Dock 几何。
+增加 KYANT28865_DRAW_SYNC：requests、sourceDraws、treeDraws、maxRequestStepPx；treeDraws 取自 ViewTreeObserver.OnDrawListener，表示 ViewTree 绘制遍历，不等同父容器 dispatchDraw 或最终 GPU Present。仅在生命周期诊断开启或实验模式 1 时注册，销毁时移除。
+真机：su -c settings put global liquidglass_kyant_native_draw_sync_ab_28865 0/1；切换后重新加载 Launcher；日志 grep KYANT28865_DRAW_SYNC。只作为实验，尚未经过 GitHub Actions 完整编译或真机验证。

@@ -321,6 +321,22 @@ object KyantLauncherLens270 {
             Settings.Global.getInt(anchor.context.contentResolver,
                 "liquidglass_kyant_lifecycle_probe_28864", 0) == 1
         } catch (_: Throwable) { false }
+        // V288.65: experimental redraw request on genuine native motion only.
+        // Default OFF. No bitmap decoding, publication or shader changes.
+        val nativeDrawSync28865 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_native_draw_sync_ab_28865", 0).coerceIn(0, 1)
+        } catch (_: Throwable) { 0 }
+        val drawProbe28865 = lifecycleProbe28864 || nativeDrawSync28865 == 1
+        val treeDrawSerial28865 = AtomicLong(0L)
+        var treeDrawListener28865: android.view.ViewTreeObserver.OnDrawListener? = null
+        var drawRequestWindow28865 = SystemClock.elapsedRealtimeNanos()
+        var drawRequests28865 = 0L
+        var drawSourceAtStart28865 = 0L
+        var drawTreeAtStart28865 = 0L
+        var drawMaxGap28865 = 0f
+        var drawLastRequestedX28865 = Float.NaN
+        var drawLastRequestedY28865 = Float.NaN
         val sourceDrawSerial28864 = AtomicLong(0L)
         val parentDrawSerial28864 = AtomicLong(0L)
         val parentWithoutSource28864 = AtomicLong(0L)
@@ -336,6 +352,9 @@ object KyantLauncherLens270 {
         var probeLastParentSerial28864 = 0L
         var probeLastSourceTotal28864 = 0L
         var probeLastNoSource28864 = 0L
+        if (drawProbe28865) XposedBridge.log(
+            "KYANT28865_HOST host=${System.identityHashCode(anchor)} mode=$nativeDrawSync28865 " +
+            "lifecycle=$lifecycleProbe28864")
         val pipelineMode28819 = try {
             Settings.Global.getInt(anchor.context.contentResolver, PIPELINE_AB_28819_KEY, -1).coerceIn(-1, 3)
         } catch (_: Throwable) { -1 }
@@ -1038,6 +1057,7 @@ object KyantLauncherLens270 {
             KyantLauncherLensProbe270.setActiveFor273(anchor, false)
             KyantLauncherLensProbe270.clearAttempt(anchor)
             try { followListener?.let { if (root.viewTreeObserver.isAlive) root.viewTreeObserver.removeOnPreDrawListener(it) } } catch (_: Throwable) {}
+            try { treeDrawListener28865?.let { if (root.viewTreeObserver.isAlive) root.viewTreeObserver.removeOnDrawListener(it) } } catch (_: Throwable) {}
             try { detachListener?.let { anchor.removeOnAttachStateChangeListener(it) } } catch (_: Throwable) {}
             try { layoutListener?.let { anchor.removeOnLayoutChangeListener(it) } } catch (_: Throwable) {}
             try { compose.disposeComposition() } catch (t: Throwable) {
@@ -1101,7 +1121,7 @@ object KyantLauncherLens270 {
                 if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
                 pipelineMode28819, frameSync28822,
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
-                { glassScreenPosition(lastBounds) }, lifecycleProbe28864,
+                { glassScreenPosition(lastBounds) }, lifecycleProbe28864, drawProbe28865,
                 sourceDrawSerial28864, sourceDrawPosition28864,
                 { stage, pos, info -> releaseTrace28820(stage, pos, info) }) {
                 if (compositionSeen.compareAndSet(false, true)) {
@@ -1631,6 +1651,44 @@ object KyantLauncherLens270 {
                             probeWindow28864 = probeNow
                         }
                     }
+                    // V288.65 A/B: request a fresh Compose source draw when a
+                    // *visible* native container actually changes screen position.
+                    // Guard against stationary invalidation loops; avoid changing
+                    // Compose snapshot state during drawing or PreDraw.
+                    if (nativeDrawSync28865 == 1 && visible && layoutMatches &&
+                        frame.visibility == View.VISIBLE && currentSample.x.isFinite() &&
+                        currentSample.y.isFinite()) {
+                        val delta = if (drawLastRequestedX28865.isFinite())
+                            kotlin.math.max(kotlin.math.abs(currentSample.x - drawLastRequestedX28865),
+                                kotlin.math.abs(currentSample.y - drawLastRequestedY28865)) else 0f
+                        if (delta > 0.5f) {
+                            drawRequests28865++
+                            drawMaxGap28865 = kotlin.math.max(drawMaxGap28865, delta)
+                            // Invalidate only the Compose source-bearing View.
+                            // On native draw-list caching, this is the minimal
+                            // request that may cause the source Canvas to redraw.
+                            compose.postInvalidateOnAnimation()
+                        }
+                        drawLastRequestedX28865 = currentSample.x
+                        drawLastRequestedY28865 = currentSample.y
+                    }
+                    if (drawProbe28865) {
+                        val now65 = SystemClock.elapsedRealtimeNanos()
+                        if (now65 - drawRequestWindow28865 >= 1_000_000_000L) {
+                            val source65 = sourceDrawSerial28864.get()
+                            val tree65 = treeDrawSerial28865.get()
+                            XposedBridge.log("KYANT28865_DRAW_SYNC host=${System.identityHashCode(anchor)} " +
+                                "mode=$nativeDrawSync28865 requests=$drawRequests28865 " +
+                                "sourceDraws=${source65 - drawSourceAtStart28865} " +
+                                "treeDraws=${tree65 - drawTreeAtStart28865} " +
+                                "maxRequestStepPx=$drawMaxGap28865 visible=$visible")
+                            drawRequests28865 = 0L
+                            drawMaxGap28865 = 0f
+                            drawSourceAtStart28865 = source65
+                            drawTreeAtStart28865 = tree65
+                            drawRequestWindow28865 = now65
+                        }
+                    }
                     predrawMatrixSnapshot.set(Pair(currentSample, SystemClock.elapsedRealtimeNanos()))
                     releaseTrace28820("POST_PREDRAW", currentSample,
                         "committedX=${samplePosition.value.x} committedY=${samplePosition.value.y} changed=$updatePosition")
@@ -1683,6 +1741,15 @@ object KyantLauncherLens270 {
             }
             followListener = listener
             root.viewTreeObserver.addOnPreDrawListener(listener)
+            if (drawProbe28865) {
+                val treeListener = android.view.ViewTreeObserver.OnDrawListener {
+                    // Traversal-level draw event. This is NOT FolderIcon.dispatchDraw
+                    // and does not establish when GPU composition presents the frame.
+                    treeDrawSerial28865.incrementAndGet()
+                }
+                treeDrawListener28865 = treeListener
+                root.viewTreeObserver.addOnDrawListener(treeListener)
+            }
             frame.translationX = 0f
             frame.translationY = 0f
             XposedBridge.log("KYANT2885_HOST_ATTACHED layer=folder_child_index_0 owners=isolated recomposer=explicit view=${anchor.width}x${anchor.height} glassBounds=$initialBounds lens=${previewWidth}x${previewHeight} reference=${reference.width}x${reference.height}")
@@ -1714,7 +1781,7 @@ object KyantLauncherLens270 {
         bridgeResample: (Offset) -> Unit,
         predrawMatrixSnapshot: java.util.concurrent.atomic.AtomicReference<Pair<Offset, Long>>,
         currentNativePosition: () -> Offset,
-        lifecycleProbe28864: Boolean,
+        lifecycleProbe28864: Boolean, drawProbe28865: Boolean,
         sourceDrawSerial28864: AtomicLong,
         sourceDrawPosition28864: java.util.concurrent.atomic.AtomicReference<Offset?>,
         trace28820: (String, Offset?, String) -> Unit,
@@ -1783,7 +1850,7 @@ object KyantLauncherLens270 {
                 } else committedPosition
                 if (motionAbMode == 1) frozenSource.compareAndSet(null, livePosition)
                 val drawPosition = if (motionAbMode == 1) (frozenSource.get() ?: livePosition) else livePosition
-                if (lifecycleProbe28864) {
+                if (drawProbe28865) {
                     sourceDrawPosition28864.set(drawPosition)
                     sourceDrawSerial28864.incrementAndGet()
                 }
