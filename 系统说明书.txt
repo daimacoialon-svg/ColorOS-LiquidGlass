@@ -80,3 +80,12 @@ V1.9.205.288.63｜Kyant 原生 PreDraw 坐标帧提交 A/B
 模式 0 保留 V288.62.1 原始提交门控；模式 1 在可见且布局匹配的每次 PreDraw，依据原生矩阵变化提交 Compose 采样状态，并请求下一帧刷新。
 诊断日志：KYANT28863_HOST、KYANT28863_FRAME_COMMIT。模式 1 是定向实验，尚未真机验证能否修复高速滑动抖动。
 保持 V288.60 壁纸事件同步、Dock 几何、Kyant Shader 不变。
+
+
+V1.9.205.288.64｜Kyant/原生绘制生命周期对照
+本版保持 V288.60 壁纸即时同步和 Kyant Shader 原有实现；新增默认关闭的短时诊断。
+启用：su -c settings put global liquidglass_kyant_lifecycle_probe_28864 1，重启 Launcher。
+日志：su -c "logcat -d -v threadtime | grep KYANT28864_LIFECYCLE | tail -30"。
+关闭：su -c settings put global liquidglass_kyant_lifecycle_probe_28864 0，重启 Launcher。
+指标：moving 是原生位置变化次数，movesWithoutSource 是连续位置变更间 Compose 源绘制计数未增加的次数；parentDrawWithoutSource 是父 FrameLayout dispatchDraw 内源绘制计数未增加次数。
+注意：硬件 RenderNode 可重用缓存，以上指标不代表 GPU 最终显示帧。观察视觉与指标相关性后再决定是否改写绘制调度。

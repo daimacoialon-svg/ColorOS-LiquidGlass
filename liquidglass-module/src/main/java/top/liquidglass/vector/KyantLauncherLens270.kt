@@ -315,6 +315,29 @@ object KyantLauncherLens270 {
         if (try { Settings.Global.getInt(anchor.context.contentResolver, KEY, 0) != 1 }
                 catch (_: Throwable) { true }) return
         KyantOptics28827.ensure(anchor.context)
+        // V288.64: opt-in native parent versus Compose source draw lifecycle probe.
+        // Counters are in memory. No per-frame logs or state writes from draw.
+        val lifecycleProbe28864 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_lifecycle_probe_28864", 0) == 1
+        } catch (_: Throwable) { false }
+        val sourceDrawSerial28864 = AtomicLong(0L)
+        val parentDrawSerial28864 = AtomicLong(0L)
+        val parentWithoutSource28864 = AtomicLong(0L)
+        val sourceDrawPosition28864 = java.util.concurrent.atomic.AtomicReference<Offset?>(null)
+        var probeWindow28864 = SystemClock.elapsedRealtimeNanos()
+        var probePreDraw28864 = 0L
+        var probeMoving28864 = 0L
+        var probeMovingWithoutSource28864 = 0L
+        var probeMaxSourceGap28864 = 0f
+        var probeLastX28864 = Float.NaN
+        var probeLastY28864 = Float.NaN
+        var probeLastSourceSerial28864 = -1L
+        var probeLastParentSerial28864 = 0L
+        var probeLastSourceTotal28864 = 0L
+        var probeLastNoSource28864 = 0L
+        if (lifecycleProbe28864) XposedBridge.log(
+            "KYANT28864_LIFECYCLE_HOST host=${System.identityHashCode(anchor)} enabled=true pipeline=$pipelineMode28819")
         val pipelineMode28819 = try {
             Settings.Global.getInt(anchor.context.contentResolver, PIPELINE_AB_28819_KEY, -1).coerceIn(-1, 3)
         } catch (_: Throwable) { -1 }
@@ -651,9 +674,15 @@ object KyantLauncherLens270 {
         lateinit var releaseTracePulse28820: (String, Offset?, String) -> Unit
         val frame = object : FrameLayout(anchor.context) {
             override fun dispatchDraw(canvas: Canvas) {
+                val sourceBefore28864 = if (lifecycleProbe28864) sourceDrawSerial28864.get() else 0L
                 // Never mutate Compose state during View.dispatchDraw: the
                 // V288 experiment stalled the source snapshot on real devices.
                 super.dispatchDraw(canvas)
+                if (lifecycleProbe28864) {
+                    parentDrawSerial28864.incrementAndGet()
+                    if (sourceDrawSerial28864.get() == sourceBefore28864)
+                        parentWithoutSource28864.incrementAndGet()
+                }
                 val nowNs = SystemClock.elapsedRealtimeNanos()
                 if (releaseTrace28820) releaseTracePulse28820("HOST_DRAW", glassScreenPosition(lastBounds),
                     "frameVisible=$visibility frameLayer=$layerType childCount=$childCount")
@@ -1072,7 +1101,9 @@ object KyantLauncherLens270 {
                 if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
                 pipelineMode28819, frameSync28822,
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
-                { glassScreenPosition(lastBounds) }, { stage, pos, info -> releaseTrace28820(stage, pos, info) }) {
+                { glassScreenPosition(lastBounds) }, lifecycleProbe28864,
+                sourceDrawSerial28864, sourceDrawPosition28864,
+                { stage, pos, info -> releaseTrace28820(stage, pos, info) }) {
                 if (compositionSeen.compareAndSet(false, true)) {
                     XposedBridge.log("KYANT2885_COMPOSITION_CONFIRMED elapsedMs=" +
                         (SystemClock.uptimeMillis() - startedAt))
@@ -1558,6 +1589,48 @@ object KyantLauncherLens270 {
                             sync28863MaxStep = 0f
                         }
                     }
+                    if (lifecycleProbe28864 && currentSample.x.isFinite() && currentSample.y.isFinite()) {
+                        probePreDraw28864++
+                        val movedNow28864 = probeLastX28864.isFinite() &&
+                            (kotlin.math.abs(currentSample.x - probeLastX28864) > 0.5f ||
+                             kotlin.math.abs(currentSample.y - probeLastY28864) > 0.5f)
+                        if (movedNow28864) {
+                            probeMoving28864++
+                            val sourceSerialNow = sourceDrawSerial28864.get()
+                            if (sourceSerialNow == probeLastSourceSerial28864) probeMovingWithoutSource28864++
+                            val sourcePos = sourceDrawPosition28864.get()
+                            if (sourcePos != null) {
+                                val gap = kotlin.math.max(
+                                    kotlin.math.abs(sourcePos.x - currentSample.x),
+                                    kotlin.math.abs(sourcePos.y - currentSample.y))
+                                probeMaxSourceGap28864 = kotlin.math.max(probeMaxSourceGap28864, gap)
+                            }
+                            probeLastSourceSerial28864 = sourceSerialNow
+                        }
+                        probeLastX28864 = currentSample.x
+                        probeLastY28864 = currentSample.y
+                        val probeNow = SystemClock.elapsedRealtimeNanos()
+                        if (probeNow - probeWindow28864 >= 1_000_000_000L) {
+                            val parentTotal = parentDrawSerial28864.get()
+                            val sourceTotal = sourceDrawSerial28864.get()
+                            val noSourceTotal = parentWithoutSource28864.get()
+                            XposedBridge.log("KYANT28864_LIFECYCLE host=${System.identityHashCode(anchor)} " +
+                                "predraw=$probePreDraw28864 moving=$probeMoving28864 " +
+                                "movesWithoutSource=$probeMovingWithoutSource28864 " +
+                                "parentDraws=${parentTotal - probeLastParentSerial28864} " +
+                                "parentDrawWithoutSource=${noSourceTotal - probeLastNoSource28864} " +
+                                "sourceDraws=${sourceTotal - probeLastSourceTotal28864} maxSourceGapPx=$probeMaxSourceGap28864 " +
+                                "visible=$visible")
+                            probeLastParentSerial28864 = parentTotal
+                            probeLastSourceTotal28864 = sourceTotal
+                            probeLastNoSource28864 = noSourceTotal
+                            probePreDraw28864 = 0L
+                            probeMoving28864 = 0L
+                            probeMovingWithoutSource28864 = 0L
+                            probeMaxSourceGap28864 = 0f
+                            probeWindow28864 = probeNow
+                        }
+                    }
                     predrawMatrixSnapshot.set(Pair(currentSample, SystemClock.elapsedRealtimeNanos()))
                     releaseTrace28820("POST_PREDRAW", currentSample,
                         "committedX=${samplePosition.value.x} committedY=${samplePosition.value.y} changed=$updatePosition")
@@ -1641,6 +1714,9 @@ object KyantLauncherLens270 {
         bridgeResample: (Offset) -> Unit,
         predrawMatrixSnapshot: java.util.concurrent.atomic.AtomicReference<Pair<Offset, Long>>,
         currentNativePosition: () -> Offset,
+        lifecycleProbe28864: Boolean,
+        sourceDrawSerial28864: AtomicLong,
+        sourceDrawPosition28864: java.util.concurrent.atomic.AtomicReference<Offset?>,
         trace28820: (String, Offset?, String) -> Unit,
         onComposed: () -> Unit
     ) {
@@ -1707,6 +1783,10 @@ object KyantLauncherLens270 {
                 } else committedPosition
                 if (motionAbMode == 1) frozenSource.compareAndSet(null, livePosition)
                 val drawPosition = if (motionAbMode == 1) (frozenSource.get() ?: livePosition) else livePosition
+                if (lifecycleProbe28864) {
+                    sourceDrawPosition28864.set(drawPosition)
+                    sourceDrawSerial28864.incrementAndGet()
+                }
                 if (motionCompare28861) {
                     val nativeNow = try { currentNativePosition() } catch (_: Throwable) { null }
                     if (nativeNow != null) {
