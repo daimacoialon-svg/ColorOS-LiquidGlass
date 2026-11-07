@@ -59,3 +59,15 @@ KYANT28861_MOTION_COMPARE: maxCommitLagPx 表示提交坐标相对实时原生�
 汇总仅运动时每秒输出，非逐帧日志，不提供自动修复。诊断完成关闭：su -c settings put global liquidglass_kyant_motion_compare_28861 0。
 注意：Mode 1 是历史已存在的实验性绘制坐标 A/B，不保证完全消除异步图层/光学纹理抖动；真实效果需比较测试。
 完整 Gradle 构建及真机均待验证。
+
+
+V1.9.205.288.62｜Kyant 采样路径 / Compose 合成层隔离 A/B
+以 V288.61 为基线，保留 V288.60 的 Root 壁纸即时同步、原图裁剪校准、文件夹/Dock 外观和 Kyant Shader。
+新增：liquidglass_kyant_layer_sample_ab_28862，默认 0。
+0 原有设置；1 强制使用已有的源矩形裁剪采样（与通常的整帧连续变换形成对照）；2 使用已有的 Offscreen 光学容器层；3 同时使用源矩形裁剪采样与 Offscreen 层。四种模式的 Kyant 透镜保持开启。
+该开关在光学 Host 创建时读取，切换后重启 Launcher。若液态玻璃独立 pipeline 开启（>=0），实验强制不生效，以免与诊断模式冲突。
+建议先保持 legacy_sync_ab_2886=1；逐一比较 0/1/2/3 对不同形状文件夹的快速移动抖动。
+查看：su -c 'logcat -d -v threadtime | grep -E "KYANT28862_AB_HOST|KYANT28861_MOTION_COMPARE" | tail -60'。
+每秒运动汇总沿用 V288.61，附加 ab28862 字段；不增加逐帧 Logcat。
+如果模式 2 更好，优先调查 Compose 图层合成；模式 1 更好，优先调查整帧位移变换与源矩形裁剪差异；两者均无改善则继续调查后续 GPU 图层提交/合成时序。
+这属于隔离实验，不是已经完成抖动修复；实际结果以真机为准。

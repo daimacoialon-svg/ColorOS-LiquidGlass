@@ -338,6 +338,22 @@ object KyantLauncherLens270 {
         val renderAbMode = if (pipelineMode28819 >= 0) 0 else try {
             Settings.Global.getInt(anchor.context.contentResolver, RENDER_AB_KEY, 0).coerceIn(0, 2)
         } catch (_: Throwable) { 0 }
+        // V288.62: isolate the Kyant wallpaper source transform and Compose layer.
+        // This opt-in A/B only selects EXISTING render paths and leaves lens optics intact.
+        // 0 = existing configuration; 1 = rectangular source-crop sampling;
+        // 2 = isolated offscreen optical layer; 3 = both.
+        val layerSampleAb28862 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_layer_sample_ab_28862", 0).coerceIn(0, 3)
+        } catch (_: Throwable) { 0 }
+        val layerSampleEffective28862 = if (pipelineMode28819 == -1) layerSampleAb28862 else 0
+        val effectiveSamplingMode28862 = if (layerSampleEffective28862 == 1 || layerSampleEffective28862 == 3) 0 else samplingMode
+        val effectiveLargeContinuous28862 = if (layerSampleEffective28862 == 1 || layerSampleEffective28862 == 3) false else largeContinuousSource28830
+        val effectiveRenderMode28862 = if (layerSampleEffective28862 == 2 || layerSampleEffective28862 == 3) 2 else renderAbMode
+        XposedBridge.log("KYANT28862_AB_HOST mode=$layerSampleAb28862 applied=$layerSampleEffective28862 " +
+            "sampling=$effectiveSamplingMode28862 continuous=$effectiveLargeContinuous28862 render=$effectiveRenderMode28862 " +
+            "originalSampling=$samplingMode originalRender=$renderAbMode pipeline=$pipelineMode28819 " +
+            "host=${System.identityHashCode(anchor)}")
         // Motion diagnostic is independent of the earlier render A/B switch.
         // 0 = baseline, 1 = freeze wallpaper source at its first draw,
         // 2 = live wallpaper source without lens refraction.
@@ -1032,8 +1048,8 @@ object KyantLauncherLens270 {
                 FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)) }
 
             compose.setContent { LensContent270(referenceState28832.value, sampleWidth.intValue, sampleHeight.intValue,
-                displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, samplingMode,
-                largeContinuousSource28830, renderAbMode, motionAbMode, legacySyncAbMode, motionCompare28861, if (nativeLayerMode in 2..3) 3 else displayIsolationMode, nativeLayerMode, bridgeBitmap, bridgeVersion,
+                displayWidth, displayHeight, samplePosition, sampleRadiusPx.floatValue, effectiveSamplingMode28862,
+                effectiveLargeContinuous28862, effectiveRenderMode28862, motionAbMode, legacySyncAbMode, motionCompare28861, layerSampleEffective28862, if (nativeLayerMode in 2..3) 3 else displayIsolationMode, nativeLayerMode, bridgeBitmap, bridgeVersion,
                 if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
                 pipelineMode28819, frameSync28822,
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
@@ -1551,7 +1567,7 @@ object KyantLauncherLens270 {
         rootWidth: Int, rootHeight: Int, screenPosition: androidx.compose.runtime.State<Offset>,
         cornerRadiusPx: Float, samplingMode: Int,
         largeContinuousSource28830: Boolean, renderAbMode: Int, motionAbMode: Int,
-        legacySyncAbMode: Int, motionCompare28861: Boolean, displayIsolationMode: Int, nativeLayerMode: Int, bridgeBitmap: Bitmap?,
+        legacySyncAbMode: Int, motionCompare28861: Boolean, layerSampleMode28862: Int, displayIsolationMode: Int, nativeLayerMode: Int, bridgeBitmap: Bitmap?,
         bridgeVersion: androidx.compose.runtime.State<Int>,
         bridgeSyncMode: Int,
         pipelineMode28819: Int, frameSync28822: Int,
@@ -1654,7 +1670,7 @@ object KyantLauncherLens270 {
                                 val observed = predrawMatrixSnapshot.get()
                                 val ageMs = if (observed.second > 0L)
                                     (statNow - observed.second) / 1_000_000L else -1L
-                                XposedBridge.log("KYANT28861_MOTION_COMPARE mode=$legacySyncAbMode " +
+                                XposedBridge.log("KYANT28861_MOTION_COMPARE mode=$legacySyncAbMode ab28862=$layerSampleMode28862 " +
                                     "draws=$count maxCommitLagPx=${motionStats28861[0]} " +
                                     "maxDrawLagPx=${motionStats28861[1]} " +
                                     "maxStepPx=${motionStats28861[2]} " +
