@@ -126,7 +126,7 @@ maxQualifiedGapMs 是满足诊断前提的相邻绘制最大间隔，不代表 S
 本版严禁将零折射位移模式当作长期视觉修复：仅作短时 A/B，完成后恢复 0。
 
 
-V1.9.205.288.69 渲染承载路径实验
+V1.9.205.288.69.1 渲染承载路径实验
 设置：liquidglass_kyant_native_carrier_ab_28869 = 0/1/2（默认 0；重启 Launcher 生效）
 0：原始 Compose 采样 + Kyant 折射。
 1：原生 View 先生成背景位图，Compose 使用该位图继续进行 Kyant 透镜渲染；原生到 Compose 的交接仍可能产生时序延迟。
@@ -134,3 +134,5 @@ V1.9.205.288.69 渲染承载路径实验
 对照时请确保 pipeline_ab_28819=-1、display_isolation_28811=0、native_layer_28812=0。
 诊断日志：KYANT28869_RENDER_PATH / KYANT28869_NATIVE_DRAW / KYANT28869_OPTICAL_CONSUME。
 一切实验不修改 V288.60 的 Root 壁纸发布/事件恢复。
+
+V1.9.205.288.69.1：修复 LensContent270 内日志使用超出作用域的 bridgeDrawCount。改为读取已传入的 bridgeVersion.value，保持 Native Carrier A/B 行为不变。

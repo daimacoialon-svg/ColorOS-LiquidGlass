@@ -2280,7 +2280,7 @@ object KyantLauncherLens270 {
                 val previous = sourceLastDrawNs.getAndSet(now)
                 val draws = sourceDrawCount.incrementAndGet()
                 if (nativeCarrierAb28869 == 1 && draws % 60L == 1L) XposedBridge.log(
-                    "KYANT28869_OPTICAL_CONSUME draws=$draws nativeGen=${bridgeDrawCount.get()} " +
+                    "KYANT28869_OPTICAL_CONSUME draws=$draws nativeGen=${bridgeVersion.value} " +
                     "composeOriginX=$rootScreenX publishedX=${bridgePublishedPosition.get()?.x} " +
                     "posGapPx=${bridgePublishedPosition.get()?.let { kotlin.math.abs(rootScreenX - it.x) }}")
                 if (pipelineMode28819 >= 0 && draws % 60L == 1L) XposedBridge.log(
