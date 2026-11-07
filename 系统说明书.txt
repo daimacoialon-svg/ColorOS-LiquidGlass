@@ -98,3 +98,11 @@ V1.9.205.288.65｜Kyant 原生移动触发源图层重绘 A/B
 默认 0 不改变 V288.64.1。设置 liquidglass_kyant_native_draw_sync_ab_28865=1 后，只有可见、布局匹配且原生位置变化超过 0.5px 才向 Compose 发出下一帧无效化请求，保留 Kyant Shader、壁纸参考帧发布及 Dock 几何。
 增加 KYANT28865_DRAW_SYNC：requests、sourceDraws、treeDraws、maxRequestStepPx；treeDraws 取自 ViewTreeObserver.OnDrawListener，表示 ViewTree 绘制遍历，不等同父容器 dispatchDraw 或最终 GPU Present。仅在生命周期诊断开启或实验模式 1 时注册，销毁时移除。
 真机：su -c settings put global liquidglass_kyant_native_draw_sync_ab_28865 0/1；切换后重新加载 Launcher；日志 grep KYANT28865_DRAW_SYNC。只作为实验，尚未经过 GitHub Actions 完整编译或真机验证。
+
+
+V1.9.205.288.66｜Kyant 壁纸源原生 ComposeView 矩阵 A/B
+- 默认 0：保持 V288.65 的 FolderIcon anchor 原生矩阵采样；模式 1：Kyant 源图绘制时直接读取实际承载源图的 ComposeView 原生全局矩阵，作为纹理采样原点。
+- 设置 liquidglass_kyant_source_matrix_ab_28866 0/1，切换后重启 Launcher；保持 liquidglass_kyant_legacy_sync_ab_2886 1，关闭此前实验性强制重绘。
+- KYANT28866_HOST 确认模式，KYANT28866_SOURCE_MATRIX 以每秒低频日志汇总两种来源的偏差；若两个矩阵无差异但抖动依旧，不能宣称实现了真正的同帧合成修复。
+- 保留 V288.60 Root 原图事件、Dock 及文件夹共用壁纸帧、Kyant Shader；本版没有改动壁纸发布、光学位移函数、文件夹圆角。
+- 未完成完整 Android Gradle 编译或真机验证。

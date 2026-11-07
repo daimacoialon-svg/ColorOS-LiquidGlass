@@ -317,6 +317,18 @@ object KyantLauncherLens270 {
         KyantOptics28827.ensure(anchor.context)
         // V288.64: opt-in native parent versus Compose source draw lifecycle probe.
         // Counters are in memory. No per-frame logs or state writes from draw.
+        // V288.66: opt-in use the native matrix of the actual Compose source
+        // View, not the FolderIcon anchor. This changes the sampling origin,
+        // never the Shader, bitmap generation, or redraw cadence.
+        val sourceMatrixAb28866 = try {
+            Settings.Global.getInt(anchor.context.contentResolver,
+                "liquidglass_kyant_source_matrix_ab_28866", 0).coerceIn(0, 1)
+        } catch (_: Throwable) { 0 }
+        val sourceMatrixStats28866 = FloatArray(3) // max dx, max dy, sum absolute delta
+        val sourceMatrixCounts28866 = LongArray(3) // samples, invalid, over 1px
+        var sourceMatrixWindowNs28866 = SystemClock.elapsedRealtimeNanos()
+        XposedBridge.log("KYANT28866_HOST host=${System.identityHashCode(anchor)} " +
+            "mode=$sourceMatrixAb28866 origin=${if (sourceMatrixAb28866 == 1) "COMPOSE_VIEW_MATRIX" else "ANCHOR_MATRIX"}")
         val lifecycleProbe28864 = try {
             Settings.Global.getInt(anchor.context.contentResolver,
                 "liquidglass_kyant_lifecycle_probe_28864", 0) == 1
@@ -748,6 +760,25 @@ object KyantLauncherLens270 {
             // Keep the composition owner alive; native A/B modes render their own pixels.
             if (pipelineMode28819 == 0 || pipelineMode28819 == 3) alpha = 0f
         }
+        // The ComposeView is the actual native child carrying the Kyant source.
+        // A/B 1 gets its current transformed origin directly from that child,
+        // including fractional Workspace motion and host-local placement.
+        val composeSourceMatrix28866 = Matrix()
+        val composeSourcePoint28866 = FloatArray(2)
+        val composeRootScreen28866 = IntArray(2)
+        val composeRootWindow28866 = IntArray(2)
+        fun composeViewScreenPosition28866(): Offset {
+            composeSourceMatrix28866.reset()
+            compose.transformMatrixToGlobal(composeSourceMatrix28866)
+            composeSourcePoint28866[0] = 0f
+            composeSourcePoint28866[1] = 0f
+            composeSourceMatrix28866.mapPoints(composeSourcePoint28866)
+            root.getLocationOnScreen(composeRootScreen28866)
+            root.getLocationInWindow(composeRootWindow28866)
+            return Offset(
+                composeSourcePoint28866[0] + composeRootScreen28866[0] - composeRootWindow28866[0],
+                composeSourcePoint28866[1] + composeRootScreen28866[1] - composeRootWindow28866[1])
+        }
         // V288.8 experimental bridge: native View Canvas draws wallpaper into a
         // mutable Bitmap; Compose uses that Bitmap as its Kyant backdrop source.
         // This tests input compatibility; it does NOT guarantee same-frame sync.
@@ -1121,7 +1152,29 @@ object KyantLauncherLens270 {
                 if (displayIsolationMode in 1..3) 0 else bridgeSyncMode,
                 pipelineMode28819, frameSync28822,
                 bridgePublishedPosition, bridgeMismatchObserved, { pos -> sampleBridgeAt(pos) }, predrawMatrixSnapshot,
-                { glassScreenPosition(lastBounds) }, lifecycleProbe28864, drawProbe28865,
+                { glassScreenPosition(lastBounds) },
+                sourceMatrixAb28866, { composeViewScreenPosition28866() },
+                { nativePosition28866, sourcePosition28866 ->
+                    val dx = kotlin.math.abs(nativePosition28866.x - sourcePosition28866.x)
+                    val dy = kotlin.math.abs(nativePosition28866.y - sourcePosition28866.y)
+                    sourceMatrixCounts28866[0]++
+                    sourceMatrixStats28866[0] = maxOf(sourceMatrixStats28866[0], dx)
+                    sourceMatrixStats28866[1] = maxOf(sourceMatrixStats28866[1], dy)
+                    sourceMatrixStats28866[2] += maxOf(dx, dy)
+                    if (maxOf(dx, dy) > 1f) sourceMatrixCounts28866[2]++
+                    val now66 = SystemClock.elapsedRealtimeNanos()
+                    if (now66 - sourceMatrixWindowNs28866 >= 1_000_000_000L) {
+                        XposedBridge.log("KYANT28866_SOURCE_MATRIX host=${System.identityHashCode(anchor)} " +
+                            "mode=$sourceMatrixAb28866 samples=${sourceMatrixCounts28866[0]} " +
+                            "invalid=${sourceMatrixCounts28866[1]} over1px=${sourceMatrixCounts28866[2]} " +
+                            "maxDxPx=${sourceMatrixStats28866[0]} maxDyPx=${sourceMatrixStats28866[1]} " +
+                            "meanGapPx=${sourceMatrixStats28866[2] / sourceMatrixCounts28866[0].coerceAtLeast(1L)} " +
+                            "sourceX=${sourcePosition28866.x} anchorX=${nativePosition28866.x}")
+                        sourceMatrixStats28866.fill(0f)
+                        sourceMatrixCounts28866.fill(0L)
+                        sourceMatrixWindowNs28866 = now66
+                    }
+                }, lifecycleProbe28864, drawProbe28865,
                 sourceDrawSerial28864, sourceDrawPosition28864,
                 { stage, pos, info -> releaseTrace28820(stage, pos, info) }) {
                 if (compositionSeen.compareAndSet(false, true)) {
@@ -1781,6 +1834,8 @@ object KyantLauncherLens270 {
         bridgeResample: (Offset) -> Unit,
         predrawMatrixSnapshot: java.util.concurrent.atomic.AtomicReference<Pair<Offset, Long>>,
         currentNativePosition: () -> Offset,
+        sourceMatrixAb28866: Int, currentComposeViewPosition28866: () -> Offset,
+        recordSourceMatrix28866: (Offset, Offset) -> Unit,
         lifecycleProbe28864: Boolean, drawProbe28865: Boolean,
         sourceDrawSerial28864: AtomicLong,
         sourceDrawPosition28864: java.util.concurrent.atomic.AtomicReference<Offset?>,
@@ -1848,8 +1903,21 @@ object KyantLauncherLens270 {
                 val livePosition = if (legacySyncAbMode == 1) {
                     try { currentNativePosition() } catch (_: Throwable) { committedPosition }
                 } else committedPosition
-                if (motionAbMode == 1) frozenSource.compareAndSet(null, livePosition)
-                val drawPosition = if (motionAbMode == 1) (frozenSource.get() ?: livePosition) else livePosition
+                if (motionAbMode == 1 && sourceMatrixAb28866 == 0) frozenSource.compareAndSet(null, livePosition)
+                val selectedOrigin28866 = if (sourceMatrixAb28866 == 1) {
+                    // Guard against unattached/invalid source hosts: never allow
+                    // bad matrix readings to produce a blank or displaced glass.
+                    val nativeSource = try { currentComposeViewPosition28866() }
+                        catch (_: Throwable) { null }
+                    if (nativeSource != null && nativeSource.x.isFinite() && nativeSource.y.isFinite()) {
+                        recordSourceMatrix28866(livePosition, nativeSource)
+                        nativeSource
+                    } else livePosition
+                } else livePosition
+                if (motionAbMode == 1 && sourceMatrixAb28866 == 1)
+                    frozenSource.compareAndSet(null, selectedOrigin28866)
+                val drawPosition = if (motionAbMode == 1)
+                    (frozenSource.get() ?: selectedOrigin28866) else selectedOrigin28866
                 if (drawProbe28865) {
                     sourceDrawPosition28864.set(drawPosition)
                     sourceDrawSerial28864.incrementAndGet()
