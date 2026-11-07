@@ -2785,34 +2785,96 @@ public final class HookEntry implements IXposedHookLoadPackage {
         return source.length() + ":" + source.lastModified() + "|" +
             Long.toHexString(CANONICAL_VISUAL_KEY_28849);
     }
+    // V288.57: Android/OEM broadcasts may report getSentFromUid() == -1.
+    // An exported receiver cannot treat an unknown UID as root. We instead
+    // treat every wakeup as an UNTRUSTED hint and verify a fresh, root-written
+    // image within Launcher's private CE files directory before doing work.
+    // Only one accepted notification per real file revision; rate-limit probes.
+    private static final Object EARLY_WAKE_LOCK_28857 = new Object();
+    private static volatile String EARLY_WAKE_ACCEPTED_SOURCE_28857 = "";
+    private static volatile long EARLY_WAKE_LAST_CHECK_MS_28857 = -1L;
+    private static boolean verifyEarlyWakeSource28857(final android.content.Context app,
+                                                        final String trigger) {
+        final long now = android.os.SystemClock.elapsedRealtime();
+        synchronized (EARLY_WAKE_LOCK_28857) {
+            if (EARLY_WAKE_LAST_CHECK_MS_28857 >= 0 &&
+                    now - EARLY_WAKE_LAST_CHECK_MS_28857 < 1000L) {
+                log("KYANT28857_WAKE_SKIP reason=RATE_LIMIT trigger=" + trigger);
+                return false;
+            }
+            EARLY_WAKE_LAST_CHECK_MS_28857 = now;
+        }
+        try {
+            final java.io.File dir = earlyCeFilesDir28842(app);
+            final java.io.File source = new java.io.File(dir, "liquidglass_early_wallpaper_source");
+            // Reject symlinks and paths that escape the known Launcher-owned CE dir.
+            if (!source.getCanonicalPath().equals(source.getAbsolutePath()) ||
+                    !source.getParentFile().getCanonicalPath().equals(dir.getCanonicalPath())) {
+                log("KYANT28857_WAKE_SKIP reason=INVALID_PATH trigger=" + trigger);
+                return false;
+            }
+            final android.system.StructStat st = android.system.Os.stat(source.getAbsolutePath());
+            if (!android.system.OsConstants.S_ISREG(st.st_mode) ||
+                    st.st_uid != android.os.Process.myUid() ||
+                    (st.st_mode & 0077) != 0 ||
+                    st.st_size < 1024L || st.st_size > 40000000L) {
+                log("KYANT28857_WAKE_SKIP reason=INVALID_OWNER_OR_FILE uid=" + st.st_uid +
+                    " appUid=" + android.os.Process.myUid() + " mode=" +
+                    Integer.toOctalString(st.st_mode & 0777) + " trigger=" + trigger);
+                return false;
+            }
+            final long ageMs = java.lang.System.currentTimeMillis() - source.lastModified();
+            if (ageMs < -5000L || ageMs > 45000L) {
+                log("KYANT28857_WAKE_SKIP reason=STALE_SOURCE ageMs=" + ageMs +
+                    " trigger=" + trigger);
+                return false;
+            }
+            final String sig = st.st_size + ":" + source.lastModified();
+            synchronized (EARLY_WAKE_LOCK_28857) {
+                if (sig.equals(EARLY_WAKE_ACCEPTED_SOURCE_28857)) {
+                    log("KYANT28857_WAKE_SKIP reason=ALREADY_ACCEPTED source=" + sig);
+                    return false;
+                }
+                EARLY_WAKE_ACCEPTED_SOURCE_28857 = sig;
+            }
+            log("KYANT28857_WAKE_SOURCE_VERIFIED source=" + sig +
+                " ageMs=" + ageMs + " trigger=" + trigger);
+            return true;
+        } catch (Throwable ex) {
+            log("KYANT28857_WAKE_SKIP reason=VERIFY_ERROR type=" +
+                ex.getClass().getSimpleName() + " trigger=" + trigger);
+            return false;
+        }
+    }
     private static void installEarlyWakeReceiver28856(final android.content.Context app) {
         if (!EARLY_WAKE_REGISTERED_28856.compareAndSet(false, true)) return;
         try {
             android.content.IntentFilter filter = new android.content.IntentFilter(EARLY_WAKE_ACTION_28856);
             app.registerReceiver(new android.content.BroadcastReceiver() {
                 @Override public void onReceive(android.content.Context context, android.content.Intent intent) {
-                    // Root / shell are the only authorized senders. Do not accept
-                    // third-party spoofed signals into Launcher; Root also publishes
-                    // the actual image to a private app-owned directory.
-                    int uid = android.os.Build.VERSION.SDK_INT >= 34 ? getSentFromUid() : -1;
-                    if (uid != 0 && uid != 2000) {
-                        log("KYANT28856_WAKE_REJECT uid=" + uid);
+                    final int uid = android.os.Build.VERSION.SDK_INT >= 34 ? getSentFromUid() : -1;
+                    // Never claim uid=-1 is root. The message carries NO trusted
+                    // image path or crop, only a request to inspect private data.
+                    if (uid != 0 && uid != 2000 && uid != -1) {
+                        log("KYANT28857_WAKE_REJECT reason=KNOWN_UNTRUSTED_UID uid=" + uid);
                         return;
                     }
-                    long at = android.os.SystemClock.elapsedRealtime();
-                    log("KYANT28856_WAKE_RECEIVED uid=" + uid + " elapsedMs=" + at +
-                        " source=" + intent.getStringExtra("source_sig"));
+                    log("KYANT28857_WAKE_HINT uid=" + uid +
+                        " identity=" + (uid == -1 ? "UNKNOWN" : "ROOT_OR_SHELL") +
+                        " trust=UNTRUSTED_HINT");
+                    if (!verifyEarlyWakeSource28857(app, "BROADCAST")) return;
+                    log("KYANT28857_WAKE_ACCEPTED reason=PRIVATE_SOURCE_VERIFIED uid=" + uid +
+                        " elapsedMs=" + android.os.SystemClock.elapsedRealtime());
                     markFreshEarlyEvent28854(app, 0x10000);
-                    scheduleEarlyPreview28847(app, "ROOT_WAKE_28856");
-                    // Geometry diagnostic may run independently, after the preview
-                    // has captured its event baseline.
-                    probeEarlySource28840(app, "ROOT_WAKE_28856");
+                    scheduleEarlyPreview28847(app, "ROOT_WAKE_28857");
+                    probeEarlySource28840(app, "ROOT_WAKE_28857");
                 }
             }, filter, android.content.Context.RECEIVER_EXPORTED);
-            log("KYANT28856_WAKE_REGISTERED package=" + app.getPackageName());
+            log("KYANT28857_WAKE_REGISTERED package=" + app.getPackageName() +
+                " policy=UNTRUSTED_HINT_PRIVATE_FILE_VERIFICATION");
         } catch (Throwable error) {
             EARLY_WAKE_REGISTERED_28856.set(false);
-            log("KYANT28856_WAKE_REGISTER_FAILED type=" + error.getClass().getSimpleName());
+            log("KYANT28857_WAKE_REGISTER_FAILED type=" + error.getClass().getSimpleName());
         }
     }
 

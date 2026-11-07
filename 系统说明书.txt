@@ -38,3 +38,5 @@ V1.9.205.288.55：壁纸提前帧生命周期时间线与内容归属确认版�
 Gradle 全量编译与真机效果尚待确认。
 
 V1.9.205.288.56：Root 提前原图原子发布完成后发送 package-scoped 唤醒广播；Launcher 动态注册接收器并校验发送 UID，仅 root/shell 可触发，随后仍执行原有逐图裁剪批准和代际校验。FileObserver 在几何探测之前捕获新事件基线；前台缓存重复尝试按原图元数据和正式帧视觉代际去重，避免同图反复解码。若 OEM 限制后台广播，保留现有文件观察器与前台补偿路径。测试：logcat grep KYANT28856，并检查 /data/local/tmp/liquidglass-wallpaper-sync.log 中的 KYANT28856_ROOT_WAKE_SENT。尚未证明后台广播能唤醒冻结 Launcher。
+
+V1.9.205.288.57：修复 Android 15/ColorOS 广播 getSentFromUid()=-1 被直接拒绝。广播仅视为不可信唤醒提示；Launcher 只在私有 CE 目录中的提前壁纸为非符号链接、归属 Launcher UID、权限不可被其他用户访问、文件大小合理且更新足够新时接受。增加同源签名去重及节流；即使接收通过也继续沿用裁剪校准与正式帧代际安全闸门。不信任广播 extras。真机日志 grep KYANT28857；旧 FileObserver 及稳定模式0不变。
